@@ -1,6 +1,6 @@
 import { promises as fs } from "fs";
 import path from "path";
-import { Agent, ConversationState } from "../src/types.js";
+import type { Agent, ConversationState } from "../src/types.js";
 import { randomUUID } from "crypto";
 
 const DATA_DIR = path.join(process.cwd(), "data");

@@ -1,4 +1,4 @@
-import { Agent } from "../src/types.js";
+import type { Agent } from "../src/types.js";
 
 /**
  * Builds the final system prompt for an agent with safety headers and structured sections.

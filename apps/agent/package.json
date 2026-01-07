@@ -8,6 +8,8 @@
     "test": "node --test"
   },
   "dependencies": {
+    "@langchain/core": "^0.3.0",
+    "@langchain/google-genai": "^0.1.0",
     "@langchain/langgraph": "^0.2.40",
     "@langchain/openai": "^0.3.8",
     "openai": "^4.77.0",

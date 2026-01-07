@@ -4,16 +4,21 @@ import { getAgent, getConversation, createConversation, updateConversation } fro
 import { streamChatResponse } from "@/lib/streaming";
 import { randomUUID } from "crypto";
 import { accumulateCost } from "@/lib/cost-utils";
+import { getLLMConfig, getModelName } from "@/lib/llm-config";
 import { ChatMessage } from "@/lib/schemas";
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const data = ChatRequestSchema.parse(body);
-    const apiKey = process.env.OPENAI_API_KEY;
     
-    if (!apiKey) {
-      return new Response(JSON.stringify({ error: "OPENAI_API_KEY not configured" }), {
+    // Get model configuration (will throw if not properly configured)
+    let apiKey: string;
+    try {
+      const config = getLLMConfig();
+      apiKey = config.apiKey;
+    } catch (error: any) {
+      return new Response(JSON.stringify({ error: error.message || "LLM configuration error" }), {
         status: 500,
         headers: { "Content-Type": "application/json" },
       });
@@ -63,7 +68,8 @@ export async function POST(request: NextRequest) {
           const tokensIn = Math.ceil((data.message.length + conversation.messages.reduce((acc, m) => acc + m.content.length, 0)) / 4);
           const tokensOut = Math.ceil(fullResponse.length / 4);
 
-          const newCost = accumulateCost(conversation.cost, { tokensIn, tokensOut }, "gpt-4o-mini");
+          const modelName = getModelName();
+          const newCost = accumulateCost(conversation.cost, { tokensIn, tokensOut }, modelName);
 
           const updatedState = {
             ...conversation,

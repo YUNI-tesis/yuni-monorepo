@@ -1,4 +1,4 @@
-import { Agent, ConversationState } from "../src/types.js";
+import type { Agent, ConversationState } from "../src/types.js";
 
 export interface GuardrailResult {
   sanitizedUserMessage: string;

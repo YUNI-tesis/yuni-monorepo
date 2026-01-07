@@ -1,14 +1,20 @@
 /**
  * Cost tracking utilities for token usage and USD estimation.
- * Uses OpenAI pricing as of 2024 (adjust as needed).
+ * Supports multiple providers (OpenAI, Gemini, etc.)
  */
 
 // Pricing per 1M tokens (input/output)
-const PRICING = {
+const PRICING: Record<string, { input: number; output: number }> = {
+  // OpenAI models
   "gpt-4o": { input: 2.5, output: 10.0 }, // $2.50/$10.00 per 1M tokens
   "gpt-4o-mini": { input: 0.15, output: 0.6 }, // $0.15/$0.60 per 1M tokens
   "gpt-4-turbo": { input: 10.0, output: 30.0 },
   "gpt-3.5-turbo": { input: 0.5, output: 1.5 },
+  // Google Gemini models
+  "gemini-1.5-pro": { input: 1.25, output: 5.0 }, // $1.25/$5.00 per 1M tokens
+  "gemini-1.5-flash": { input: 0.075, output: 0.3 }, // $0.075/$0.30 per 1M tokens
+  "gemini-pro": { input: 0.5, output: 1.5 },
+  "gemini-1.0-pro": { input: 0.5, output: 1.5 },
 };
 
 const DEFAULT_MODEL = "gpt-4o-mini";

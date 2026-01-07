@@ -1,10 +1,11 @@
 import { StateGraph, END, START } from "@langchain/langgraph";
-import { ChatOpenAI } from "@langchain/openai";
-import { ChatMessage, Agent, ConversationState } from "./types.js";
+import type { ChatMessage, Agent, ConversationState } from "./types.js";
 import { getAgent, getConversation, saveConversation, createConversation } from "../tools/storage.js";
 import { buildSystemPrompt } from "../tools/buildSystemPrompt.js";
 import { applyGuardrails } from "../tools/guardrails.js";
 import { accumulateCost } from "../tools/costTracker.js";
+import { invokeLLM } from "../tools/llmFactory.js";
+import { getModelName } from "../tools/llmConfig.js";
 import { randomUUID } from "crypto";
 
 interface GraphState {
@@ -24,8 +25,9 @@ interface GraphState {
 
 /**
  * LangGraph state machine for chat turn processing.
+ * @deprecated apiKey parameter is no longer needed, configuration is read from environment variables
  */
-export function createChatGraph(apiKey: string) {
+export function createChatGraph(apiKey?: string) {
   const graph = new StateGraph<GraphState>({
     channels: {
       agentId: { reducer: (x, y) => y ?? x },
@@ -69,7 +71,7 @@ export function createChatGraph(apiKey: string) {
     return {
       sanitizedUserMessage: result.sanitizedUserMessage,
       blocked: result.blocked,
-      refusal: result.refusal,
+      ...(result.refusal !== undefined && { refusal: result.refusal }),
     };
   }
 
@@ -89,11 +91,6 @@ export function createChatGraph(apiKey: string) {
     }
 
     const systemPrompt = buildSystemPrompt(state.agent);
-    const llm = new ChatOpenAI({
-      modelName: "gpt-4o-mini",
-      temperature: 0.7,
-      openAIApiKey: apiKey,
-    });
 
     // Build message history
     const messages = state.state.messages.map((msg) => {
@@ -113,17 +110,12 @@ export function createChatGraph(apiKey: string) {
       { role: "user" as const, content: state.sanitizedUserMessage || state.userMessage },
     ];
 
-    const response = await llm.invoke(fullMessages);
-    const assistantMessage = response.content as string;
-
-    // Get token usage (approximate if not available)
-    const tokensIn = (response.response_metadata?.tokenUsage?.promptTokens as number) || 0;
-    const tokensOut = (response.response_metadata?.tokenUsage?.completionTokens as number) || 0;
+    const response = await invokeLLM(fullMessages);
 
     return {
-      assistantMessage,
-      tokensIn,
-      tokensOut,
+      assistantMessage: response.content,
+      tokensIn: response.tokensIn || 0,
+      tokensOut: response.tokensOut || 0,
     };
   }
 
@@ -149,13 +141,14 @@ export function createChatGraph(apiKey: string) {
     };
 
     // Update cost
+    const modelName = getModelName();
     const newCost = accumulateCost(
       state.state.cost,
       {
         tokensIn: state.tokensIn || 0,
         tokensOut: state.tokensOut || 0,
       },
-      "gpt-4o-mini"
+      modelName
     );
 
     const updatedState: ConversationState = {
@@ -178,11 +171,17 @@ export function createChatGraph(apiKey: string) {
   graph.addNode("persistConversation", persistConversationNode);
 
   // Define edges
+  // @ts-expect-error - LangGraph type inference issue with addEdge overloads
   graph.addEdge(START, "loadAgent");
+  // @ts-expect-error - LangGraph type inference issue with addEdge overloads
   graph.addEdge("loadAgent", "loadConversation");
+  // @ts-expect-error - LangGraph type inference issue with addEdge overloads
   graph.addEdge("loadConversation", "guardrails");
+  // @ts-expect-error - LangGraph type inference issue with addEdge overloads
   graph.addEdge("guardrails", "generateResponse");
+  // @ts-expect-error - LangGraph type inference issue with addEdge overloads
   graph.addEdge("generateResponse", "persistConversation");
+  // @ts-expect-error - LangGraph type inference issue with addEdge overloads
   graph.addEdge("persistConversation", END);
 
   return graph.compile();
@@ -196,7 +195,7 @@ export async function runChatTurn(params: {
   conversationId?: string;
   userMessage: string;
   mode?: "text" | "voice";
-  apiKey: string;
+  apiKey?: string; // Optional, falls back to environment variables
 }): Promise<ConversationState> {
   const graph = createChatGraph(params.apiKey);
   
