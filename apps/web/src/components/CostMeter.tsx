@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { fetchWithAuth } from "@/lib/fetch-client";
 
 interface CostMeterProps {
   conversationId: string;
@@ -20,7 +21,7 @@ export function CostMeter({ conversationId }: CostMeterProps) {
 
   async function fetchCost() {
     try {
-      const res = await fetch("/api/cost", {
+      const res = await fetchWithAuth("/api/cost", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ conversationId }),

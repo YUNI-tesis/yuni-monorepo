@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { Agent, CreateAgentSchema } from "@/lib/schemas";
 import { useRouter } from "next/navigation";
+import { fetchWithAuth } from "@/lib/fetch-client";
 
 interface AgentEditorProps {
   agentId?: string;
@@ -30,7 +31,7 @@ export function AgentEditor({ agentId }: AgentEditorProps) {
   async function fetchAgent() {
     try {
       setLoading(true);
-      const res = await fetch(`/api/agents/${agentId}`);
+      const res = await fetchWithAuth(`/api/agents/${agentId}`);
       if (!res.ok) throw new Error("Failed to fetch agent");
       const agent: Agent = await res.json();
       setFormData({
@@ -55,7 +56,7 @@ export function AgentEditor({ agentId }: AgentEditorProps) {
     try {
       const url = agentId ? `/api/agents/${agentId}` : "/api/agents";
       const method = agentId ? "PATCH" : "POST";
-      const res = await fetch(url, {
+      const res = await fetchWithAuth(url, {
         method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(formData),

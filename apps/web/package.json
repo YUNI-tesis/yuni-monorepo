@@ -4,14 +4,21 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "dotenv -e .env.local --expand -- prisma generate && next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "db:generate": "dotenv -e .env.local --expand -- prisma generate",
+    "db:push": "dotenv -e .env.local --expand -- prisma db push",
+    "db:migrate": "dotenv -e .env.local --expand -- prisma migrate dev",
+    "db:studio": "dotenv -e .env.local --expand -- prisma studio"
   },
   "dependencies": {
     "@google/generative-ai": "^0.21.0",
+    "@prisma/client": "^5.20.0",
     "ai": "^6.0.14",
+    "bcryptjs": "^2.4.3",
     "next": "16.1.1",
+    "next-auth": "^5.0.0-beta.25",
     "openai": "^4.77.0",
     "react": "19.2.3",
     "react-dom": "19.2.3",
@@ -19,12 +26,18 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@types/bcryptjs": "^2.4.6",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "dotenv-cli": "^7.4.2",
     "eslint": "^9",
     "eslint-config-next": "16.1.1",
+    "prisma": "^5.20.0",
     "tailwindcss": "^4",
     "typescript": "^5"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
   }
 }

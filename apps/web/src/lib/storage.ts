@@ -1,162 +1,386 @@
-import { promises as fs } from "fs";
-import path from "path";
+import { prisma } from "./prisma";
 import { Agent, AgentSchema, ConversationState, ConversationStateSchema } from "./schemas";
-import { randomUUID } from "crypto";
 
-const DATA_DIR = path.join(process.cwd(), "data");
-const AGENTS_DIR = path.join(DATA_DIR, "agents");
-const CONVERSATIONS_DIR = path.join(DATA_DIR, "conversations");
-
-// Ensure directories exist
-async function ensureDirectories() {
-  await fs.mkdir(AGENTS_DIR, { recursive: true });
-  await fs.mkdir(CONVERSATIONS_DIR, { recursive: true });
-}
+// Types for Prisma query results
+type PrismaAgent = Awaited<ReturnType<typeof prisma.agent.findFirst>>;
+type PrismaMessage = { id: string; role: string; content: string; createdAt: Date };
+type PrismaTranscript = { id: string; userAudioRef: string | null; transcript: string; createdAt: Date };
+type PrismaConversation = {
+  id: string;
+  agentId: string;
+  mode: string;
+  tokensIn: number;
+  tokensOut: number;
+  costUsd: number;
+  createdAt: Date;
+  updatedAt: Date;
+  messages: PrismaMessage[];
+  transcripts: PrismaTranscript[];
+};
 
 // Agent operations
-export async function createAgent(data: Omit<Agent, "id" | "createdAt" | "updatedAt">): Promise<Agent> {
-  await ensureDirectories();
-  const id = randomUUID();
-  const now = new Date().toISOString();
-  const agent: Agent = {
-    ...data,
-    id,
-    createdAt: now,
-    updatedAt: now,
+export async function createAgent(
+  userId: string,
+  data: Omit<Agent, "id" | "createdAt" | "updatedAt">
+): Promise<Agent> {
+  const agent = await prisma.agent.create({
+    data: {
+      userId,
+      name: data.name,
+      description: data.description,
+      systemPrompt: data.systemPrompt,
+      context: data.context,
+      toolsAllowed: data.toolsAllowed,
+      voice: data.voice || undefined,
+    },
+  });
+
+  return {
+    id: agent.id,
+    name: agent.name,
+    description: agent.description,
+    systemPrompt: agent.systemPrompt,
+    context: agent.context,
+    toolsAllowed: agent.toolsAllowed as ("none" | "basic")[],
+    voice: agent.voice as Agent["voice"],
+    createdAt: agent.createdAt.toISOString(),
+    updatedAt: agent.updatedAt.toISOString(),
   };
-  const filePath = path.join(AGENTS_DIR, `${id}.json`);
-  await fs.writeFile(filePath, JSON.stringify(agent, null, 2), "utf-8");
-  return agent;
 }
 
-export async function updateAgent(id: string, updates: Partial<Omit<Agent, "id" | "createdAt">>): Promise<Agent> {
-  await ensureDirectories();
-  const filePath = path.join(AGENTS_DIR, `${id}.json`);
-  const existing = await getAgent(id);
-  const updated: Agent = {
-    ...existing,
-    ...updates,
-    updatedAt: new Date().toISOString(),
+export async function updateAgent(
+  id: string,
+  userId: string,
+  updates: Partial<Omit<Agent, "id" | "createdAt">>
+): Promise<Agent> {
+  // First verify the agent belongs to the user
+  const existing = await prisma.agent.findFirst({
+    where: { id, userId },
+  });
+
+  if (!existing) {
+    throw new Error(`Agent ${id} not found`);
+  }
+
+  const agent = await prisma.agent.update({
+    where: { id },
+    data: {
+      ...(updates.name !== undefined && { name: updates.name }),
+      ...(updates.description !== undefined && { description: updates.description }),
+      ...(updates.systemPrompt !== undefined && { systemPrompt: updates.systemPrompt }),
+      ...(updates.context !== undefined && { context: updates.context }),
+      ...(updates.toolsAllowed !== undefined && { toolsAllowed: updates.toolsAllowed }),
+      ...(updates.voice !== undefined && { voice: updates.voice || undefined }),
+    },
+  });
+
+  return {
+    id: agent.id,
+    name: agent.name,
+    description: agent.description,
+    systemPrompt: agent.systemPrompt,
+    context: agent.context,
+    toolsAllowed: agent.toolsAllowed as ("none" | "basic")[],
+    voice: agent.voice as Agent["voice"],
+    createdAt: agent.createdAt.toISOString(),
+    updatedAt: agent.updatedAt.toISOString(),
   };
-  await fs.writeFile(filePath, JSON.stringify(updated, null, 2), "utf-8");
-  return updated;
 }
 
-export async function deleteAgent(id: string): Promise<void> {
-  await ensureDirectories();
-  const filePath = path.join(AGENTS_DIR, `${id}.json`);
-  try {
-    await fs.unlink(filePath);
-  } catch (error: any) {
-    if (error.code !== "ENOENT") throw error;
+export async function deleteAgent(id: string, userId: string): Promise<void> {
+  // Verify the agent belongs to the user
+  const existing = await prisma.agent.findFirst({
+    where: { id, userId },
+  });
+
+  if (!existing) {
+    throw new Error(`Agent ${id} not found`);
   }
+
+  await prisma.agent.delete({
+    where: { id },
+  });
 }
 
-export async function getAgent(id: string): Promise<Agent> {
-  await ensureDirectories();
-  const filePath = path.join(AGENTS_DIR, `${id}.json`);
-  try {
-    const content = await fs.readFile(filePath, "utf-8");
-    return AgentSchema.parse(JSON.parse(content));
-  } catch (error: any) {
-    if (error.code === "ENOENT") {
-      throw new Error(`Agent ${id} not found`);
-    }
-    throw error;
+export async function getAgent(id: string, userId: string): Promise<Agent> {
+  const agent = await prisma.agent.findFirst({
+    where: { id, userId },
+  });
+
+  if (!agent) {
+    throw new Error(`Agent ${id} not found`);
   }
+
+  return {
+    id: agent.id,
+    name: agent.name,
+    description: agent.description,
+    systemPrompt: agent.systemPrompt,
+    context: agent.context,
+    toolsAllowed: agent.toolsAllowed as ("none" | "basic")[],
+    voice: agent.voice as Agent["voice"],
+    createdAt: agent.createdAt.toISOString(),
+    updatedAt: agent.updatedAt.toISOString(),
+  };
 }
 
-export async function listAgents(): Promise<Agent[]> {
-  await ensureDirectories();
-  try {
-    const files = await fs.readdir(AGENTS_DIR);
-    const agents = await Promise.all(
-      files
-        .filter((f) => f.endsWith(".json"))
-        .map(async (file) => {
-          const content = await fs.readFile(path.join(AGENTS_DIR, file), "utf-8");
-          return AgentSchema.parse(JSON.parse(content));
-        })
-    );
-    return agents.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  } catch (error: any) {
-    if (error.code === "ENOENT") return [];
-    throw error;
-  }
+export async function listAgents(userId: string): Promise<Agent[]> {
+  const agents = await prisma.agent.findMany({
+    where: { userId },
+    orderBy: { createdAt: "desc" },
+  });
+
+  return agents.map((agent: NonNullable<PrismaAgent>) => ({
+    id: agent.id,
+    name: agent.name,
+    description: agent.description,
+    systemPrompt: agent.systemPrompt,
+    context: agent.context,
+    toolsAllowed: agent.toolsAllowed as ("none" | "basic")[],
+    voice: agent.voice as Agent["voice"],
+    createdAt: agent.createdAt.toISOString(),
+    updatedAt: agent.updatedAt.toISOString(),
+  }));
 }
 
 // Conversation operations
 export async function createConversation(
+  userId: string,
   agentId: string,
   mode: "text" | "voice" = "text"
 ): Promise<ConversationState> {
-  await ensureDirectories();
-  const id = randomUUID();
-  const now = new Date().toISOString();
-  const conversation: ConversationState = {
-    id,
-    agentId,
-    mode,
-    messages: [],
-    cost: { tokensIn: 0, tokensOut: 0, usd: 0 },
-    createdAt: now,
-    updatedAt: now,
+  // Verify the agent belongs to the user
+  const agent = await prisma.agent.findFirst({
+    where: { id: agentId, userId },
+  });
+
+  if (!agent) {
+    throw new Error(`Agent ${agentId} not found`);
+  }
+
+  const conversation = await prisma.conversation.create({
+    data: {
+      userId,
+      agentId,
+      mode,
+      tokensIn: 0,
+      tokensOut: 0,
+      costUsd: 0,
+    },
+    include: {
+      messages: true,
+      transcripts: true,
+    },
+  });
+
+  return {
+    id: conversation.id,
+    agentId: conversation.agentId,
+    mode: conversation.mode as "text" | "voice",
+    messages: conversation.messages.map((msg: PrismaMessage) => ({
+      id: msg.id,
+      role: msg.role as "system" | "user" | "assistant",
+      content: msg.content,
+      createdAt: msg.createdAt.toISOString(),
+    })),
+    transcripts: conversation.transcripts.map((t: PrismaTranscript) => ({
+      id: t.id,
+      userAudioRef: t.userAudioRef || undefined,
+      transcript: t.transcript,
+      createdAt: t.createdAt.toISOString(),
+    })),
+    cost: {
+      tokensIn: conversation.tokensIn,
+      tokensOut: conversation.tokensOut,
+      usd: conversation.costUsd,
+    },
+    createdAt: conversation.createdAt.toISOString(),
+    updatedAt: conversation.updatedAt.toISOString(),
   };
-  const filePath = path.join(CONVERSATIONS_DIR, `${id}.json`);
-  await fs.writeFile(filePath, JSON.stringify(conversation, null, 2), "utf-8");
-  return conversation;
 }
 
-export async function getConversation(id: string): Promise<ConversationState> {
-  await ensureDirectories();
-  const filePath = path.join(CONVERSATIONS_DIR, `${id}.json`);
-  try {
-    const content = await fs.readFile(filePath, "utf-8");
-    return ConversationStateSchema.parse(JSON.parse(content));
-  } catch (error: any) {
-    if (error.code === "ENOENT") {
-      throw new Error(`Conversation ${id} not found`);
-    }
-    throw error;
+export async function getConversation(id: string, userId: string): Promise<ConversationState> {
+  const conversation = await prisma.conversation.findFirst({
+    where: { id, userId },
+    include: {
+      messages: {
+        orderBy: { createdAt: "asc" },
+      },
+      transcripts: {
+        orderBy: { createdAt: "asc" },
+      },
+    },
+  });
+
+  if (!conversation) {
+    throw new Error(`Conversation ${id} not found`);
   }
+
+  return {
+    id: conversation.id,
+    agentId: conversation.agentId,
+    mode: conversation.mode as "text" | "voice",
+    messages: conversation.messages.map((msg: PrismaMessage) => ({
+      id: msg.id,
+      role: msg.role as "system" | "user" | "assistant",
+      content: msg.content,
+      createdAt: msg.createdAt.toISOString(),
+    })),
+    transcripts: conversation.transcripts.map((t: PrismaTranscript) => ({
+      id: t.id,
+      userAudioRef: t.userAudioRef || undefined,
+      transcript: t.transcript,
+      createdAt: t.createdAt.toISOString(),
+    })),
+    cost: {
+      tokensIn: conversation.tokensIn,
+      tokensOut: conversation.tokensOut,
+      usd: conversation.costUsd,
+    },
+    createdAt: conversation.createdAt.toISOString(),
+    updatedAt: conversation.updatedAt.toISOString(),
+  };
 }
 
 export async function updateConversation(
   id: string,
+  userId: string,
   updates: Partial<Omit<ConversationState, "id" | "createdAt">>
 ): Promise<ConversationState> {
-  await ensureDirectories();
-  const filePath = path.join(CONVERSATIONS_DIR, `${id}.json`);
-  const existing = await getConversation(id);
-  const updated: ConversationState = {
-    ...existing,
-    ...updates,
-    updatedAt: new Date().toISOString(),
-  };
-  await fs.writeFile(filePath, JSON.stringify(updated, null, 2), "utf-8");
-  return updated;
-}
+  // Verify the conversation belongs to the user
+  const existing = await prisma.conversation.findFirst({
+    where: { id, userId },
+  });
 
-export async function listConversations(agentId?: string): Promise<ConversationState[]> {
-  await ensureDirectories();
-  try {
-    const files = await fs.readdir(CONVERSATIONS_DIR);
-    const conversations = await Promise.all(
-      files
-        .filter((f) => f.endsWith(".json"))
-        .map(async (file) => {
-          const content = await fs.readFile(path.join(CONVERSATIONS_DIR, file), "utf-8");
-          return ConversationStateSchema.parse(JSON.parse(content));
-        })
-    );
-    let filtered = conversations;
-    if (agentId) {
-      filtered = conversations.filter((c) => c.agentId === agentId);
-    }
-    return filtered.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  } catch (error: any) {
-    if (error.code === "ENOENT") return [];
-    throw error;
+  if (!existing) {
+    throw new Error(`Conversation ${id} not found`);
   }
+
+  // Handle messages separately
+  if (updates.messages) {
+    // Delete existing messages
+    await prisma.message.deleteMany({
+      where: { conversationId: id },
+    });
+
+    // Create new messages
+    await prisma.message.createMany({
+      data: updates.messages.map((msg) => ({
+        conversationId: id,
+        role: msg.role,
+        content: msg.content,
+        createdAt: new Date(msg.createdAt),
+      })),
+    });
+  }
+
+  // Handle transcripts separately
+  if (updates.transcripts) {
+    // Delete existing transcripts
+    await prisma.transcript.deleteMany({
+      where: { conversationId: id },
+    });
+
+    // Create new transcripts
+    await prisma.transcript.createMany({
+      data: updates.transcripts.map((t: { id: string; userAudioRef?: string; transcript: string; createdAt: string }) => ({
+        conversationId: id,
+        userAudioRef: t.userAudioRef || null,
+        transcript: t.transcript,
+        createdAt: new Date(t.createdAt),
+      })),
+    });
+  }
+
+  // Update conversation metadata
+  const conversation = await prisma.conversation.update({
+    where: { id },
+    data: {
+      ...(updates.mode !== undefined && { mode: updates.mode }),
+      ...(updates.cost !== undefined && {
+        tokensIn: updates.cost.tokensIn,
+        tokensOut: updates.cost.tokensOut,
+        costUsd: updates.cost.usd,
+      }),
+    },
+    include: {
+      messages: {
+        orderBy: { createdAt: "asc" },
+      },
+      transcripts: {
+        orderBy: { createdAt: "asc" },
+      },
+    },
+  });
+
+  return {
+    id: conversation.id,
+    agentId: conversation.agentId,
+    mode: conversation.mode as "text" | "voice",
+    messages: conversation.messages.map((msg: PrismaMessage) => ({
+      id: msg.id,
+      role: msg.role as "system" | "user" | "assistant",
+      content: msg.content,
+      createdAt: msg.createdAt.toISOString(),
+    })),
+    transcripts: conversation.transcripts.map((t: PrismaTranscript) => ({
+      id: t.id,
+      userAudioRef: t.userAudioRef || undefined,
+      transcript: t.transcript,
+      createdAt: t.createdAt.toISOString(),
+    })),
+    cost: {
+      tokensIn: conversation.tokensIn,
+      tokensOut: conversation.tokensOut,
+      usd: conversation.costUsd,
+    },
+    createdAt: conversation.createdAt.toISOString(),
+    updatedAt: conversation.updatedAt.toISOString(),
+  };
 }
 
+export async function listConversations(
+  userId: string,
+  agentId?: string
+): Promise<ConversationState[]> {
+  const conversations = await prisma.conversation.findMany({
+    where: {
+      userId,
+      ...(agentId && { agentId }),
+    },
+    include: {
+      messages: {
+        orderBy: { createdAt: "asc" },
+      },
+      transcripts: {
+        orderBy: { createdAt: "asc" },
+      },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  return conversations.map((conversation: PrismaConversation) => ({
+    id: conversation.id,
+    agentId: conversation.agentId,
+    mode: conversation.mode as "text" | "voice",
+    messages: conversation.messages.map((msg: PrismaMessage) => ({
+      id: msg.id,
+      role: msg.role as "system" | "user" | "assistant",
+      content: msg.content,
+      createdAt: msg.createdAt.toISOString(),
+    })),
+    transcripts: conversation.transcripts.map((t: PrismaTranscript) => ({
+      id: t.id,
+      userAudioRef: t.userAudioRef || undefined,
+      transcript: t.transcript,
+      createdAt: t.createdAt.toISOString(),
+    })),
+    cost: {
+      tokensIn: conversation.tokensIn,
+      tokensOut: conversation.tokensOut,
+      usd: conversation.costUsd,
+    },
+    createdAt: conversation.createdAt.toISOString(),
+    updatedAt: conversation.updatedAt.toISOString(),
+  }));
+}

@@ -6,6 +6,8 @@ import Link from "next/link";
 import { Agent } from "@/lib/schemas";
 import { AgentEditor } from "@/components/AgentEditor";
 import { ChatPanel } from "@/components/ChatPanel";
+import { Header } from "@/components/Header";
+import { fetchWithAuth } from "@/lib/fetch-client";
 
 export default function AgentDetailPage() {
   const params = useParams();
@@ -25,7 +27,7 @@ export default function AgentDetailPage() {
   async function fetchAgent() {
     try {
       setLoading(true);
-      const res = await fetch(`/api/agents/${agentId}`);
+      const res = await fetchWithAuth(`/api/agents/${agentId}`);
       if (!res.ok) throw new Error("Failed to fetch agent");
       const data: Agent = await res.json();
       setAgent(data);
@@ -40,7 +42,7 @@ export default function AgentDetailPage() {
     if (!confirm("¿Estás seguro de que quieres eliminar este agente?")) return;
 
     try {
-      const res = await fetch(`/api/agents/${agentId}`, { method: "DELETE" });
+      const res = await fetchWithAuth(`/api/agents/${agentId}`, { method: "DELETE" });
       if (!res.ok) throw new Error("Failed to delete agent");
       router.push("/agents");
     } catch (err: any) {
@@ -69,8 +71,9 @@ export default function AgentDetailPage() {
 
   if (editing) {
     return (
-      <div className="min-h-screen bg-white dark:bg-black">
-        <div className="max-w-4xl mx-auto p-8">
+      <div className="min-h-screen bg-white dark:bg-black flex flex-col">
+        <Header />
+        <div className="max-w-4xl mx-auto p-8 flex-1">
           <div className="mb-6">
             <button
               onClick={() => setEditing(false)}
@@ -87,9 +90,11 @@ export default function AgentDetailPage() {
   }
 
   return (
-    <div className="min-h-screen bg-white dark:bg-black flex">
-      {/* Sidebar */}
-      <div className="w-80 border-r p-6 overflow-y-auto">
+    <div className="min-h-screen bg-white dark:bg-black flex flex-col">
+      <Header />
+      <div className="flex flex-1 overflow-hidden">
+        {/* Sidebar */}
+        <div className="w-80 border-r p-6 overflow-y-auto">
         <div className="mb-6">
           <Link href="/agents" className="text-blue-600 hover:underline mb-4 inline-block">
             ← Volver a Agentes
@@ -127,11 +132,12 @@ export default function AgentDetailPage() {
             Eliminar
           </button>
         </div>
-      </div>
+        </div>
 
-      {/* Chat Panel */}
-      <div className="flex-1 flex flex-col h-screen">
-        <ChatPanel agentId={agentId} />
+        {/* Chat Panel */}
+        <div className="flex-1 flex flex-col overflow-hidden">
+          <ChatPanel agentId={agentId} />
+        </div>
       </div>
     </div>
   );

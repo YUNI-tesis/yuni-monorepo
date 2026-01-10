@@ -16,7 +16,7 @@ export async function POST(request: NextRequest) {
       voice: (data.voice as any) || "alloy",
     });
 
-    return new NextResponse(audioBuffer, {
+    return new NextResponse(new Uint8Array(audioBuffer), {
       headers: {
         "Content-Type": "audio/mpeg",
         "Content-Length": audioBuffer.length.toString(),

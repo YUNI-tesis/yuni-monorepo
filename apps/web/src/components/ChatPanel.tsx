@@ -6,6 +6,7 @@ import { MessageList } from "./MessageList";
 import { MessageComposer } from "./MessageComposer";
 import { CostMeter } from "./CostMeter";
 import { CallMode } from "./CallMode";
+import { fetchWithAuth } from "@/lib/fetch-client";
 
 interface ChatPanelProps {
   agentId: string;
@@ -38,7 +39,7 @@ export function ChatPanel({ agentId, conversationId: initialConversationId }: Ch
 
   async function createNewConversation() {
     try {
-      const res = await fetch("/api/conversations", {
+      const res = await fetchWithAuth("/api/conversations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ agentId, mode: "text" }),
@@ -57,7 +58,7 @@ export function ChatPanel({ agentId, conversationId: initialConversationId }: Ch
   async function loadConversation(id: string) {
     try {
       setLoading(true);
-      const res = await fetch(`/api/conversations/${id}`);
+      const res = await fetchWithAuth(`/api/conversations/${id}`);
       if (!res.ok) throw new Error("Failed to load conversation");
       const conv: ConversationState = await res.json();
       setConversation(conv);
@@ -85,7 +86,7 @@ export function ChatPanel({ agentId, conversationId: initialConversationId }: Ch
     setMessages((prev) => [...prev, userMessage]);
 
     try {
-      const res = await fetch("/api/chat", {
+      const res = await fetchWithAuth("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

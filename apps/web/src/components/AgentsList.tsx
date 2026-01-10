@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Agent } from "@/lib/schemas";
+import { fetchWithAuth } from "@/lib/fetch-client";
 
 export function AgentsList() {
   const [agents, setAgents] = useState<Agent[]>([]);
@@ -16,7 +17,7 @@ export function AgentsList() {
   async function fetchAgents() {
     try {
       setLoading(true);
-      const res = await fetch("/api/agents");
+      const res = await fetchWithAuth("/api/agents");
       if (!res.ok) throw new Error("Failed to fetch agents");
       const data = await res.json();
       setAgents(data);

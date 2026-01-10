@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef } from "react";
+import { fetchWithAuth } from "@/lib/fetch-client";
 
 interface CallModeProps {
   agentId: string;
@@ -61,7 +62,7 @@ export function CallMode({ agentId, conversationId, onTranscript, onResponse }: 
       const formData = new FormData();
       formData.append("audio", audioBlob, "audio.webm");
 
-      const sttRes = await fetch("/api/stt", {
+      const sttRes = await fetchWithAuth("/api/stt", {
         method: "POST",
         body: formData,
       });
@@ -71,7 +72,7 @@ export function CallMode({ agentId, conversationId, onTranscript, onResponse }: 
       onTranscript?.(transcript);
 
       // Step 2: Send to chat
-      const chatRes = await fetch("/api/chat", {
+      const chatRes = await fetchWithAuth("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -118,7 +119,7 @@ export function CallMode({ agentId, conversationId, onTranscript, onResponse }: 
 
       // Step 3: Synthesize and play
       if (responseText) {
-        const ttsRes = await fetch("/api/tts", {
+        const ttsRes = await fetchWithAuth("/api/tts", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ text: responseText }),

@@ -1,0 +1,86 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(uuid())
+  email         String    @unique
+  password      String
+  name          String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  agents        Agent[]
+  conversations Conversation[]
+  
+  @@map("users")
+}
+
+model Agent {
+  id            String    @id @default(uuid())
+  userId        String
+  name          String
+  description   String    @db.Text
+  systemPrompt  String    @db.Text
+  context       String    @db.Text
+  toolsAllowed  String[]  @default([])
+  voice         Json?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  conversations Conversation[]
+  
+  @@map("agents")
+}
+
+model Conversation {
+  id            String    @id @default(uuid())
+  userId        String
+  agentId       String
+  mode          String    // "text" | "voice"
+  tokensIn      Int       @default(0)
+  tokensOut     Int       @default(0)
+  costUsd       Float     @default(0)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  agent         Agent     @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  messages      Message[]
+  transcripts   Transcript[]
+  
+  @@map("conversations")
+}
+
+model Message {
+  id            String    @id @default(uuid())
+  conversationId String
+  role          String    // "system" | "user" | "assistant"
+  content       String    @db.Text
+  createdAt     DateTime  @default(now())
+  
+  conversation  Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  
+  @@map("messages")
+}
+
+model Transcript {
+  id            String    @id @default(uuid())
+  conversationId String
+  userAudioRef  String?
+  transcript    String    @db.Text
+  createdAt     DateTime  @default(now())
+  
+  conversation  Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  
+  @@map("transcripts")
+}

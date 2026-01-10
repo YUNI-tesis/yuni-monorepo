@@ -6,9 +6,11 @@ import { randomUUID } from "crypto";
 import { accumulateCost } from "@/lib/cost-utils";
 import { getLLMConfig, getModelName } from "@/lib/llm-config";
 import { ChatMessage } from "@/lib/schemas";
+import { requireAuth } from "@/lib/auth-helpers";
 
 export async function POST(request: NextRequest) {
   try {
+    const user = await requireAuth();
     const body = await request.json();
     const data = ChatRequestSchema.parse(body);
     
@@ -24,15 +26,15 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Load agent
-    const agent = await getAgent(data.agentId);
+    // Load agent (verify it belongs to user)
+    const agent = await getAgent(data.agentId, user.id);
 
     // Get or create conversation
     let conversation;
     if (data.conversationId) {
-      conversation = await getConversation(data.conversationId);
+      conversation = await getConversation(data.conversationId, user.id);
     } else {
-      conversation = await createConversation(data.agentId, data.mode);
+      conversation = await createConversation(user.id, data.agentId, data.mode);
     }
 
     // Stream response
@@ -78,7 +80,7 @@ export async function POST(request: NextRequest) {
             updatedAt: now,
           };
 
-          await updateConversation(conversation.id, updatedState);
+          await updateConversation(conversation.id, user.id, updatedState);
           
           controller.enqueue(encoder.encode(`data: [DONE]\n\n`));
           controller.close();
@@ -96,6 +98,12 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error: any) {
+    if (error.status === 401) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
     if (error.name === "ZodError") {
       return new Response(JSON.stringify({ error: error.errors }), {
         status: 400,
