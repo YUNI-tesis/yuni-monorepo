@@ -1,0 +1,73 @@
+// Prisma schema for agent app - minimal models needed for RAG retrieval
+// Full schema is in apps/web/prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum DocumentStatus {
+  PENDING
+  UPLOADING
+  UPLOADED
+  INGESTING
+  READY
+  FAILED
+}
+
+model Agent {
+  id            String    @id @default(uuid())
+  userId        String
+  name          String
+  description   String    @db.Text
+  systemPrompt  String    @db.Text
+  context       String    @db.Text
+  toolsAllowed  String[]  @default([])
+  voice         Json?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  documents     Document[]
+  
+  @@map("agents")
+}
+
+model Document {
+  id        String         @id @default(uuid())
+  agentId   String
+  agent     Agent           @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  filename  String
+  mimeType  String
+  sizeBytes Int
+  storageKey String         @unique
+
+  status    DocumentStatus  @default(PENDING)
+  error     String?         @db.Text
+
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+
+  chunks    DocumentChunk[]
+
+  @@map("documents")
+}
+
+model DocumentChunk {
+  id         String   @id @default(uuid())
+  documentId String
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  index      Int
+  text       String   @db.Text
+
+  createdAt  DateTime @default(now())
+
+  @@unique([documentId, index])
+  @@index([documentId])
+  @@map("document_chunks")
+}

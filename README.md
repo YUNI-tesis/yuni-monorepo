@@ -39,6 +39,13 @@ Yuni es una plataforma multi-agente donde los usuarios pueden crear, gestionar y
   - TTS: texto → audio (usando OpenAI TTS para MVP; más tarde cambiar a ElevenLabs)
 - Incluir un botón "Modo Llamada (MVP)" que usa voz turn-based: grabar → transcribir → enviar → hablar respuesta
 
+### 6. Documentos y RAG (Retrieval-Augmented Generation)
+- Subir documentos (PDF, TXT, DOCX) a Azure Blob Storage
+- Almacenamiento provider-agnóstico con abstracción ObjectStorage
+- Procesamiento de documentos: extracción de texto y chunking
+- RAG scaffolding con recuperación naive (keyword matching)
+- Integración automática de contexto de documentos en respuestas del agente
+
 ## Instalación
 
 ### Requisitos previos
@@ -55,7 +62,24 @@ pnpm install
 2. Configurar variables de entorno:
 Crea un archivo `.env.local` en la raíz del proyecto:
 ```env
+# LLM Configuration
 OPENAI_API_KEY=tu_api_key_aqui
+
+# Database (PostgreSQL)
+DATABASE_URL=postgresql://user:password@localhost:5432/yuni_ai
+
+# Azure Blob Storage (for document storage)
+STORAGE_PROVIDER=azure
+AZURE_STORAGE_ACCOUNT_NAME=tu_cuenta_azure
+AZURE_STORAGE_ACCOUNT_KEY=tu_clave_azure
+AZURE_STORAGE_CONTAINER_NAME=documents
+AZURE_STORAGE_PUBLIC_BASE_URL=https://tu_cuenta_azure.blob.core.windows.net  # Optional
+
+# Document upload limits (optional, defaults to 20MB)
+DOC_MAX_SIZE_MB=20
+
+# NextAuth
+NEXTAUTH_SECRET=tu_secret_aqui
 ```
 
 3. Ejecutar en modo desarrollo:
@@ -153,8 +177,9 @@ apps/
 1. **LoadAgent** - Carga la definición del agente
 2. **LoadConversation** - Carga o crea la conversación
 3. **Guardrails** - Aplica filtros de seguridad y validación
-4. **GenerateResponse** - Genera respuesta usando OpenAI
-5. **PersistConversation** - Guarda mensajes y actualiza costos
+4. **RetrieveChunks** - Recupera chunks relevantes de documentos (RAG)
+5. **GenerateResponse** - Genera respuesta usando OpenAI con contexto de documentos
+6. **PersistConversation** - Guarda mensajes y actualiza costos
 
 ## Seguridad
 
@@ -232,10 +257,12 @@ Ejecutar tests unitarios:
 
 ## Notas de Arquitectura
 
-- **Almacenamiento**: Actualmente basado en archivos JSON. Fácil migrar a Supabase/PostgreSQL cambiando solo `apps/web/lib/storage.ts` y `apps/agent/tools/storage.ts`
+- **Almacenamiento**: Actualmente basado en archivos JSON para agentes/conversaciones. PostgreSQL con Prisma para metadatos de documentos. Azure Blob Storage para archivos.
 - **Streaming**: Implementado usando Server-Sent Events (SSE) para respuestas del chat
 - **Seguridad**: Los guardrails se aplican antes de llamar al LLM, evitando costos innecesarios
 - **Costos**: Estimación aproximada basada en conteo de caracteres (1 token ≈ 4 caracteres). Para precisión, usar tokenización real del modelo.
+- **Documentos**: Almacenamiento provider-agnóstico con Azure Blob Storage como implementación actual. Soporte para PDF, TXT, DOCX con extracción de texto y chunking automático.
+- **RAG**: Recuperación naive basada en keyword matching (ILIKE). Preparado para migrar a embeddings/vector DB en el futuro.
 
 ## Licencia
 

@@ -6,6 +6,7 @@ import { applyGuardrails } from "../tools/guardrails.js";
 import { accumulateCost } from "../tools/costTracker.js";
 import { invokeLLM } from "../tools/llmFactory.js";
 import { getModelName } from "../tools/llmConfig.js";
+import { retrieveRelevantChunks, formatRetrievalContext } from "../tools/retrieval.js";
 import { randomUUID } from "crypto";
 
 interface GraphState {
@@ -18,6 +19,7 @@ interface GraphState {
   sanitizedUserMessage?: string;
   blocked?: boolean;
   refusal?: string;
+  retrievalContext?: string;
   assistantMessage?: string;
   tokensIn?: number;
   tokensOut?: number;
@@ -39,6 +41,7 @@ export function createChatGraph(apiKey?: string) {
       sanitizedUserMessage: { reducer: (x, y) => y ?? x },
       blocked: { reducer: (x, y) => y ?? x },
       refusal: { reducer: (x, y) => y ?? x },
+      retrievalContext: { reducer: (x, y) => y ?? x },
       assistantMessage: { reducer: (x, y) => y ?? x },
       tokensIn: { reducer: (x, y) => y ?? x },
       tokensOut: { reducer: (x, y) => y ?? x },
@@ -75,6 +78,20 @@ export function createChatGraph(apiKey?: string) {
     };
   }
 
+  // Node 3.5: Retrieve relevant chunks from documents
+  async function retrieveChunksNode(state: GraphState): Promise<Partial<GraphState>> {
+    if (!state.agent || state.blocked) {
+      // Skip retrieval if blocked or agent not loaded
+      return { retrievalContext: "" };
+    }
+
+    const query = state.sanitizedUserMessage || state.userMessage;
+    const chunks = await retrieveRelevantChunks(state.agentId, query, 6);
+    const retrievalContext = formatRetrievalContext(chunks);
+
+    return { retrievalContext };
+  }
+
   // Node 4: GenerateResponse
   async function generateResponseNode(state: GraphState): Promise<Partial<GraphState>> {
     if (!state.agent || !state.state) {
@@ -90,7 +107,18 @@ export function createChatGraph(apiKey?: string) {
       };
     }
 
-    const systemPrompt = buildSystemPrompt(state.agent);
+    let systemPrompt = buildSystemPrompt(state.agent);
+
+    // Add retrieval context to system prompt if available
+    const retrievalContext = state.retrievalContext || "";
+    if (retrievalContext) {
+      systemPrompt += retrievalContext;
+      systemPrompt +=
+        "\n\nNote: If the user asks about information from uploaded documents and you cannot find it in the context above, respond: 'I couldn't find that in the uploaded documents.'";
+    } else {
+      systemPrompt +=
+        "\n\nNote: Do not claim information comes from uploaded documents unless retrieval context is provided above.";
+    }
 
     // Build message history
     const messages = state.state.messages.map((msg) => {
@@ -167,6 +195,7 @@ export function createChatGraph(apiKey?: string) {
   graph.addNode("loadAgent", loadAgentNode);
   graph.addNode("loadConversation", loadConversationNode);
   graph.addNode("guardrails", guardrailsNode);
+  graph.addNode("retrieveChunks", retrieveChunksNode);
   graph.addNode("generateResponse", generateResponseNode);
   graph.addNode("persistConversation", persistConversationNode);
 
@@ -178,7 +207,9 @@ export function createChatGraph(apiKey?: string) {
   // @ts-expect-error - LangGraph type inference issue with addEdge overloads
   graph.addEdge("loadConversation", "guardrails");
   // @ts-expect-error - LangGraph type inference issue with addEdge overloads
-  graph.addEdge("guardrails", "generateResponse");
+  graph.addEdge("guardrails", "retrieveChunks");
+  // @ts-expect-error - LangGraph type inference issue with addEdge overloads
+  graph.addEdge("retrieveChunks", "generateResponse");
   // @ts-expect-error - LangGraph type inference issue with addEdge overloads
   graph.addEdge("generateResponse", "persistConversation");
   // @ts-expect-error - LangGraph type inference issue with addEdge overloads
