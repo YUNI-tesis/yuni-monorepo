@@ -38,6 +38,7 @@ model Agent {
   
   user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   conversations Conversation[]
+  documents     Document[]
   
   @@map("agents")
 }
@@ -83,4 +84,49 @@ model Transcript {
   conversation  Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   
   @@map("transcripts")
+}
+
+enum DocumentStatus {
+  PENDING
+  UPLOADING
+  UPLOADED
+  INGESTING
+  READY
+  FAILED
+}
+
+model Document {
+  id        String         @id @default(uuid())
+  agentId   String
+  agent     Agent           @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  filename  String
+  mimeType  String
+  sizeBytes Int
+  storageKey String         @unique
+
+  status    DocumentStatus  @default(PENDING)
+  error     String?         @db.Text
+
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+
+  chunks    DocumentChunk[]
+
+  @@map("documents")
+}
+
+model DocumentChunk {
+  id         String   @id @default(uuid())
+  documentId String
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  index      Int
+  text       String   @db.Text
+
+  createdAt  DateTime @default(now())
+
+  @@unique([documentId, index])
+  @@index([documentId])
+  @@map("document_chunks")
 }

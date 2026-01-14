@@ -7,6 +7,7 @@ import { Agent } from "@/lib/schemas";
 import { AgentEditor } from "@/components/AgentEditor";
 import { ChatPanel } from "@/components/ChatPanel";
 import { Header } from "@/components/Header";
+import { DocumentsSection } from "@/components/DocumentsSection";
 import { fetchWithAuth } from "@/lib/fetch-client";
 
 export default function AgentDetailPage() {
@@ -116,6 +117,7 @@ export default function AgentDetailPage() {
               {agent.context || "Sin contexto"}
             </p>
           </div>
+          <DocumentsSection agentId={agentId} />
         </div>
 
         <div className="flex gap-2">
