@@ -5,8 +5,9 @@ import { ConversationState, ChatMessage } from "@/lib/schemas";
 import { MessageList } from "./MessageList";
 import { MessageComposer } from "./MessageComposer";
 import { CostMeter } from "./CostMeter";
-import { CallMode } from "./CallMode";
+import { LiveCall } from "./LiveCall";
 import { fetchWithAuth } from "@/lib/fetch-client";
+import { useSession } from "next-auth/react";
 
 interface ChatPanelProps {
   agentId: string;
@@ -14,11 +15,13 @@ interface ChatPanelProps {
 }
 
 export function ChatPanel({ agentId, conversationId: initialConversationId }: ChatPanelProps) {
+  const { data: session } = useSession();
   const [conversation, setConversation] = useState<ConversationState | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [streamingText, setStreamingText] = useState("");
+  const [callMode, setCallMode] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -144,49 +147,109 @@ export function ChatPanel({ agentId, conversationId: initialConversationId }: Ch
   }
 
   if (loading) {
-    return <div className="p-4">Cargando conversación...</div>;
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-purple-500/30 border-t-purple-500 rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-gray-400">Cargando conversación...</p>
+        </div>
+      </div>
+    );
   }
 
   if (!conversation) {
-    return <div className="p-4">Error: No se pudo crear la conversación</div>;
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="glass rounded-xl border border-red-500/30 bg-red-500/10 px-6 py-4">
+          <p className="text-red-400">Error: No se pudo crear la conversación</p>
+        </div>
+      </div>
+    );
   }
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="p-4 border-b flex justify-between items-center">
-        <h2 className="text-xl font-semibold">Chat</h2>
+    <div className="flex flex-col h-full bg-gradient-to-b from-transparent to-black/20">
+      <div className="px-6 py-4 border-b border-white/10 glass-strong flex justify-between items-center">
+        <div className="flex items-center gap-6">
+          <h2 className="text-2xl font-bold gradient-text tracking-tight">Chat</h2>
+          <div className="flex gap-2 glass rounded-xl p-1 border border-white/10">
+            <button
+              onClick={() => setCallMode(false)}
+              className={`px-4 py-2 text-sm font-medium rounded-lg transition-all ${
+                !callMode
+                  ? "bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow-lg"
+                  : "text-gray-400 hover:text-white hover:bg-white/5"
+              }`}
+            >
+              <span className="flex items-center gap-2">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                </svg>
+                Texto
+              </span>
+            </button>
+            <button
+              onClick={() => setCallMode(true)}
+              className={`px-4 py-2 text-sm font-medium rounded-lg transition-all ${
+                callMode
+                  ? "bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow-lg"
+                  : "text-gray-400 hover:text-white hover:bg-white/5"
+              }`}
+            >
+              <span className="flex items-center gap-2">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                </svg>
+                Llamada
+              </span>
+            </button>
+          </div>
+        </div>
         <CostMeter conversationId={conversation.id} />
       </div>
 
-      <div className="flex-1 overflow-hidden">
-        <MessageList messages={messages} />
-        {streamingText && (
-          <div className="px-4 pb-4">
-            <div className="flex justify-start">
-              <div className="max-w-[80%] rounded-lg p-3 bg-gray-100 text-gray-900">
-                <p className="whitespace-pre-wrap">{streamingText}</p>
-                <span className="inline-block w-2 h-4 bg-gray-400 animate-pulse ml-1" />
+      {callMode ? (
+        <LiveCall
+          agentId={agentId}
+          conversationId={conversation.id}
+          userId={session?.user?.id || ""}
+          onTranscript={(text) => {
+            // Optionally show transcript
+            console.log("Transcript:", text);
+          }}
+          onResponse={(text) => {
+            // Reload conversation to show new messages
+            loadConversation(conversation.id);
+          }}
+          onError={(error) => {
+            console.error("Call error:", error);
+          }}
+        />
+      ) : (
+        <>
+          <div className="flex-1 overflow-hidden">
+            <MessageList messages={messages} />
+            {streamingText && (
+              <div className="px-6 pb-4">
+                <div className="flex justify-start items-start gap-3">
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center flex-shrink-0 mt-1">
+                    <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                    </svg>
+                  </div>
+                  <div className="max-w-[75%] glass-strong rounded-2xl px-5 py-4 border border-white/10 text-gray-100">
+                    <p className="whitespace-pre-wrap leading-relaxed">{streamingText}</p>
+                    <span className="inline-block w-2 h-4 bg-purple-400 rounded animate-pulse ml-1" />
+                  </div>
+                </div>
               </div>
-            </div>
+            )}
+            <div ref={messagesEndRef} />
           </div>
-        )}
-        <div ref={messagesEndRef} />
-      </div>
 
-      <MessageComposer onSend={handleSendMessage} disabled={sending} />
-
-      <CallMode
-        agentId={agentId}
-        conversationId={conversation.id}
-        onTranscript={(text) => {
-          // Optionally show transcript
-          console.log("Transcript:", text);
-        }}
-        onResponse={(text) => {
-          // Reload conversation to show new messages
-          loadConversation(conversation.id);
-        }}
-      />
+          <MessageComposer onSend={handleSendMessage} disabled={sending} />
+        </>
+      )}
     </div>
   );
 }
