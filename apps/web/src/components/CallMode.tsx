@@ -1,178 +1,184 @@
 "use client";
 
-import { useState, useRef } from "react";
-import { fetchWithAuth } from "@/lib/fetch-client";
+/**
+ * CallMode Component
+ * Provides two modes for voice interaction:
+ * 1. Realtime Mode: OpenAI Realtime API (real-time, low latency)
+ * 2. Legacy Mode: Whisper → LLM → TTS (for compatibility)
+ */
+
+import { useState } from "react";
+import { LiveCall } from "./LiveCall";
 
 interface CallModeProps {
   agentId: string;
   conversationId: string;
-  onTranscript?: (text: string) => void;
-  onResponse?: (text: string) => void;
+  userId: string;
+  onClose?: () => void;
 }
 
-export function CallMode({ agentId, conversationId, onTranscript, onResponse }: CallModeProps) {
-  const [recording, setRecording] = useState(false);
-  const [processing, setProcessing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
+type CallModeType = "realtime" | "legacy" | null;
 
-  async function startRecording() {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream);
-      mediaRecorderRef.current = mediaRecorder;
-      audioChunksRef.current = [];
+export function CallMode({ agentId, conversationId, userId, onClose }: CallModeProps) {
+  const [mode, setMode] = useState<CallModeType>(null);
 
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          audioChunksRef.current.push(event.data);
-        }
-      };
-
-      mediaRecorder.onstop = async () => {
-        stream.getTracks().forEach((track) => track.stop());
-        await processAudio();
-      };
-
-      mediaRecorder.start();
-      setRecording(true);
-      setError(null);
-    } catch (err: any) {
-      setError(`Error al acceder al micrófono: ${err.message}`);
-    }
-  }
-
-  function stopRecording() {
-    if (mediaRecorderRef.current && recording) {
-      mediaRecorderRef.current.stop();
-      setRecording(false);
-    }
-  }
-
-  async function processAudio() {
-    setProcessing(true);
-    setError(null);
-
-    try {
-      // Combine audio chunks
-      const audioBlob = new Blob(audioChunksRef.current, { type: "audio/webm" });
-
-      // Step 1: Transcribe
-      const formData = new FormData();
-      formData.append("audio", audioBlob, "audio.webm");
-
-      const sttRes = await fetchWithAuth("/api/stt", {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!sttRes.ok) throw new Error("Failed to transcribe audio");
-      const { transcript } = await sttRes.json();
-      onTranscript?.(transcript);
-
-      // Step 2: Send to chat
-      const chatRes = await fetchWithAuth("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          agentId,
-          conversationId,
-          message: transcript,
-          mode: "voice",
-        }),
-      });
-
-      if (!chatRes.ok) throw new Error("Failed to get response");
-
-      // Read streaming response
-      const reader = chatRes.body?.getReader();
-      const decoder = new TextDecoder();
-      let responseText = "";
-
-      if (reader) {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          const chunk = decoder.decode(value);
-          const lines = chunk.split("\n");
-
-          for (const line of lines) {
-            if (line.startsWith("data: ")) {
-              const data = line.slice(6);
-              if (data === "[DONE]") continue;
-              try {
-                const parsed = JSON.parse(data);
-                if (parsed.text) {
-                  responseText += parsed.text;
-                }
-              } catch (e) {
-                // Ignore parse errors
-              }
-            }
-          }
-        }
-      }
-
-      onResponse?.(responseText);
-
-      // Step 3: Synthesize and play
-      if (responseText) {
-        const ttsRes = await fetchWithAuth("/api/tts", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text: responseText }),
-        });
-
-        if (!ttsRes.ok) throw new Error("Failed to synthesize speech");
-
-        const audioBlob = await ttsRes.blob();
-        const audioUrl = URL.createObjectURL(audioBlob);
-        const audio = new Audio(audioUrl);
-        await audio.play();
-        audio.onended = () => URL.revokeObjectURL(audioUrl);
-      }
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setProcessing(false);
-    }
+  if (mode === "realtime") {
+    return (
+      <LiveCall
+        agentId={agentId}
+        conversationId={conversationId}
+        userId={userId}
+        onClose={() => {
+          setMode(null);
+          onClose?.();
+        }}
+      />
+    );
   }
 
   return (
-    <div className="p-4 border-t">
-      <h3 className="text-lg font-semibold mb-4">Modo Llamada (MVP)</h3>
-      {error && <div className="mb-4 p-2 bg-red-50 text-red-600 text-sm rounded">{error}</div>}
+    <div className="flex flex-col items-center justify-center h-full bg-gray-50 dark:bg-gray-900 p-8">
+      <div className="max-w-2xl w-full space-y-6">
+        <div className="text-center">
+          <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
+            Voice Call Mode
+          </h2>
+          <p className="text-gray-600 dark:text-gray-400">
+            Choose how you want to interact with the agent
+          </p>
+        </div>
 
-      <div className="flex gap-4 items-center">
-        {!recording ? (
-          <button
-            onClick={startRecording}
-            disabled={processing}
-            className="px-6 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50"
-          >
-            {processing ? "Procesando..." : "🎤 Grabar"}
-          </button>
-        ) : (
-          <button
-            onClick={stopRecording}
-            className="px-6 py-2 bg-red-600 text-white rounded hover:bg-red-700"
-          >
-            ⏹ Detener
-          </button>
-        )}
-
-        {processing && (
-          <div className="text-sm text-gray-600">
-            Transcribiendo → Enviando → Generando respuesta → Sintetizando...
+        {/* Realtime Mode Card */}
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 border-2 border-blue-500">
+          <div className="flex items-start space-x-4">
+            <div className="flex-shrink-0">
+              <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900 rounded-lg flex items-center justify-center">
+                <svg
+                  className="w-6 h-6 text-blue-600 dark:text-blue-400"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M13 10V3L4 14h7v7l9-11h-7z"
+                  />
+                </svg>
+              </div>
+            </div>
+            <div className="flex-1">
+              <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
+                Realtime Mode
+                <span className="ml-2 px-2 py-1 text-xs font-medium bg-blue-100 text-blue-800 rounded">
+                  Recommended
+                </span>
+              </h3>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                Real-time conversation with OpenAI Realtime API. Natural turn-taking, low latency,
+                and interruption support.
+              </p>
+              <ul className="space-y-2 mb-4">
+                <li className="flex items-center text-sm text-gray-700 dark:text-gray-300">
+                  <svg className="w-4 h-4 text-green-500 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                    <path
+                      fillRule="evenodd"
+                      d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
+                  Ultra-low latency (~500ms)
+                </li>
+                <li className="flex items-center text-sm text-gray-700 dark:text-gray-300">
+                  <svg className="w-4 h-4 text-green-500 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                    <path
+                      fillRule="evenodd"
+                      d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
+                  Natural conversation flow
+                </li>
+                <li className="flex items-center text-sm text-gray-700 dark:text-gray-300">
+                  <svg className="w-4 h-4 text-green-500 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                    <path
+                      fillRule="evenodd"
+                      d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
+                  Interruption support (barge-in)
+                </li>
+                <li className="flex items-center text-sm text-gray-700 dark:text-gray-300">
+                  <svg className="w-4 h-4 text-green-500 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                    <path
+                      fillRule="evenodd"
+                      d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
+                  Automatic turn detection
+                </li>
+              </ul>
+              <button
+                onClick={() => setMode("realtime")}
+                className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
+              >
+                Start Realtime Call
+              </button>
+            </div>
           </div>
-        )}
-      </div>
+        </div>
 
-      <p className="text-xs text-gray-500 mt-2">
-        Graba tu mensaje, se transcribirá, se enviará al agente, y la respuesta se leerá en voz alta.
-      </p>
+        {/* Legacy Mode Card (optional, for compatibility) */}
+        {/* 
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+          <div className="flex items-start space-x-4">
+            <div className="flex-shrink-0">
+              <div className="w-12 h-12 bg-gray-100 dark:bg-gray-700 rounded-lg flex items-center justify-center">
+                <svg
+                  className="w-6 h-6 text-gray-600 dark:text-gray-400"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"
+                  />
+                </svg>
+              </div>
+            </div>
+            <div className="flex-1">
+              <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
+                Legacy Mode
+              </h3>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                Traditional push-to-talk mode. Record, transcribe, get response, play audio.
+              </p>
+              <button
+                onClick={() => setMode("legacy")}
+                className="w-full px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 font-medium"
+              >
+                Use Legacy Mode
+              </button>
+            </div>
+          </div>
+        </div>
+        */}
+
+        <div className="text-center">
+          <button
+            onClick={onClose}
+            className="text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

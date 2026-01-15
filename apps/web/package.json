@@ -7,6 +7,8 @@
     "build": "dotenv -e .env.local --expand -- prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
+    "ws:dev": "dotenv -e .env.local --expand -- tsx --watch server/ws-server.ts",
+    "ws:start": "dotenv -e .env.local --expand -- node -r ts-node/register server/ws-server.ts",
     "db:generate": "dotenv -e .env.local --expand -- prisma generate",
     "db:push": "dotenv -e .env.local --expand -- prisma db push",
     "db:migrate": "dotenv -e .env.local --expand -- prisma migrate dev",
@@ -25,6 +27,7 @@
     "pdf-parse": "^1.1.1",
     "react": "19.2.3",
     "react-dom": "19.2.3",
+    "ws": "^8.18.0",
     "zod": "^4.3.5"
   },
   "devDependencies": {
@@ -33,11 +36,14 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/ws": "^8.5.13",
     "dotenv-cli": "^7.4.2",
     "eslint": "^9",
     "eslint-config-next": "16.1.1",
     "prisma": "^5.20.0",
     "tailwindcss": "^4",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.19.2",
     "typescript": "^5"
   },
   "prisma": {

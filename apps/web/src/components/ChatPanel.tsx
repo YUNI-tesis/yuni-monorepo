@@ -5,9 +5,8 @@ import { ConversationState, ChatMessage } from "@/lib/schemas";
 import { MessageList } from "./MessageList";
 import { MessageComposer } from "./MessageComposer";
 import { CostMeter } from "./CostMeter";
-import { LiveCall } from "./LiveCall";
+import { CallMode } from "./CallMode";
 import { fetchWithAuth } from "@/lib/fetch-client";
-import { useSession } from "next-auth/react";
 
 interface ChatPanelProps {
   agentId: string;
@@ -15,7 +14,6 @@ interface ChatPanelProps {
 }
 
 export function ChatPanel({ agentId, conversationId: initialConversationId }: ChatPanelProps) {
-  const { data: session } = useSession();
   const [conversation, setConversation] = useState<ConversationState | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(true);
@@ -209,10 +207,9 @@ export function ChatPanel({ agentId, conversationId: initialConversationId }: Ch
       </div>
 
       {callMode ? (
-        <LiveCall
+        <CallMode
           agentId={agentId}
           conversationId={conversation.id}
-          userId={session?.user?.id || ""}
           onTranscript={(text) => {
             // Optionally show transcript
             console.log("Transcript:", text);
@@ -220,9 +217,6 @@ export function ChatPanel({ agentId, conversationId: initialConversationId }: Ch
           onResponse={(text) => {
             // Reload conversation to show new messages
             loadConversation(conversation.id);
-          }}
-          onError={(error) => {
-            console.error("Call error:", error);
           }}
         />
       ) : (
