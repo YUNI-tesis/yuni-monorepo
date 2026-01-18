@@ -4,12 +4,14 @@ import { useState, useEffect } from "react";
 import { Agent, CreateAgentSchema } from "@/lib/schemas";
 import { useRouter } from "next/navigation";
 import { fetchWithAuth } from "@/lib/fetch-client";
+import { Button } from "@/components/common";
 
 interface AgentEditorProps {
   agentId?: string;
+  onEditSuccess?: () => void;
 }
 
-export function AgentEditor({ agentId }: AgentEditorProps) {
+export function AgentEditor({ agentId, onEditSuccess }: AgentEditorProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(!!agentId);
   const [saving, setSaving] = useState(false);
@@ -68,6 +70,7 @@ export function AgentEditor({ agentId }: AgentEditorProps) {
       }
 
       const agent: Agent = await res.json();
+      onEditSuccess?.();
       router.push(`/agents/${agent.id}`);
     } catch (err: any) {
       setError(err.message);
@@ -181,33 +184,29 @@ export function AgentEditor({ agentId }: AgentEditorProps) {
         </div>
 
         <div className="flex gap-4 pt-6 border-t border-white/10">
-          <button
+          <Button
             type="submit"
-            disabled={saving}
-            className="flex items-center gap-2 px-8 py-3 btn-gradient rounded-xl text-white font-semibold shadow-lg hover:shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:transform-none"
+            isLoading={saving}
+            size="lg"
+            variant="primary"
+            className="shadow-lg hover:shadow-xl"
           >
-            {saving ? (
-              <>
-                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                Guardando...
-              </>
-            ) : (
-              <>
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
-                {agentId ? "Actualizar Agente" : "Crear Agente"}
-              </>
+            {!saving && (
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
             )}
-          </button>
+            {saving ? "Guardando..." : agentId ? "Actualizar Agente" : "Crear Agente"}
+          </Button>
           {agentId && (
-            <button
+            <Button
               type="button"
               onClick={() => router.back()}
-              className="px-6 py-3 glass rounded-xl text-gray-300 hover:text-white hover:bg-white/10 transition-all border border-white/10 hover:border-white/20 focus-gradient"
+              variant="outline"
+              size="lg"
             >
               Cancelar
-            </button>
+            </Button>
           )}
         </div>
       </form>

@@ -6,9 +6,9 @@ import Link from "next/link";
 import { Agent } from "@/lib/schemas";
 import { AgentEditor } from "@/components/AgentEditor";
 import { ChatPanel } from "@/components/ChatPanel";
-import { Header } from "@/components/Header";
 import { DocumentsSection } from "@/components/DocumentsSection";
 import { fetchWithAuth } from "@/lib/fetch-client";
+import { Button } from "@/components/common";
 
 export default function AgentDetailPage() {
   const params = useParams();
@@ -73,7 +73,6 @@ export default function AgentDetailPage() {
   if (editing) {
     return (
       <div className="min-h-screen bg-white dark:bg-black flex flex-col">
-        <Header />
         <div className="max-w-4xl mx-auto p-8 flex-1">
           <div className="mb-6">
             <button
@@ -92,7 +91,6 @@ export default function AgentDetailPage() {
 
   return (
     <div className="min-h-screen bg-white dark:bg-black flex flex-col">
-      <Header />
       <div className="flex flex-1 overflow-hidden">
         {/* Sidebar */}
         <div className="w-80 border-r p-6 overflow-y-auto">
@@ -121,18 +119,20 @@ export default function AgentDetailPage() {
         </div>
 
         <div className="flex gap-2">
-          <button
+          <Button
             onClick={() => setEditing(true)}
-            className="flex-1 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+            variant="primary"
+            className="flex-1"
           >
             Editar
-          </button>
-          <button
+          </Button>
+          <Button
             onClick={handleDelete}
-            className="flex-1 px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+            variant="destructive"
+            className="flex-1"
           >
             Eliminar
-          </button>
+          </Button>
         </div>
         </div>
 

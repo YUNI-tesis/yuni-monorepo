@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import { ConditionalTopBar } from "@/components/ConditionalTopBar";
 import { Providers } from "@/components/Providers";
 
 const geistSans = Geist({
@@ -14,8 +15,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Yuni AI - Multi-Agent Chat Platform",
-  description: "Create, manage, and chat with multiple AI agents",
+  title: "YUNI - AI Avatar Platform",
+  description: "Create, manage, and interact with AI avatars",
 };
 
 export default function RootLayout({
@@ -24,11 +25,13 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" className="dark">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-[#0E0418] text-white`}
       >
-        <Providers>{children}</Providers>
+        <div className="min-h-screen flex flex-col">
+          <Providers>{children}</Providers>
+        </div>
       </body>
     </html>
   );

@@ -8,7 +8,7 @@ interface MessageListProps {
 
 export function MessageList({ messages }: MessageListProps) {
   return (
-    <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6">
+    <div className="px-6 py-4 space-y-6">
       {messages.length === 0 ? (
         <div className="flex items-center justify-center h-full">
           <div className="text-center py-12">
