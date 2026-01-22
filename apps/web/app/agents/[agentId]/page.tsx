@@ -7,6 +7,7 @@ import { Agent } from "@/lib/schemas";
 import { AgentEditor } from "@/components/AgentEditor";
 import { ChatPanel } from "@/components/ChatPanel";
 import { Button } from "@/components/common";
+import { AvatarRenderer } from "@/components/AvatarRenderer";
 
 export default function AgentDetailPage() {
   const params = useParams();
@@ -51,7 +52,7 @@ export default function AgentDetailPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#0E0418] p-8">
+      <div className="h-[calc(100vh-5rem)] bg-[#0E0418] p-8 overflow-y-auto">
         <div className="text-white">Cargando...</div>
       </div>
     );
@@ -59,7 +60,7 @@ export default function AgentDetailPage() {
 
   if (error || !agent) {
     return (
-      <div className="min-h-screen bg-[#0E0418] p-8">
+      <div className="h-[calc(100vh-5rem)] bg-[#0E0418] p-8 overflow-y-auto">
         <div className="text-red-400">Error: {error || "Agente no encontrado"}</div>
         <Link href="/agents" className="text-[#D365FF] hover:underline mt-4 inline-block">
           ← Volver a Agentes
@@ -70,7 +71,7 @@ export default function AgentDetailPage() {
 
   if (editing) {
     return (
-      <div className="min-h-screen bg-[#0E0418]">
+      <div className="h-[calc(100vh-5rem)] bg-[#0E0418] overflow-y-auto">
         <div className="max-w-4xl mx-auto p-8">
           <div className="mb-6">
           <button
@@ -88,15 +89,27 @@ export default function AgentDetailPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#0E0418] flex">
+    <div className="h-[calc(100vh-5rem)] bg-[#0E0418] flex overflow-hidden">
       {/* Sidebar */}
-      <div className="w-80 border-r border-white/10 p-6 overflow-y-auto bg-[#0E0418]">
+      <div className="w-80 border-r border-white/10 p-6 overflow-y-auto bg-[#0E0418] flex-shrink-0">
         <div className="mb-6">
           <Link href="/agents" className="text-[#D365FF] hover:underline mb-4 inline-block text-sm">
             ← Volver a Agentes
           </Link>
           <h1 className="text-2xl font-bold mb-2 text-white">{agent.name}</h1>
           <p className="text-sm text-white/70 mb-4">{agent.description}</p>
+        </div>
+
+        {/* Avatar Preview */}
+        <div className="mb-6">
+          <div className="relative w-full aspect-square rounded-xl overflow-hidden bg-gradient-to-br from-purple-500/10 via-blue-500/10 to-cyan-500/10">
+            <AvatarRenderer
+              modelPath="/assets/pennywise.glb"
+              style={{ width: "100%", height: "100%", minHeight: "250px" }}
+              className="rounded-xl"
+              cameraControls={false}
+            />
+          </div>
         </div>
 
         <div className="space-y-4 mb-6">
@@ -141,7 +154,7 @@ export default function AgentDetailPage() {
         </div>
 
         {/* Chat Panel */}
-        <div className="flex-1 flex flex-col h-[calc(100vh-5rem)]">
+        <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
           <ChatPanel agentId={agentId} />
         </div>
       </div>

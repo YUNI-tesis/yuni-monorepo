@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Button } from "./common";
 
 interface MessageComposerProps {
   onSend: (message: string) => void;
@@ -36,10 +37,10 @@ export function MessageComposer({ onSend, disabled }: MessageComposerProps) {
             rows={2}
             className="flex-1 px-4 py-3 glass rounded-xl border border-white/10 text-white placeholder-gray-500 resize-none focus:outline-none focus:border-purple-500/50 focus:ring-2 focus:ring-purple-500/20 transition-all bg-white/5 focus-gradient disabled:opacity-50 disabled:cursor-not-allowed"
           />
-          <button
-            type="submit"
+          <Button
+            variant="outline"
+            size="md"
             disabled={disabled || !message.trim()}
-            className="px-6 py-3 btn-gradient rounded-xl text-white font-semibold shadow-lg hover:shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:transform-none flex items-center justify-center min-w-[100px]"
           >
             {disabled ? (
               <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
@@ -51,7 +52,7 @@ export function MessageComposer({ onSend, disabled }: MessageComposerProps) {
                 Enviar
               </>
             )}
-          </button>
+          </Button>
         </div>
         <p className="text-xs text-gray-500 pt-2 px-1">
           Presiona Enter para enviar, Shift+Enter para nueva línea

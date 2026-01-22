@@ -166,8 +166,9 @@ export function ChatPanel({ agentId, conversationId: initialConversationId }: Ch
   }
 
   return (
-    <div className="flex flex-col h-full bg-gradient-to-b from-transparent to-black/20">
-      <div className="px-6 py-4 border-b border-white/10 glass-strong flex justify-between items-center">
+    <div className="flex flex-col h-full bg-gradient-to-b from-transparent to-black/20 overflow-hidden">
+      {/* Fixed Header */}
+      <div className="flex-shrink-0 px-6 py-4 border-b border-white/10 glass-strong flex justify-between items-center">
         <div className="flex items-center gap-6">
           <h2 className="text-2xl font-bold gradient-text tracking-tight">Chat</h2>
           <div className="flex gap-2 glass rounded-xl p-1 border border-white/10">
@@ -220,6 +221,7 @@ export function ChatPanel({ agentId, conversationId: initialConversationId }: Ch
         />
       ) : (
         <>
+          {/* Scrollable Messages Area */}
           <div className="flex-1 overflow-y-auto min-h-0">
             <div className="flex flex-col">
               <MessageList messages={messages} />
@@ -242,7 +244,10 @@ export function ChatPanel({ agentId, conversationId: initialConversationId }: Ch
             </div>
           </div>
 
-          <MessageComposer onSend={handleSendMessage} disabled={sending} />
+          {/* Fixed Input at Bottom */}
+          <div className="flex-shrink-0">
+            <MessageComposer onSend={handleSendMessage} disabled={sending} />
+          </div>
         </>
       )}
     </div>

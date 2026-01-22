@@ -5,6 +5,7 @@ import { Agent, CreateAgentSchema } from "@/lib/schemas";
 import { useRouter } from "next/navigation";
 import { fetchWithAuth } from "@/lib/fetch-client";
 import { Button } from "@/components/common";
+import { AvatarRenderer } from "@/components/AvatarRenderer";
 
 interface AgentEditorProps {
   agentId?: string;
@@ -101,13 +102,11 @@ export function AgentEditor({ agentId, onEditSuccess }: AgentEditorProps) {
 
         {/* Avatar Preview Section */}
         <div className="flex flex-col items-center pb-6 border-b border-white/10">
-          <div className="relative mb-4">
-            <div className="w-32 h-32 rounded-full bg-gradient-to-br from-purple-500 via-blue-500 to-cyan-500 flex items-center justify-center text-5xl shadow-2xl">
-              🤖
-            </div>
-            <div className="absolute inset-0 bg-gradient-to-br from-purple-500/30 to-cyan-500/30 rounded-full blur-xl -z-10"></div>
+          <div className="relative mb-4 w-full max-w-md">
+            <AvatarRenderer
+              modelPath="/assets/pennywise.glb"
+            />
           </div>
-          <p className="text-sm text-gray-400">Vista previa del avatar</p>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
