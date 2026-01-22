@@ -4,12 +4,15 @@ import { useState, useEffect } from "react";
 import { Agent, CreateAgentSchema } from "@/lib/schemas";
 import { useRouter } from "next/navigation";
 import { fetchWithAuth } from "@/lib/fetch-client";
+import { Button } from "@/components/common";
+import { AvatarRenderer } from "@/components/AvatarRenderer";
 
 interface AgentEditorProps {
   agentId?: string;
+  onEditSuccess?: () => void;
 }
 
-export function AgentEditor({ agentId }: AgentEditorProps) {
+export function AgentEditor({ agentId, onEditSuccess }: AgentEditorProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(!!agentId);
   const [saving, setSaving] = useState(false);
@@ -68,6 +71,7 @@ export function AgentEditor({ agentId }: AgentEditorProps) {
       }
 
       const agent: Agent = await res.json();
+      onEditSuccess?.();
       router.push(`/agents/${agent.id}`);
     } catch (err: any) {
       setError(err.message);
@@ -98,13 +102,11 @@ export function AgentEditor({ agentId }: AgentEditorProps) {
 
         {/* Avatar Preview Section */}
         <div className="flex flex-col items-center pb-6 border-b border-white/10">
-          <div className="relative mb-4">
-            <div className="w-32 h-32 rounded-full bg-gradient-to-br from-purple-500 via-blue-500 to-cyan-500 flex items-center justify-center text-5xl shadow-2xl">
-              🤖
-            </div>
-            <div className="absolute inset-0 bg-gradient-to-br from-purple-500/30 to-cyan-500/30 rounded-full blur-xl -z-10"></div>
+          <div className="relative mb-4 w-full max-w-md">
+            <AvatarRenderer
+              modelPath="/assets/pennywise.glb"
+            />
           </div>
-          <p className="text-sm text-gray-400">Vista previa del avatar</p>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -181,33 +183,29 @@ export function AgentEditor({ agentId }: AgentEditorProps) {
         </div>
 
         <div className="flex gap-4 pt-6 border-t border-white/10">
-          <button
+          <Button
             type="submit"
-            disabled={saving}
-            className="flex items-center gap-2 px-8 py-3 btn-gradient rounded-xl text-white font-semibold shadow-lg hover:shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:transform-none"
+            isLoading={saving}
+            size="lg"
+            variant="primary"
+            className="shadow-lg hover:shadow-xl"
           >
-            {saving ? (
-              <>
-                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                Guardando...
-              </>
-            ) : (
-              <>
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
-                {agentId ? "Actualizar Agente" : "Crear Agente"}
-              </>
+            {!saving && (
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
             )}
-          </button>
+            {saving ? "Guardando..." : agentId ? "Actualizar Agente" : "Crear Agente"}
+          </Button>
           {agentId && (
-            <button
+            <Button
               type="button"
               onClick={() => router.back()}
-              className="px-6 py-3 glass rounded-xl text-gray-300 hover:text-white hover:bg-white/10 transition-all border border-white/10 hover:border-white/20 focus-gradient"
+              variant="outline"
+              size="lg"
             >
               Cancelar
-            </button>
+            </Button>
           )}
         </div>
       </form>

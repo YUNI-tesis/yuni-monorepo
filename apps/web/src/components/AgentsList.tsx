@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Agent } from "@/lib/schemas";
 import { fetchWithAuth } from "@/lib/fetch-client";
+import { AvatarRenderer } from "@/components/AvatarRenderer";
 
 export function AgentsList() {
   const [agents, setAgents] = useState<Agent[]>([]);
@@ -102,13 +103,14 @@ export function AgentsList() {
               {/* Gradient border on hover */}
               <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-purple-500/0 via-purple-500/10 to-cyan-500/0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"></div>
               
-              {/* Avatar placeholder with gradient */}
-              <div className="relative mb-4 aspect-square rounded-xl overflow-hidden bg-gradient-to-br from-purple-500/30 via-blue-500/30 to-cyan-500/30 flex items-center justify-center">
-                <div className="absolute inset-0 bg-gradient-to-br from-purple-500/20 to-transparent"></div>
-                <div className="relative z-10 w-20 h-20 rounded-full bg-gradient-to-br from-purple-400 via-blue-400 to-cyan-400 flex items-center justify-center text-3xl shadow-lg">
-                  🤖
-                </div>
-                <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent"></div>
+              {/* Avatar 3D Model */}
+              <div className="relative mb-4 aspect-square rounded-xl overflow-hidden bg-gradient-to-br from-purple-500/10 via-blue-500/10 to-cyan-500/10">
+                <AvatarRenderer
+                  modelPath="/assets/pennywise.glb"
+                  style={{ width: "100%", height: "100%", minHeight: "200px" }}
+                  className="rounded-xl"
+                  cameraControls={false}
+                />
               </div>
               
               <h3 className="text-xl font-bold text-white mb-2 group-hover:text-transparent group-hover:bg-clip-text group-hover:bg-gradient-to-r group-hover:from-purple-400 group-hover:to-cyan-400 transition-all duration-300">

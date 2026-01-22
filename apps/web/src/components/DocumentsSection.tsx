@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { fetchWithAuth } from "@/lib/fetch-client";
+import { Button } from "@/components/common";
 
 interface Document {
   id: string;
@@ -257,12 +258,14 @@ export function DocumentsSection({ agentId }: DocumentsSectionProps) {
                     Procesar
                   </button>
                 )}
-                <button
+                <Button
                   onClick={() => handleDelete(doc.id)}
-                  className="px-2 py-1 text-xs bg-red-600 text-white hover:bg-red-700 rounded"
+                  variant="destructive"
+                  size="sm"
+                  className="text-xs"
                 >
                   Eliminar
-                </button>
+                </Button>
               </div>
             </div>
           ))}

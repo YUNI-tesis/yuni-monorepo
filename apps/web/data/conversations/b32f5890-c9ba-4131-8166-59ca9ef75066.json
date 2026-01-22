@@ -1,0 +1,13 @@
+{
+  "id": "b32f5890-c9ba-4131-8166-59ca9ef75066",
+  "agentId": "45bdc58d-a1fc-414b-a78d-8934e5f95771",
+  "mode": "text",
+  "messages": [],
+  "cost": {
+    "tokensIn": 0,
+    "tokensOut": 0,
+    "usd": 0
+  },
+  "createdAt": "2026-01-10T14:37:54.550Z",
+  "updatedAt": "2026-01-10T14:37:54.550Z"
+}

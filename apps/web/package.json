@@ -9,6 +9,7 @@
     "lint": "eslint",
     "ws:dev": "dotenv -e .env.local --expand -- tsx --watch server/ws-server.ts",
     "ws:start": "dotenv -e .env.local --expand -- node -r ts-node/register server/ws-server.ts",
+    "sync-env": "./sync-env.sh",
     "db:generate": "dotenv -e .env.local --expand -- prisma generate",
     "db:push": "dotenv -e .env.local --expand -- prisma db push",
     "db:migrate": "dotenv -e .env.local --expand -- prisma migrate dev",
@@ -17,6 +18,7 @@
   "dependencies": {
     "@azure/storage-blob": "^12.28.0",
     "@google/generative-ai": "^0.21.0",
+    "@google/model-viewer": "^3.4.0",
     "@prisma/client": "^5.22.0",
     "ai": "^6.0.14",
     "bcryptjs": "^2.4.3",
@@ -37,6 +39,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@types/ws": "^8.5.13",
+    "dotenv": "^17.2.3",
     "dotenv-cli": "^7.4.2",
     "eslint": "^9",
     "eslint-config-next": "16.1.1",
