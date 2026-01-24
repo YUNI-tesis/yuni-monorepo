@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Agent } from "@/lib/schemas";
 import { fetchWithAuth } from "@/lib/fetch-client";
-import { AvatarRenderer } from "@/components/AvatarRenderer";
+import DynamicAvatarRenderer from "@/components/DynamicAvatarRenderer";
 
 export function AgentsList() {
   const [agents, setAgents] = useState<Agent[]>([]);
@@ -105,11 +105,10 @@ export function AgentsList() {
               
               {/* Avatar 3D Model */}
               <div className="relative mb-4 aspect-square rounded-xl overflow-hidden bg-gradient-to-br from-purple-500/10 via-blue-500/10 to-cyan-500/10">
-                <AvatarRenderer
+                <DynamicAvatarRenderer
                   modelPath="/assets/pennywise.glb"
-                  style={{ width: "100%", height: "100%", minHeight: "200px" }}
+                  style={{ width: "100%", height: "100%", minHeight: "150px" }}
                   className="rounded-xl"
-                  cameraControls={false}
                 />
               </div>
               

@@ -5,7 +5,7 @@ import { Agent, CreateAgentSchema } from "@/lib/schemas";
 import { useRouter } from "next/navigation";
 import { fetchWithAuth } from "@/lib/fetch-client";
 import { Button } from "@/components/common";
-import { AvatarRenderer } from "@/components/AvatarRenderer";
+import DynamicAvatarRenderer from "@/components/DynamicAvatarRenderer";
 
 interface AgentEditorProps {
   agentId?: string;
@@ -102,9 +102,12 @@ export function AgentEditor({ agentId, onEditSuccess }: AgentEditorProps) {
 
         {/* Avatar Preview Section */}
         <div className="flex flex-col items-center pb-6 border-b border-white/10">
-          <div className="relative mb-4 w-full max-w-md">
-            <AvatarRenderer
+          <div className="relative mb-4 w-full max-w-md aspect-square">
+            <DynamicAvatarRenderer
               modelPath="/assets/pennywise.glb"
+              style={{ width: "100%", height: "100%" }}
+              className="rounded-xl overflow-hidden"
+              cameraControls={true}
             />
           </div>
         </div>

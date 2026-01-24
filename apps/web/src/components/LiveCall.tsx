@@ -7,7 +7,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Button } from "@/components/common";
-import { AvatarRenderer } from "@/components/AvatarRenderer";
+import DynamicAvatarRenderer from "@/components/DynamicAvatarRenderer";
 
 // ============================================================================
 // Types
@@ -431,9 +431,23 @@ export function LiveCall({ agentId, conversationId, userId, onClose }: LiveCallP
         </Button>
       </div>
 
-      {/* Main Content - Messages */}
-      <div className="flex-1 overflow-y-auto min-h-0 p-6">
-        <div className="space-y-4">
+      {/* Main Content - Avatar + Messages */}
+      <div className="flex-1 flex min-h-0">
+        {/* Avatar - Left */}
+        <div className="flex-shrink-0 w-48 md:w-64 lg:w-72 p-4 border-r border-white/10 flex items-center justify-center">
+          <div className="w-full aspect-square rounded-xl overflow-hidden">
+            <DynamicAvatarRenderer
+              modelPath="/assets/pennywise.glb"
+              style={{ width: "100%", height: "100%" }}
+              className="rounded-xl overflow-hidden"
+              cameraControls={false}
+            />
+          </div>
+        </div>
+
+        {/* Messages - Right */}
+        <div className="flex-1 overflow-y-auto min-w-0 p-6">
+          <div className="space-y-4">
           {messages.map((message, index) => (
             <div
               key={index}
@@ -472,6 +486,7 @@ export function LiveCall({ agentId, conversationId, userId, onClose }: LiveCallP
               </div>
             </div>
           )}
+          </div>
         </div>
       </div>
 

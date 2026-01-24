@@ -7,7 +7,7 @@ import { Agent } from "@/lib/schemas";
 import { AgentEditor } from "@/components/AgentEditor";
 import { ChatPanel } from "@/components/ChatPanel";
 import { Button } from "@/components/common";
-import { AvatarRenderer } from "@/components/AvatarRenderer";
+import DynamicAvatarRenderer from "@/components/DynamicAvatarRenderer";
 
 export default function AgentDetailPage() {
   const params = useParams();
@@ -103,11 +103,10 @@ export default function AgentDetailPage() {
         {/* Avatar Preview */}
         <div className="mb-6">
           <div className="relative w-full aspect-square rounded-xl overflow-hidden bg-gradient-to-br from-purple-500/10 via-blue-500/10 to-cyan-500/10">
-            <AvatarRenderer
+            <DynamicAvatarRenderer
               modelPath="/assets/pennywise.glb"
               style={{ width: "100%", height: "100%", minHeight: "250px" }}
               className="rounded-xl"
-              cameraControls={false}
             />
           </div>
         </div>
