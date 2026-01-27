@@ -93,9 +93,6 @@ export default function AgentDetailPage() {
       {/* Sidebar */}
       <div className="w-80 border-r border-white/10 p-6 overflow-y-auto bg-[#0E0418] flex-shrink-0">
         <div className="mb-6">
-          <Link href="/agents" className="text-[#D365FF] hover:underline mb-4 inline-block text-sm">
-            ← Volver a Agentes
-          </Link>
           <h1 className="text-2xl font-bold mb-2 text-white">{agent.name}</h1>
           <p className="text-sm text-white/70 mb-4">{agent.description}</p>
         </div>
@@ -112,6 +109,35 @@ export default function AgentDetailPage() {
         </div>
 
         <div className="space-y-4 mb-6">
+          <div>
+            <h3 className="text-sm font-semibold mb-2 text-white">Voz</h3>
+            <div className="bg-white/5 p-3 rounded-lg border border-white/10">
+              {agent.voice ? (
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-medium text-purple-300">
+                      {agent.voice.provider === "openai" ? "OpenAI Realtime" : "ElevenLabs"}
+                    </span>
+                    {agent.voice.provider === "openai" && (
+                      <span className="px-2 py-0.5 text-xs bg-green-500/20 text-green-300 rounded">
+                        Baja latencia
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-white/60">
+                    Voz: <span className="text-white/80">{agent.voice.voiceId}</span>
+                  </p>
+                  {agent.voice.speakingRate && agent.voice.speakingRate !== 1.0 && (
+                    <p className="text-xs text-white/60">
+                      Velocidad: <span className="text-white/80">{agent.voice.speakingRate}x</span>
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <p className="text-xs text-white/40">Voz predeterminada (OpenAI Alloy)</p>
+              )}
+            </div>
+          </div>
           <div>
             <h3 className="text-sm font-semibold mb-2 text-white">System Prompt</h3>
             <p className="text-xs text-white/60 whitespace-pre-wrap bg-white/5 p-3 rounded-lg border border-white/10">

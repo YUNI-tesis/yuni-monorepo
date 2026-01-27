@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { fetchWithAuth } from "@/lib/fetch-client";
 import { Button } from "@/components/common";
 import DynamicAvatarRenderer from "@/components/DynamicAvatarRenderer";
+import { VoiceSelector } from "@/components/VoiceSelector";
 
 interface AgentEditorProps {
   agentId?: string;
@@ -23,6 +24,11 @@ export function AgentEditor({ agentId, onEditSuccess }: AgentEditorProps) {
     systemPrompt: "",
     context: "",
     toolsAllowed: ["none"] as ("none" | "basic")[],
+    voice: {
+      provider: "openai" as "openai" | "elevenlabs",
+      voiceId: "alloy",
+      speakingRate: 1.0,
+    },
   });
 
   useEffect(() => {
@@ -43,6 +49,15 @@ export function AgentEditor({ agentId, onEditSuccess }: AgentEditorProps) {
         systemPrompt: agent.systemPrompt,
         context: agent.context,
         toolsAllowed: agent.toolsAllowed,
+        voice: agent.voice ? {
+          provider: agent.voice.provider || "openai",
+          voiceId: agent.voice.voiceId || "alloy",
+          speakingRate: agent.voice.speakingRate || 1.0,
+        } : {
+          provider: "openai",
+          voiceId: "alloy",
+          speakingRate: 1.0,
+        },
       });
     } catch (err: any) {
       setError(err.message);
@@ -183,6 +198,23 @@ export function AgentEditor({ agentId, onEditSuccess }: AgentEditorProps) {
               />
             </div>
           </div>
+        </div>
+
+        {/* Voice Configuration Section */}
+        <div className="pt-6 border-t border-white/10">
+          <div className="mb-4 flex items-center gap-2">
+            <svg className="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+            </svg>
+            <h3 className="text-lg font-semibold text-white">Configuración de Voz</h3>
+          </div>
+          <p className="text-sm text-white/70 mb-6">
+            Selecciona la voz que usará tu agente para las llamadas en tiempo real.
+          </p>
+          <VoiceSelector
+            value={formData.voice}
+            onChange={(voice) => setFormData({ ...formData, voice })}
+          />
         </div>
 
         <div className="flex gap-4 pt-6 border-t border-white/10">

@@ -19,7 +19,8 @@ function Avatar({
   modelPath: string;
   audioAnalyser: AnalyserNode | null;
 }) {
-  const { scene } = useGLTF(modelPath);
+  const gltf = useGLTF(modelPath);
+  const scene = gltf.scene;
   const jaw = useRef<THREE.Object3D | null>(null);
 
   useEffect(() => {
@@ -57,7 +58,7 @@ function Avatar({
     jaw.current.rotation.x = -open;
   });
 
-  return <primitive object={scene} />;
+  return <primitive object={scene as any} />;
 }
 
 export default function AvatarRenderer({

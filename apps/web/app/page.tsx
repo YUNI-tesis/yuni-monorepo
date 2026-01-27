@@ -1,16 +1,30 @@
-import Link from "next/link";
-import { Button } from "@/components/common";
-import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth-helpers";
+import { Hero, About, Features, Technology, CTA, LandingNavbar } from "@/components/landing";
 
 export default async function Home() {
   const user = await getCurrentUser();
-  
-  // If user is authenticated, redirect to agents page
-  if (user) {
-    redirect("/agents");
-  }
 
-  // If not authenticated, redirect to login
-  redirect("/auth/login");
+  // Always show landing page (public)
+  return (
+    <main className="relative">
+      <LandingNavbar />
+      <Hero />
+      <About />
+      <Features />
+      <Technology />
+      <CTA />
+      
+      {/* Footer */}
+      <footer className="border-t border-white/10 py-12 px-6">
+        <div className="max-w-7xl mx-auto text-center">
+          <p className="text-white/60 mb-4">
+            © 2025 Yuni AI. Desarrollado por Santiago Peres y Lucas Lovaglio.
+          </p>
+          <p className="text-white/40 text-sm">
+            Plataforma multi-agente para crear, gestionar y conversar con agentes de IA personalizados.
+          </p>
+        </div>
+      </footer>
+    </main>
+  );
 }

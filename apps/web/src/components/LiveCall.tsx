@@ -8,6 +8,8 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Button } from "@/components/common";
 import DynamicAvatarRenderer from "@/components/DynamicAvatarRenderer";
+import { CostMeter } from "@/components/CostMeter";
+import { fetchWithAuth } from "@/lib/fetch-client";
 
 // ============================================================================
 // Types
@@ -47,6 +49,10 @@ export function LiveCall({ agentId, conversationId, userId, onClose }: LiveCallP
   const [error, setError] = useState<string | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
+  const [callDuration, setCallDuration] = useState(0); // in seconds
+  const [loadingHistory, setLoadingHistory] = useState(true);
+  const callStartTimeRef = useRef<number | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Refs
   const wsRef = useRef<WebSocket | null>(null);
@@ -57,12 +63,13 @@ export function LiveCall({ agentId, conversationId, userId, onClose }: LiveCallP
   const audioQueueRef = useRef<AudioBuffer[]>([]);
   const isPlayingRef = useRef(false);
   const sessionIdRef = useRef<string>(`session_${Date.now()}`);
+  const connectionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // ============================================================================
   // WebSocket Connection
   // ============================================================================
 
-  const connectWebSocket = useCallback(() => {
+  const connectWebSocket = () => {
     const ws = new WebSocket("ws://localhost:3001");
 
     ws.onopen = () => {
@@ -90,20 +97,18 @@ export function LiveCall({ agentId, conversationId, userId, onClose }: LiveCallP
       }
     };
 
-    ws.onerror = (error) => {
-      console.error("[LiveCall] WebSocket error:", error);
-      setError("Connection error");
-      setState("error");
+    ws.onerror = () => {
+      // WebSocket error events are noisy and don't provide useful info
+      // Actual errors will be handled via server messages or timeout
     };
 
     ws.onclose = () => {
       console.log("[LiveCall] WebSocket closed");
       setState("idle");
-      stopRecording();
     };
 
     wsRef.current = ws;
-  }, [agentId, conversationId, userId]);
+  };
 
   // ============================================================================
   // Server Message Handler
@@ -113,6 +118,14 @@ export function LiveCall({ agentId, conversationId, userId, onClose }: LiveCallP
     switch (message.type) {
       case "ready":
         console.log("[LiveCall] Session ready");
+        setError(null); // Clear any previous errors
+        
+        // Clear connection timeout
+        if (connectionTimeoutRef.current) {
+          clearTimeout(connectionTimeoutRef.current);
+          connectionTimeoutRef.current = null;
+        }
+        
         setState("ready");
         startRecording();
         break;
@@ -163,10 +176,16 @@ export function LiveCall({ agentId, conversationId, userId, onClose }: LiveCallP
         break;
 
       case "audio_chunk":
-        await playAudioChunk(message.audio);
+        await playAudioChunk(message.audio, message.format);
         break;
 
       case "error":
+        // Ignore expected cancellation errors (they're handled gracefully)
+        if (message.error?.includes("Cancellation failed")) {
+          console.log("[LiveCall] Note: Cancellation attempted when no active response");
+          break;
+        }
+        
         console.error("[LiveCall] Error:", message.error);
         setError(message.error);
         setState("error");
@@ -174,6 +193,20 @@ export function LiveCall({ agentId, conversationId, userId, onClose }: LiveCallP
 
       case "metrics":
         console.log("[LiveCall] Metrics:", message);
+        break;
+
+      case "audio_interrupted":
+        // Server detected barge-in or confirmed manual interrupt
+        console.log(`[LiveCall] Audio interrupted: ${message.reason}`);
+        clearAudioQueue();
+        
+        // Remove last assistant message if it was incomplete
+        setMessages((prev) => {
+          if (prev.length > 0 && prev[prev.length - 1].role === "assistant") {
+            return prev.slice(0, -1);
+          }
+          return prev;
+        });
         break;
 
       default:
@@ -288,7 +321,34 @@ export function LiveCall({ agentId, conversationId, userId, onClose }: LiveCallP
   // Audio Playback
   // ============================================================================
 
-  const playAudioChunk = useCallback(async (base64Audio: string) => {
+  // Helper: Convert base64 to ArrayBuffer
+  const base64ToArrayBuffer = (base64: string): ArrayBuffer => {
+    const binaryString = atob(base64);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    return bytes.buffer;
+  };
+
+  // Helper: Convert PCM16 to AudioBuffer
+  const pcm16ToAudioBuffer = useCallback((arrayBuffer: ArrayBuffer, sampleRate: number): AudioBuffer => {
+    const audioContext = playbackContextRef.current!;
+    
+    // PCM16 is 16-bit signed integer, 2 bytes per sample
+    const pcm16 = new Int16Array(arrayBuffer);
+    const audioBuffer = audioContext.createBuffer(1, pcm16.length, sampleRate);
+    const channelData = audioBuffer.getChannelData(0);
+    
+    // Convert Int16 to Float32 [-1, 1]
+    for (let i = 0; i < pcm16.length; i++) {
+      channelData[i] = pcm16[i] / (pcm16[i] < 0 ? 0x8000 : 0x7fff);
+    }
+    
+    return audioBuffer;
+  }, []);
+
+  const playAudioChunk = useCallback(async (base64Audio: string, format?: string) => {
     try {
       // Initialize playback AudioContext if needed (separate from recording context)
       if (!playbackContextRef.current) {
@@ -296,16 +356,17 @@ export function LiveCall({ agentId, conversationId, userId, onClose }: LiveCallP
       }
 
       const audioContext = playbackContextRef.current;
+      const arrayBuffer = base64ToArrayBuffer(base64Audio);
+      
+      let audioBuffer: AudioBuffer;
 
-      // Decode base64 to ArrayBuffer
-      const binaryString = atob(base64Audio);
-      const bytes = new Uint8Array(binaryString.length);
-      for (let i = 0; i < binaryString.length; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
+      if (format === "pcm16") {
+        // Direct PCM16 from Realtime API
+        audioBuffer = pcm16ToAudioBuffer(arrayBuffer, 24000); // Realtime uses 24kHz
+      } else {
+        // MP3 from separate TTS
+        audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
       }
-
-      // Decode audio data (MP3 from TTS)
-      const audioBuffer = await audioContext.decodeAudioData(bytes.buffer);
       
       // Add to queue
       audioQueueRef.current.push(audioBuffer);
@@ -317,7 +378,7 @@ export function LiveCall({ agentId, conversationId, userId, onClose }: LiveCallP
     } catch (error) {
       console.error("[LiveCall] Error playing audio chunk:", error);
     }
-  }, []);
+  }, [pcm16ToAudioBuffer]);
 
   const playNextInQueue = useCallback(() => {
     if (audioQueueRef.current.length === 0) {
@@ -340,6 +401,23 @@ export function LiveCall({ agentId, conversationId, userId, onClose }: LiveCallP
     source.start();
   }, []);
 
+  // Helper to clear audio queue and stop current playback
+  const clearAudioQueue = useCallback(() => {
+    console.log("[LiveCall] Clearing audio queue");
+    
+    // Clear queue
+    audioQueueRef.current = [];
+    isPlayingRef.current = false;
+
+    // Stop and recreate playback context to interrupt current audio
+    if (playbackContextRef.current) {
+      playbackContextRef.current.close().catch(() => {
+        // Context already closed, ignore error
+      });
+      playbackContextRef.current = new AudioContext();
+    }
+  }, []);
+
   // ============================================================================
   // User Actions
   // ============================================================================
@@ -347,26 +425,16 @@ export function LiveCall({ agentId, conversationId, userId, onClose }: LiveCallP
   const handleInterrupt = useCallback(() => {
     console.log("[LiveCall] Interrupt requested");
     
-    // Clear audio queue
-    audioQueueRef.current = [];
-    isPlayingRef.current = false;
+    // Clear audio queue locally first (immediate feedback)
+    clearAudioQueue();
 
-    // Stop current audio playback
-    if (playbackContextRef.current) {
-      playbackContextRef.current.close().then(() => {
-        playbackContextRef.current = null;
-      }).catch(() => {
-        // Context already closed
-      });
-    }
-
-    // Send interrupt to server
+    // Send interrupt to server (will also cancel Realtime response)
     wsRef.current?.send(
       JSON.stringify({
         type: "interrupt",
       })
     );
-  }, []);
+  }, [clearAudioQueue]);
 
   const handleToggleMute = useCallback(() => {
     setIsMuted((prev) => !prev);
@@ -375,8 +443,52 @@ export function LiveCall({ agentId, conversationId, userId, onClose }: LiveCallP
   const handleEndCall = useCallback(() => {
     stopRecording();
     wsRef.current?.close();
+    callStartTimeRef.current = null;
+    setCallDuration(0);
     onClose?.();
   }, [stopRecording, onClose]);
+
+  // Helper to format call duration
+  const formatDuration = (seconds: number): string => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, "0")}`;
+  };
+
+  // ============================================================================
+  // Load Conversation History
+  // ============================================================================
+
+  useEffect(() => {
+    async function loadHistory() {
+      try {
+        setLoadingHistory(true);
+        const res = await fetchWithAuth(`/api/conversations/${conversationId}`);
+        if (res.ok) {
+          const data = await res.json();
+          // Load existing messages from the conversation
+          const historyMessages: Message[] = data.messages.map((msg: any) => ({
+            role: msg.role,
+            content: msg.content,
+            timestamp: new Date(msg.createdAt),
+          }));
+          setMessages(historyMessages);
+          console.log(`[LiveCall] Loaded ${historyMessages.length} messages from history`);
+        }
+      } catch (err) {
+        console.error("[LiveCall] Failed to load conversation history:", err);
+      } finally {
+        setLoadingHistory(false);
+      }
+    }
+
+    loadHistory();
+  }, [conversationId]);
+
+  // Auto-scroll to bottom when new messages arrive
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, currentTranscript]);
 
   // ============================================================================
   // Effects
@@ -384,13 +496,62 @@ export function LiveCall({ agentId, conversationId, userId, onClose }: LiveCallP
 
   useEffect(() => {
     connectWebSocket();
+    
+    // Set timeout to detect if server never responds
+    connectionTimeoutRef.current = setTimeout(() => {
+      if (wsRef.current?.readyState === WebSocket.OPEN && state === "connecting") {
+        console.error("[LiveCall] Server connection timeout - no 'ready' message received");
+        setError("Server not responding. Please try again.");
+        setState("error");
+        wsRef.current.close();
+      }
+    }, 10000); // 10 second timeout
 
     return () => {
-      stopRecording();
-      wsRef.current?.close();
-      playbackContextRef.current?.close();
+      // Clear timeout
+      if (connectionTimeoutRef.current) {
+        clearTimeout(connectionTimeoutRef.current);
+      }
+      
+      // Cleanup on unmount
+      if (processorNodeRef.current) {
+        processorNodeRef.current.disconnect();
+      }
+      if (audioContextRef.current) {
+        audioContextRef.current.close();
+      }
+      if (mediaStreamRef.current) {
+        mediaStreamRef.current.getTracks().forEach((track) => track.stop());
+      }
+      if (wsRef.current) {
+        wsRef.current.close();
+      }
+      if (playbackContextRef.current) {
+        playbackContextRef.current.close();
+      }
     };
-  }, [connectWebSocket, stopRecording]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Only run once on mount
+
+  // Call duration timer
+  useEffect(() => {
+    // Start timer when call becomes active
+    if (state === "ready" && !callStartTimeRef.current) {
+      callStartTimeRef.current = Date.now();
+    }
+
+    // Update duration every second for active calls
+    if (state !== "idle" && state !== "connecting" && state !== "error") {
+      const interval = setInterval(() => {
+        if (callStartTimeRef.current) {
+          const elapsed = Math.floor((Date.now() - callStartTimeRef.current) / 1000);
+          setCallDuration(elapsed);
+        }
+      }, 1000);
+
+      return () => clearInterval(interval);
+    }
+  }, [state]);
 
   // ============================================================================
   // Render
@@ -400,32 +561,45 @@ export function LiveCall({ agentId, conversationId, userId, onClose }: LiveCallP
     <div className="flex flex-col h-full bg-gradient-to-b from-transparent to-black/20 overflow-hidden">
       {/* Header */}
       <div className="flex-shrink-0 flex items-center justify-between px-6 py-4 border-b border-white/10 glass-strong">
-        <div className="flex items-center space-x-3">
-          <div
-            className={`w-3 h-3 rounded-full ${
-              state === "ready" || state === "listening"
-                ? "bg-green-500 animate-pulse"
-                : state === "error"
-                ? "bg-red-500"
-                : "bg-yellow-500"
-            }`}
-          />
-          <span className="font-medium text-white">
-            {state === "connecting" && "Conectando..."}
-            {state === "ready" && "Listo"}
-            {state === "listening" && "Escuchando..."}
-            {state === "transcribing" && "Procesando..."}
-            {state === "generating" && "Pensando..."}
-            {state === "speaking" && "Hablando..."}
-            {state === "error" && "Error"}
-            {state === "idle" && "Inactivo"}
-          </span>
+        <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-3">
+            <div
+              className={`w-3 h-3 rounded-full ${
+                state === "error"
+                  ? "bg-red-500"
+                  : state === "connecting"
+                  ? "bg-yellow-500 animate-pulse"
+                  : state === "idle"
+                  ? "bg-gray-500"
+                  : "bg-green-500 animate-pulse"
+              }`}
+            />
+            <div className="flex flex-col">
+              <span className="font-medium text-white">
+                {state === "connecting" && "Conectando..."}
+                {state === "error" && "Error de conexión"}
+                {state === "idle" && "Inactivo"}
+                {state !== "connecting" && state !== "error" && state !== "idle" && "Llamada en curso"}
+              </span>
+              {state !== "connecting" && state !== "error" && state !== "idle" && (
+                <span className="text-xs text-gray-400">
+                  {formatDuration(callDuration)}
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* Cost Meter */}
+          <div className="border-l border-white/10 pl-4">
+            <CostMeter conversationId={conversationId} />
+          </div>
         </div>
 
         <Button
           onClick={handleEndCall}
           variant="destructive"
           size="sm"
+          disabled={state === "idle" || state === "connecting"}
         >
           Finalizar Llamada
         </Button>
@@ -447,46 +621,66 @@ export function LiveCall({ agentId, conversationId, userId, onClose }: LiveCallP
 
         {/* Messages - Right */}
         <div className="flex-1 overflow-y-auto min-w-0 p-6">
-          <div className="space-y-4">
-          {messages.map((message, index) => (
-            <div
-              key={index}
-              className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
-            >
-              <div
-                className={`max-w-[70%] rounded-lg p-3 ${
-                  message.role === "user"
-                    ? "bg-gradient-to-br from-[#BE6ADC]/20 to-[#64C3D7]/20 border border-[#784EAB]/30 text-white glass-strong"
-                    : "glass-strong border border-white/10 text-gray-100"
-                }`}
-              >
-                <p className="text-sm">{message.content}</p>
-                <span className="text-xs opacity-70 mt-1 block">
-                  {message.timestamp.toLocaleTimeString()}
-                </span>
+          {loadingHistory ? (
+            <div className="flex items-center justify-center h-full">
+              <div className="flex items-center gap-3">
+                <div className="w-6 h-6 border-2 border-purple-500/30 border-t-purple-500 rounded-full animate-spin"></div>
+                <span className="text-gray-400">Cargando historial...</span>
               </div>
             </div>
-          ))}
+          ) : (
+            <div className="space-y-4">
+              {messages.length === 0 && !currentTranscript && (
+                <div className="flex items-center justify-center h-full">
+                  <p className="text-gray-500 text-sm">
+                    Inicia la conversación hablando
+                  </p>
+                </div>
+              )}
 
-          {/* Current transcript */}
-          {currentTranscript && (
-            <div className="flex justify-end">
-              <div className="max-w-[70%] rounded-lg p-3 bg-gradient-to-br from-[#BE6ADC]/20 to-[#64C3D7]/20 border border-[#784EAB]/30 text-white opacity-75 glass-strong">
-                <p className="text-sm">{currentTranscript}</p>
-                <span className="text-xs opacity-70 mt-1 block">Escuchando...</span>
-              </div>
+              {messages.map((message, index) => (
+                <div
+                  key={index}
+                  className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
+                >
+                  <div
+                    className={`max-w-[70%] rounded-lg p-3 ${
+                      message.role === "user"
+                        ? "bg-gradient-to-br from-[#BE6ADC]/20 to-[#64C3D7]/20 border border-[#784EAB]/30 text-white glass-strong"
+                        : "glass-strong border border-white/10 text-gray-100"
+                    }`}
+                  >
+                    <p className="text-sm">{message.content}</p>
+                    <span className="text-xs opacity-70 mt-1 block">
+                      {message.timestamp.toLocaleTimeString()}
+                    </span>
+                  </div>
+                </div>
+              ))}
+
+              {/* Current transcript */}
+              {currentTranscript && (
+                <div className="flex justify-end">
+                  <div className="max-w-[70%] rounded-lg p-3 bg-gradient-to-br from-[#BE6ADC]/20 to-[#64C3D7]/20 border border-[#784EAB]/30 text-white opacity-75 glass-strong">
+                    <p className="text-sm">{currentTranscript}</p>
+                    <span className="text-xs opacity-70 mt-1 block">Escuchando...</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Error message */}
+              {error && (
+                <div className="flex justify-center">
+                  <div className="rounded-lg p-3 glass border border-red-500/30 bg-red-500/10 text-red-400">
+                    <p className="text-sm">{error}</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Auto-scroll anchor */}
+              <div ref={messagesEndRef} />
             </div>
           )}
-
-          {/* Error message */}
-          {error && (
-            <div className="flex justify-center">
-              <div className="rounded-lg p-3 glass border border-red-500/30 bg-red-500/10 text-red-400">
-                <p className="text-sm">{error}</p>
-              </div>
-            </div>
-          )}
-          </div>
         </div>
       </div>
 
@@ -530,9 +724,9 @@ export function LiveCall({ agentId, conversationId, userId, onClose }: LiveCallP
 
         <button
           onClick={handleInterrupt}
-          disabled={state !== "speaking" && state !== "generating"}
+          disabled={state === "idle" || state === "connecting" || state === "error"}
           className="p-4 rounded-full bg-yellow-500/80 hover:bg-yellow-500 border border-yellow-400/30 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-          title="Interrumpir"
+          title="Interrumpir respuesta"
         >
           <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path

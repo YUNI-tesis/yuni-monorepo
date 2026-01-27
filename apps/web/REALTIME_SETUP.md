@@ -71,29 +71,37 @@ pnpm dev
 
 ### 1. Configurar agente con voz
 
-Al crear o editar un agente, configura la voz:
+Al crear o editar un agente, usa el selector de voces integrado en el formulario. El sistema detectará automáticamente el modo óptimo:
+
+**Modos disponibles:**
+
+#### 🚀 OpenAI Realtime Audio (Recomendado - Baja Latencia ~500ms):
+- **Voces**: `alloy`, `echo`, `shimmer`, `ash`, `ballad`, `coral`, `sage`, `verse`, `marin`, `cedar`
+- **Latencia**: Ultra-baja (~500ms end-to-end)
+- **Uso**: Conversaciones en tiempo real
+- **Configuración automática**: El sistema usa audio directo de Realtime API
+
+#### 🎨 ElevenLabs Custom (Voces Personalizadas - Latencia ~2-3s):
+- **Voces**: Predeterminadas + voces custom del usuario
+- **Latencia**: Mayor (~2-3s)
+- **Uso**: Voces personalizadas, voice cloning
+- **Configuración automática**: El sistema usa TTS separado
+
+**Ejemplo de configuración (JSON):**
 
 ```json
 {
   "name": "Mi Agente",
   "systemPrompt": "...",
   "voice": {
-    "provider": "openai",
-    "voiceId": "alloy",
+    "provider": "openai",      // o "elevenlabs"
+    "voiceId": "nova",          // OpenAI: nova/alloy/echo/etc | ElevenLabs: voice_id
     "speakingRate": 1.0
   }
 }
 ```
 
-**Opciones de provider:**
-
-#### OpenAI (`"provider": "openai"`):
-- `voiceId`: `"alloy"`, `"echo"`, `"fable"`, `"onyx"`, `"nova"`, `"shimmer"`
-- `speakingRate`: 0.25 - 4.0 (default: 1.0)
-
-#### ElevenLabs (`"provider": "elevenlabs"`):
-- `voiceId`: ID de voz de ElevenLabs (ej: `"21m00Tcm4TlvDq8ikWAM"` para Rachel)
-- `speakingRate`: 0.5 - 2.0 (default: 1.0)
+> **Nota**: El sistema detecta automáticamente si usar audio directo (baja latencia) o TTS separado (flexible) basándose en la configuración de voz. Ver `HYBRID_VOICE_MODE.md` para más detalles.
 
 ### 2. Iniciar llamada
 

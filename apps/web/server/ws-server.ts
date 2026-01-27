@@ -14,6 +14,9 @@ import type {
   ServerMessage,
   CallState,
   RealtimeServerEvent,
+  RealtimeSessionConfig,
+  VoiceMode,
+  OpenAIRealtimeVoice,
 } from "./types";
 
 const prisma = new PrismaClient();
@@ -25,6 +28,12 @@ const PORT = parseInt(process.env.WS_PORT || "3001");
 
 // Active connections
 const connections = new Map<string, CallConnection>();
+
+// OpenAI Realtime voices (for direct audio)
+const OPENAI_REALTIME_VOICES: OpenAIRealtimeVoice[] = [
+  "alloy", "ash", "ballad", "coral", "echo", 
+  "sage", "shimmer", "verse", "marin", "cedar"
+];
 
 // ============================================================================
 // WebSocket Server Setup
@@ -91,6 +100,47 @@ async function handleClientMessage(ws: WebSocket, message: ClientMessage): Promi
 }
 
 // ============================================================================
+// Voice Mode Detection
+// ============================================================================
+
+function determineVoiceMode(agentVoice: any): {
+  mode: VoiceMode;
+  config: Partial<RealtimeSessionConfig>;
+} {
+  const voiceConfig = agentVoice as {
+    provider?: "openai" | "elevenlabs";
+    voiceId?: string;
+    speakingRate?: number;
+  };
+
+  // Check if using OpenAI Realtime voice (low latency)
+  if (
+    voiceConfig?.provider === "openai" &&
+    voiceConfig?.voiceId &&
+    OPENAI_REALTIME_VOICES.includes(voiceConfig.voiceId as OpenAIRealtimeVoice)
+  ) {
+    console.log(`[Voice Mode] Using Realtime Audio (low latency) with voice: ${voiceConfig.voiceId}`);
+    return {
+      mode: "realtime_audio",
+      config: {
+        modalities: ["text", "audio"], // Enable audio output
+        voice: voiceConfig.voiceId as OpenAIRealtimeVoice,
+        output_audio_format: "pcm16",
+      },
+    };
+  }
+
+  // Fallback to separate TTS (for ElevenLabs or custom voices)
+  console.log(`[Voice Mode] Using Separate TTS (flexible) with provider: ${voiceConfig?.provider || "default"}`);
+  return {
+    mode: "separate_tts",
+    config: {
+      modalities: ["text"], // Only text output
+    },
+  };
+}
+
+// ============================================================================
 // Init Handler
 // ============================================================================
 
@@ -111,24 +161,8 @@ async function handleInit(ws: WebSocket, message: ClientMessage & { type: "init"
       return;
     }
 
-    // Create call connection
-    const connection: CallConnection = {
-      ws,
-      sessionId,
-      userId,
-      agentId,
-      conversationId,
-      isRealtimeConnected: false,
-      state: "connecting",
-      currentTranscript: "",
-      currentResponse: "",
-      isProcessing: false,
-      isSpeaking: false,
-      metrics: {},
-      cleanupFunctions: [],
-    };
-
-    connections.set(sessionId, connection);
+    // Determine voice mode
+    const { mode, config: voiceModeConfig } = determineVoiceMode(agent.voice);
 
     // Build system prompt
     const systemPrompt = buildSystemPrompt({
@@ -143,11 +177,34 @@ async function handleInit(ws: WebSocket, message: ClientMessage & { type: "init"
       updatedAt: agent.updatedAt.toISOString(),
     });
 
-    // Create Realtime client
+    // Create call connection
+    const connection: CallConnection = {
+      ws,
+      sessionId,
+      userId,
+      agentId,
+      conversationId,
+      isRealtimeConnected: false,
+      voiceMode: mode,
+      state: "connecting",
+      currentTranscript: "",
+      currentResponse: "",
+      isProcessing: false,
+      isSpeaking: false,
+      hasActiveResponse: false,
+      metrics: {
+        firstAudioChunk: false,
+      },
+      cleanupFunctions: [],
+    };
+
+    connections.set(sessionId, connection);
+
+    // Create Realtime client with appropriate config
     const realtimeClient = new RealtimeClient({
       apiKey: OPENAI_API_KEY,
       sessionConfig: {
-        modalities: ["text"], // Only text output, no audio from Realtime
+        ...voiceModeConfig,
         instructions: systemPrompt,
         input_audio_format: "pcm16",
         input_audio_transcription: {
@@ -276,15 +333,22 @@ async function handleInterrupt(
   console.log(`[WebSocket] Interrupt requested: ${connection.sessionId}`);
 
   try {
-    // Cancel Realtime response if in progress
-    if (connection.isRealtimeConnected) {
+    // Cancel Realtime response if there's an active response
+    if (connection.isRealtimeConnected && connection.hasActiveResponse) {
       const realtimeClient = connection.realtimeWs as any as RealtimeClient;
       realtimeClient.cancelResponse();
+      connection.hasActiveResponse = false;
     }
 
-    // Stop TTS playback (client should handle this)
+    // Stop TTS playback
     connection.isSpeaking = false;
     connection.currentResponse = "";
+
+    // Notify client that audio was interrupted (confirmation)
+    sendToClient(connection.ws, {
+      type: "audio_interrupted",
+      reason: "manual",
+    });
 
     // Update state back to listening
     updateConnectionState(connection, "listening");
@@ -310,12 +374,24 @@ async function handleRealtimeEvent(
       console.log("[Realtime] Speech started");
       updateConnectionState(connection, "listening");
       
-      // If currently speaking, this is a barge-in
-      if (connection.isSpeaking) {
+      // If currently speaking or has active response, this is a barge-in
+      if (connection.isSpeaking || connection.hasActiveResponse) {
         console.log("[Realtime] Barge-in detected");
         const realtimeClient = connection.realtimeWs as any as RealtimeClient;
-        realtimeClient.cancelResponse();
+        
+        // Only cancel if there's an active response
+        if (connection.hasActiveResponse) {
+          realtimeClient.cancelResponse();
+          connection.hasActiveResponse = false;
+        }
+        
         connection.isSpeaking = false;
+        
+        // Notify client to clear audio queue
+        sendToClient(connection.ws, {
+          type: "audio_interrupted",
+          reason: "barge_in",
+        });
       }
       break;
 
@@ -357,6 +433,7 @@ async function handleRealtimeEvent(
 
     case "response.text.delta":
       // Streaming text response
+      connection.hasActiveResponse = true; // Mark response as active
       sendToClient(connection.ws, {
         type: "response_chunk",
         text: event.delta,
@@ -375,12 +452,72 @@ async function handleRealtimeEvent(
         console.log(`[Metrics] LLM latency: ${llmLatency}ms`);
       }
 
-      // Start TTS
-      await synthesizeAndStreamAudio(connection, event.text);
+      // Only start TTS if in separate_tts mode
+      if (connection.voiceMode === "separate_tts") {
+        await synthesizeAndStreamAudio(connection, event.text);
+      }
+      break;
+
+    case "response.audio.delta":
+      // Audio chunk from Realtime (only in realtime_audio mode)
+      if (connection.voiceMode === "realtime_audio") {
+        connection.hasActiveResponse = true; // Mark response as active
+        
+        if (!connection.metrics.firstAudioChunk) {
+          const totalLatency = Date.now() - (connection.metrics.asrStartTime || Date.now());
+          console.log(`[Metrics] Total latency (realtime audio): ${totalLatency}ms`);
+          connection.metrics.firstAudioChunk = true;
+          connection.metrics.ttsStartTime = Date.now();
+        }
+
+        // Send audio chunk directly to client
+        sendToClient(connection.ws, {
+          type: "audio_chunk",
+          audio: event.delta, // Already base64-encoded PCM16
+          format: "pcm16",
+        });
+        
+        connection.isSpeaking = true;
+        if (connection.state !== "speaking") {
+          updateConnectionState(connection, "speaking");
+        }
+      }
+      break;
+
+    case "response.audio.done":
+      // Audio complete from Realtime (only in realtime_audio mode)
+      if (connection.voiceMode === "realtime_audio") {
+        console.log("[Realtime] Audio response complete");
+        
+        // Save assistant message
+        if (connection.currentResponse) {
+          await saveMessage(connection, "assistant", connection.currentResponse);
+        }
+        
+        // Update state back to ready
+        if (connection.isSpeaking) {
+          connection.isSpeaking = false;
+          updateConnectionState(connection, "ready");
+        }
+      }
+      break;
+
+    case "response.audio_transcript.done":
+      // Transcript of audio generated by Realtime (useful for displaying text)
+      if (connection.voiceMode === "realtime_audio") {
+        connection.currentResponse = event.transcript;
+        // Send text chunk to show in UI while audio plays
+        sendToClient(connection.ws, {
+          type: "response_chunk",
+          text: event.transcript,
+        });
+      }
       break;
 
     case "response.done":
-      // Response complete
+      // Response complete - mark as no longer active
+      connection.hasActiveResponse = false;
+      
       if (event.response.status === "completed") {
         console.log("[Realtime] Response completed");
       } else if (event.response.status === "cancelled") {
@@ -410,6 +547,13 @@ async function handleRealtimeEvent(
       break;
 
     case "error":
+      // Ignore expected cancellation errors (handled gracefully)
+      if (event.error.message?.includes("no active response") || 
+          event.error.message?.includes("Cancellation failed")) {
+        console.log("[Realtime] Note: Cancellation attempted with no active response (expected)");
+        break;
+      }
+      
       console.error("[Realtime] Error event:", event.error);
       sendToClient(connection.ws, {
         type: "error",
