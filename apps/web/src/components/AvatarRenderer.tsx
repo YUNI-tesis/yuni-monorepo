@@ -237,7 +237,7 @@ function Avatar({
     }
   });
 
-  return <primitive object={scene} />;
+  return <primitive object={scene as any} />;
 }
 
 export default function AvatarRenderer({

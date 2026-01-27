@@ -142,9 +142,9 @@ export class AzureBlobStorage implements ObjectStorage {
       throw new Error(`Failed to download blob: ${key}`);
     }
 
-    const chunks: Uint8Array[] = [];
+    const chunks: Buffer[] = [];
     for await (const chunk of downloadResponse.readableStreamBody) {
-      chunks.push(chunk);
+      chunks.push(Buffer.from(chunk));
     }
 
     return Buffer.concat(chunks);

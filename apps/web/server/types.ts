@@ -2,16 +2,31 @@
  * Type definitions for OpenAI Realtime API and WebSocket communication
  */
 
+import type WebSocket from "ws";
+
 // ============================================================================
 // OpenAI Realtime API Types
 // ============================================================================
 
 export type RealtimeModel = "gpt-4o-realtime-preview-2024-12-17";
 
+// OpenAI Realtime voices (updated list)
+export type OpenAIRealtimeVoice = 
+  | "alloy" 
+  | "ash" 
+  | "ballad" 
+  | "coral" 
+  | "echo" 
+  | "sage" 
+  | "shimmer" 
+  | "verse"
+  | "marin"
+  | "cedar";
+
 export interface RealtimeSessionConfig {
   modalities?: ("text" | "audio")[];
   instructions?: string;
-  voice?: "alloy" | "echo" | "fable" | "onyx" | "nova" | "shimmer" | "none";
+  voice?: OpenAIRealtimeVoice;
   input_audio_format?: "pcm16" | "g711_ulaw" | "g711_alaw";
   output_audio_format?: "pcm16" | "g711_ulaw" | "g711_alaw";
   input_audio_transcription?: {
@@ -174,6 +189,23 @@ export interface ResponseAudioTranscriptDoneEvent extends RealtimeEventBase {
   transcript: string;
 }
 
+export interface ResponseAudioDeltaEvent extends RealtimeEventBase {
+  type: "response.audio.delta";
+  response_id: string;
+  item_id: string;
+  output_index: number;
+  content_index: number;
+  delta: string; // base64-encoded audio chunk
+}
+
+export interface ResponseAudioDoneEvent extends RealtimeEventBase {
+  type: "response.audio.done";
+  response_id: string;
+  item_id: string;
+  output_index: number;
+  content_index: number;
+}
+
 export interface ResponseFunctionCallArgumentsDeltaEvent extends RealtimeEventBase {
   type: "response.function_call_arguments.delta";
   response_id: string;
@@ -227,6 +259,8 @@ export type RealtimeServerEvent =
   | ResponseDoneEvent
   | ResponseTextDeltaEvent
   | ResponseTextDoneEvent
+  | ResponseAudioDeltaEvent
+  | ResponseAudioDoneEvent
   | ResponseAudioTranscriptDeltaEvent
   | ResponseAudioTranscriptDoneEvent
   | ResponseFunctionCallArgumentsDeltaEvent
@@ -405,6 +439,11 @@ export interface MetricsMessage {
   };
 }
 
+export interface AudioInterruptedMessage {
+  type: "audio_interrupted";
+  reason: "barge_in" | "manual";
+}
+
 export type ServerMessage =
   | ReadyMessage
   | StateMessage
@@ -412,11 +451,14 @@ export type ServerMessage =
   | ResponseChunkMessage
   | AudioChunkResponseMessage
   | ErrorMessage
-  | MetricsMessage;
+  | MetricsMessage
+  | AudioInterruptedMessage;
 
 // ============================================================================
 // Connection State Types
 // ============================================================================
+
+export type VoiceMode = "realtime_audio" | "separate_tts";
 
 export interface CallConnection {
   // WebSocket connection to client
@@ -433,6 +475,9 @@ export interface CallConnection {
   realtimeSessionId?: string;
   isRealtimeConnected: boolean;
   
+  // Voice mode (determines audio flow)
+  voiceMode: VoiceMode;
+  
   // Current state
   state: CallState;
   currentTranscript: string;
@@ -441,6 +486,7 @@ export interface CallConnection {
   // Audio processing
   isProcessing: boolean;
   isSpeaking: boolean;
+  hasActiveResponse: boolean; // Track if Realtime has an active response
   
   // Metrics
   metrics: {
@@ -448,6 +494,7 @@ export interface CallConnection {
     asrStartTime?: number;
     llmStartTime?: number;
     ttsStartTime?: number;
+    firstAudioChunk?: boolean;
   };
   
   // Cleanup
