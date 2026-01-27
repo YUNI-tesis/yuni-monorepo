@@ -77,6 +77,22 @@ The theme uses the following colors:
 - **Gray**: `#868D99`
 - **Accent**: `#D365FF`
 
+## Adding a jaw rig to an unrigged GLB
+
+If your GLB has no skeleton, the avatar falls back to scaling the whole scene for lip sync. To get proper jaw-based lip sync, add a 5-bone face rig (Root, Head, Jaw, Eye_L, Eye_R) with **@gltf-transform/core**:
+
+```bash
+cd apps/web
+pnpm rig:jaw [input.glb] [output.glb]
+# Example (default: public/assets/pennywise.glb → public/assets/pennywise-rigged.glb):
+pnpm rig:jaw
+# Or: pnpm rig:jaw public/assets/pennywise.glb public/assets/pennywise-rigged.glb
+```
+
+The script selects “jaw” vertices as the lowest ~25% in Y, **Jaw** (lowest ~25% Y), **Head** (mid/upper face), **Eye_L**/**Eye_R** (top ~35%, split by X). AvatarRenderer matches Head, Jaw, and Eye_* for lip sync, nod/sway, and blink.
+
+**Requirement:** Generate the rigged file before using it. The app defaults to `/assets/pennywise-rigged.glb`; run `pnpm rig:jaw` once to create it.
+
 ## Customizing the Avatar
 
 The current `Avatar3D` component uses a basic placeholder avatar built with Three.js primitives. To use a custom 3D model:

@@ -13,7 +13,8 @@
     "db:generate": "dotenv -e .env.local --expand -- prisma generate",
     "db:push": "dotenv -e .env.local --expand -- prisma db push",
     "db:migrate": "dotenv -e .env.local --expand -- prisma migrate dev",
-    "db:studio": "dotenv -e .env.local --expand -- prisma studio"
+    "db:studio": "dotenv -e .env.local --expand -- prisma studio",
+    "rig:jaw": "tsx scripts/add-jaw-rig.ts"
   },
   "dependencies": {
     "@azure/storage-blob": "^12.28.0",
@@ -35,6 +36,7 @@
     "zod": "^4.3.5"
   },
   "devDependencies": {
+    "@gltf-transform/core": "^4.0.4",
     "@tailwindcss/postcss": "^4",
     "@types/bcryptjs": "^2.4.6",
     "@types/node": "^20",
@@ -50,7 +52,7 @@
     "tailwindcss": "^4",
     "ts-node": "^10.9.2",
     "tsx": "^4.19.2",
-    "typescript": "^5"
+    "typescript": "^5.9.3"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

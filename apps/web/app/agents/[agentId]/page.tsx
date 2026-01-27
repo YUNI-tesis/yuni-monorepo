@@ -104,7 +104,7 @@ export default function AgentDetailPage() {
         <div className="mb-6">
           <div className="relative w-full aspect-square rounded-xl overflow-hidden bg-gradient-to-br from-purple-500/10 via-blue-500/10 to-cyan-500/10">
             <DynamicAvatarRenderer
-              modelPath="/assets/pennywise.glb"
+              modelPath="/assets/pennywise-rigged.glb"
               style={{ width: "100%", height: "100%", minHeight: "250px" }}
               className="rounded-xl"
             />

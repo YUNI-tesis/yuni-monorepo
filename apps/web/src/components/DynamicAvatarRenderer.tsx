@@ -10,6 +10,8 @@ interface DynamicAvatarRendererProps {
   style?: React.CSSProperties;
   className?: string;
   cameraControls?: boolean;
+  playbackAnalyser?: AnalyserNode | null;
+  lipsyncAnimation?: boolean;
 }
 
 export default function DynamicAvatarRenderer({
@@ -17,6 +19,8 @@ export default function DynamicAvatarRenderer({
   style,
   className,
   cameraControls,
+  playbackAnalyser,
+  lipsyncAnimation,
 }: DynamicAvatarRendererProps) {
   return (
     <AvatarRenderer
@@ -24,6 +28,8 @@ export default function DynamicAvatarRenderer({
       style={style}
       className={className}
       cameraControls={cameraControls}
+      playbackAnalyser={playbackAnalyser}
+      lipsyncAnimation={lipsyncAnimation}
     />
   );
 }

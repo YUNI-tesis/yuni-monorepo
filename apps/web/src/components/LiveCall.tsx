@@ -54,9 +54,13 @@ export function LiveCall({ agentId, conversationId, userId, onClose }: LiveCallP
   const audioContextRef = useRef<AudioContext | null>(null);
   const processorNodeRef = useRef<ScriptProcessorNode | null>(null);
   const playbackContextRef = useRef<AudioContext | null>(null);
+  const playbackAnalyserRef = useRef<AnalyserNode | null>(null);
   const audioQueueRef = useRef<AudioBuffer[]>([]);
   const isPlayingRef = useRef(false);
   const sessionIdRef = useRef<string>(`session_${Date.now()}`);
+
+  // Analyser for avatar lip sync (taps TTS playback)
+  const [playbackAnalyser, setPlaybackAnalyser] = useState<AnalyserNode | null>(null);
 
   // ============================================================================
   // WebSocket Connection
@@ -290,9 +294,16 @@ export function LiveCall({ agentId, conversationId, userId, onClose }: LiveCallP
 
   const playAudioChunk = useCallback(async (base64Audio: string) => {
     try {
-      // Initialize playback AudioContext if needed (separate from recording context)
+      // Initialize playback AudioContext and analyser for lip sync if needed
       if (!playbackContextRef.current) {
-        playbackContextRef.current = new AudioContext();
+        const ctx = new AudioContext();
+        playbackContextRef.current = ctx;
+        ctx.resume().catch(() => {}); // ensure context runs (required after user gesture)
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 512;
+        analyser.connect(ctx.destination);
+        playbackAnalyserRef.current = analyser;
+        setPlaybackAnalyser(analyser);
       }
 
       const audioContext = playbackContextRef.current;
@@ -331,13 +342,19 @@ export function LiveCall({ agentId, conversationId, userId, onClose }: LiveCallP
 
     const source = audioContext.createBufferSource();
     source.buffer = audioBuffer;
-    source.connect(audioContext.destination);
+    // Route through analyser for avatar lip sync when available
+    const analyser = playbackAnalyserRef.current;
+    if (analyser) {
+      source.connect(analyser);
+    } else {
+      source.connect(audioContext.destination);
+    }
 
     source.onended = () => {
       playNextInQueue();
     };
 
-    source.start();
+    audioContext.resume().then(() => source.start()).catch(() => source.start());
   }, []);
 
   // ============================================================================
@@ -351,12 +368,16 @@ export function LiveCall({ agentId, conversationId, userId, onClose }: LiveCallP
     audioQueueRef.current = [];
     isPlayingRef.current = false;
 
-    // Stop current audio playback
+    // Stop current audio playback and clear lip-sync analyser
     if (playbackContextRef.current) {
       playbackContextRef.current.close().then(() => {
         playbackContextRef.current = null;
+        playbackAnalyserRef.current = null;
+        setPlaybackAnalyser(null);
       }).catch(() => {
-        // Context already closed
+        playbackContextRef.current = null;
+        playbackAnalyserRef.current = null;
+        setPlaybackAnalyser(null);
       });
     }
 
@@ -437,10 +458,12 @@ export function LiveCall({ agentId, conversationId, userId, onClose }: LiveCallP
         <div className="flex-shrink-0 w-48 md:w-64 lg:w-72 p-4 border-r border-white/10 flex items-center justify-center">
           <div className="w-full aspect-square rounded-xl overflow-hidden">
             <DynamicAvatarRenderer
-              modelPath="/assets/pennywise.glb"
+              modelPath="/assets/pennywise-rigged.glb"
               style={{ width: "100%", height: "100%" }}
               className="rounded-xl overflow-hidden"
               cameraControls={false}
+              playbackAnalyser={playbackAnalyser}
+              lipsyncAnimation={true}
             />
           </div>
         </div>
