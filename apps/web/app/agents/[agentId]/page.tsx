@@ -90,8 +90,8 @@ export default function AgentDetailPage() {
 
   return (
     <div className="h-[calc(100vh-5rem)] bg-[#0E0418] flex overflow-hidden">
-      {/* Sidebar */}
-      <div className="w-80 border-r border-white/10 p-6 overflow-y-auto bg-[#0E0418] flex-shrink-0">
+      {/* Sidebar - Always visible */}
+      <div className="w-80 border-r border-white/10 p-6 overflow-y-auto bg-[#0E0418] flex-shrink-0 z-10">
         <div className="mb-6">
           <h1 className="text-2xl font-bold mb-2 text-white">{agent.name}</h1>
           <p className="text-sm text-white/70 mb-4">{agent.description}</p>
@@ -101,9 +101,10 @@ export default function AgentDetailPage() {
         <div className="mb-6">
           <div className="relative w-full aspect-square rounded-xl overflow-hidden bg-gradient-to-br from-purple-500/10 via-blue-500/10 to-cyan-500/10">
             <DynamicAvatarRenderer
-              modelPath="/assets/pennywise.glb"
+              modelPath="/assets/pennywise-rigged.glb"
               style={{ width: "100%", height: "100%", minHeight: "250px" }}
               className="rounded-xl"
+              lipsyncAnimation={false}
             />
           </div>
         </div>
