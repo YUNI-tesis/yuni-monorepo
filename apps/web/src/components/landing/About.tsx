@@ -33,22 +33,22 @@ const VISION_CARDS = [
 ];
 
 export function About() {
-  // Fotos: guardar en apps/web/public/assets/founders/ (ej: santiago.jpg, lucas.jpg)
-  // Luego usar: image: "/assets/founders/santiago.jpg"
+  const s3BucketUrl = process.env.NEXT_PUBLIC_S3_BUCKET_URL;
+  
   const founders = [
     {
       name: "Santiago Peres",
       handle: "santiagoperes",
       role: "Co-Founder",
       title: "Full Stack Developer",
-      image: "/assets/founders/santiago.jpeg",
+      image: `${s3BucketUrl}/santiago.jpeg`,
     },
     {
       name: "Lucas Lovaglio",
       handle: "lucaslovaglio",
       role: "Co-Founder",
       title: "Full Stack Developer",
-      image: "/assets/founders/lucas.jpeg",
+      image: `${s3BucketUrl}/lucas.jpeg`,
     },
   ];
 
