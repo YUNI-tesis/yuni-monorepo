@@ -53,7 +53,7 @@ export function About() {
   ];
 
   return (
-    <section className="relative py-32 px-6 pb-0">
+    <section className="relative py-32 px-6">
       <div className="max-w-7xl mx-auto">
         <motion.div
           initial={{ opacity: 0, y: 50 }}
@@ -98,10 +98,10 @@ export function About() {
               className="group h-full flex"
             >
               <div 
-                className="relative overflow-hidden rounded-2xl bg-[#0E0418]/90 border border-white/[0.06] backdrop-blur-md transition-all duration-300 flex flex-col w-full shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04),0_0_0_1px_rgba(190,106,220,0.08),0_20px_40px_-12px_rgba(0,0,0,0.4)] group-hover:border-[#8A2BE2]/50 group-hover:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06),0_0_0_1px_rgba(190,106,220,0.18),0_24px_48px_-12px_rgba(0,0,0,0.5),0_0_40px_-10px_rgba(138,43,226,0.2)]"
+                className=" p-2 relative overflow-hidden rounded-2xl bg-[#0E0418]/90 border border-white/[0.06] backdrop-blur-md transition-all duration-300 flex flex-col w-full shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04),0_0_0_1px_rgba(190,106,220,0.08),0_20px_40px_-12px_rgba(0,0,0,0.4)] group-hover:border-[#8A2BE2]/50 group-hover:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06),0_0_0_1px_rgba(190,106,220,0.18),0_24px_48px_-12px_rgba(0,0,0,0.5),0_0_40px_-10px_rgba(138,43,226,0.2)]"
               >
                 {/* Imagen o avatar con gradiente */}
-                <div className="relative aspect-[3/4] rounded-t-xl overflow-hidden bg-gradient-to-br from-[#2D2A4A] via-[#1E1B31] to-[#1A1A2E]">
+                <div className="relative aspect-[3/4] rounded-xl overflow-hidden bg-gradient-to-br from-[#2D2A4A] via-[#1E1B31] to-[#1A1A2E]">
                   {founder.image ? (
                     <Image
                       src={founder.image}
@@ -126,7 +126,7 @@ export function About() {
                     <h3 className="text-lg font-semibold text-white truncate">
                       {founder.name}
                     </h3>
-                    <span className="text-xs text-white/50 flex-shrink-0">
+                    <span className="text-xs text-white/50 flex-shrink-0 pt-1">
                       @{founder.handle}
                     </span>
                   </div>

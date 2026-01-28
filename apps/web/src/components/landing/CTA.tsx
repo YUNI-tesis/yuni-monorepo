@@ -8,7 +8,7 @@ import { Button } from "../common";
 export function CTA() {
   const { data: session, status } = useSession();
   return (
-    <section className="relative py-32 px-6">
+    <section className="relative py-32 px-6 pb-32 h-[80vh] items-center justify-center flex">
       <div className="max-w-4xl mx-auto text-center">
         <motion.div
           initial={{ opacity: 0, y: 50 }}
