@@ -1,48 +1,61 @@
 "use client";
 
 import { motion } from "framer-motion";
+import {
+  Computing,
+  MessageText,
+  Microphone2,
+  People,
+  Book,
+  Lock,
+  DollarCircle,
+  Setting2,
+} from "iconsax-react";
 import { MouseTrackingCard } from "./MouseTrackingCard";
+
+const iconSize = 32;
+const iconColor = "#BE6ADC";
 
 const features = [
   {
     title: "Multi-Agente",
     description: "Crea y gestiona múltiples agentes de IA, cada uno con su propia personalidad, conocimiento y capacidades únicas.",
-    icon: "🤖",
+    Icon: Computing,
   },
   {
     title: "Chat Inteligente",
     description: "Conversa con tus agentes mediante chat en tiempo real con streaming de respuestas para una experiencia fluida.",
-    icon: "💬",
+    Icon: MessageText,
   },
   {
     title: "Voz Natural",
     description: "Interactúa con tus agentes por voz usando tecnología de síntesis de voz avanzada y reconocimiento de voz.",
-    icon: "🎤",
+    Icon: Microphone2,
   },
   {
     title: "Avatares 3D",
     description: "Visualiza tus agentes con avatares 3D inmersivos que sincronizan labios y gestos con el audio en tiempo real.",
-    icon: "👤",
+    Icon: People,
   },
   {
     title: "RAG y Documentos",
     description: "Sube documentos (PDF, TXT, DOCX) y tus agentes usarán ese conocimiento para responder con precisión.",
-    icon: "📚",
+    Icon: Book,
   },
   {
     title: "Seguridad Avanzada",
     description: "Sistema de guardrails que previene inyección de prompts, filtra información sensible y mantiene el control de alcance.",
-    icon: "🔒",
+    Icon: Lock,
   },
   {
     title: "Seguimiento de Costos",
     description: "Monitorea en tiempo real el uso de tokens y costos estimados por conversación y mensaje.",
-    icon: "💰",
+    Icon: DollarCircle,
   },
   {
     title: "Personalización Total",
     description: "Define system prompts estrictos, contexto personalizado y herramientas específicas para cada agente.",
-    icon: "⚙️",
+    Icon: Setting2,
   },
 ];
 
@@ -78,7 +91,9 @@ export function Features() {
         </motion.div>
 
         <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {features.map((feature, index) => (
+          {features.map((feature, index) => {
+            const Icon = feature.Icon;
+            return (
             <motion.div
               key={feature.title}
               initial={{ opacity: 0, y: 60, scale: 0.9 }}
@@ -91,12 +106,15 @@ export function Features() {
               }}
             >
               <MouseTrackingCard className="card p-6 hover:border-white/30 transition-all duration-300 cursor-pointer h-full">
-                <div className="text-4xl mb-4">{feature.icon}</div>
+                <div className="mb-4 flex items-center justify-center w-12 h-12 rounded-lg">
+                  <Icon size={iconSize} color={iconColor} variant="Linear" />
+                </div>
                 <h3 className="text-xl font-bold mb-3">{feature.title}</h3>
                 <p className="text-white/70 text-sm leading-relaxed">{feature.description}</p>
               </MouseTrackingCard>
             </motion.div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </section>

@@ -5,27 +5,13 @@ import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { Button } from "../common";
 import { ScrollIndicator } from "./ScrollIndicator";
-import LiquidEther from "../LiquidEther";
 import { AnimatedLogo } from "../AnimatedLogo";
 
 export function Hero() {
   const { data: session, status } = useSession();
 
   return (
-    <section className="relative h-[94vh] w-full overflow-hidden bg-[#0E0418]">
-      {/* Liquid Ether Background */}
-      <div className="absolute inset-0 z-0 pointer-events-none">
-        <LiquidEther
-          colors={['#BE6ADC', '#64C3D7', '#D365FF']}
-          mouseForce={15}
-          cursorSize={70}
-          resolution={0.5}
-          autoDemo={true}
-          autoSpeed={0.5}
-          autoIntensity={2.2}
-        />
-      </div>
-      
+    <section className="relative h-screen w-full overflow-hidden">
       {/* Grid overlay */}
       <div className="absolute inset-0 opacity-[0.03] z-[1] pointer-events-none">
         <div 
@@ -40,57 +26,6 @@ export function Hero() {
       
       {/* Content Container */}
       <div className="relative z-20 w-full h-full flex items-center justify-center">
-      {/* Animated gradient background */}
-      {/* <div className="absolute inset-0 overflow-hidden">
-        <motion.div
-          className="absolute top-1/4 -left-1/4 w-[600px] h-[600px] rounded-full opacity-30"
-          style={{
-            background: "radial-gradient(circle, rgba(190, 106, 220, 0.6) 0%, rgba(190, 106, 220, 0) 70%)",
-          }}
-          animate={{
-            scale: [1, 1.2, 1],
-            x: [0, 100, 0],
-            y: [0, 50, 0],
-          }}
-          transition={{
-            duration: 20,
-            repeat: Infinity,
-            ease: "easeInOut",
-          }}
-        />
-        <motion.div
-          className="absolute bottom-1/4 -right-1/4 w-[600px] h-[600px] rounded-full opacity-30"
-          style={{
-            background: "radial-gradient(circle, rgba(100, 195, 215, 0.6) 0%, rgba(100, 195, 215, 0) 70%)",
-          }}
-          animate={{
-            scale: [1, 1.3, 1],
-            x: [0, -100, 0],
-            y: [0, -50, 0],
-          }}
-          transition={{
-            duration: 25,
-            repeat: Infinity,
-            ease: "easeInOut",
-          }}
-        />
-        <motion.div
-          className="absolute top-1/2 left-1/2 w-[500px] h-[500px] rounded-full opacity-20"
-          style={{
-            background: "radial-gradient(circle, rgba(211, 101, 255, 0.5) 0%, rgba(211, 101, 255, 0) 70%)",
-            transform: "translate(-50%, -50%)",
-          }}
-          animate={{
-            scale: [1, 1.15, 1],
-            rotate: [0, 180, 360],
-          }}
-          transition={{
-            duration: 30,
-            repeat: Infinity,
-            ease: "linear",
-          }}
-        />
-      </div> */}
 
       {/* Content */}
       <div className="w-full max-w-7xl mx-auto px-6 py-8 md:py-16" >
