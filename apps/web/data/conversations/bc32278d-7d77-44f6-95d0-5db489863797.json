@@ -1,0 +1,38 @@
+{
+  "id": "bc32278d-7d77-44f6-95d0-5db489863797",
+  "agentId": "45bdc58d-a1fc-414b-a78d-8934e5f95771",
+  "mode": "text",
+  "messages": [
+    {
+      "id": "9655b81c-d2b5-450d-8e99-af0548335a34",
+      "role": "user",
+      "content": "hola",
+      "createdAt": "2026-01-07T23:00:44.120Z"
+    },
+    {
+      "id": "d94a1935-60d2-4df8-b5e0-51bab2accce9",
+      "role": "assistant",
+      "content": "¡Hola! ¿En qué puedo ayudarte hoy con respecto al diseño, validación o mejora de tu producto digital?",
+      "createdAt": "2026-01-07T23:00:44.120Z"
+    },
+    {
+      "id": "4c16a9cf-630a-483e-9548-2fe45fd7f33e",
+      "role": "user",
+      "content": "Hola, ¿cómo estás?",
+      "createdAt": "2026-01-07T23:00:57.312Z"
+    },
+    {
+      "id": "85ac89ff-44c2-4a0f-8344-fddedcfdfdf1",
+      "role": "assistant",
+      "content": "Estoy aquí para ayudarte con cualquier pregunta o desafío relacionado con productos digitales. ¿Tienes algún tema específico en mente sobre el que te gustaría hablar?",
+      "createdAt": "2026-01-07T23:00:57.312Z"
+    }
+  ],
+  "cost": {
+    "tokensIn": 32,
+    "tokensOut": 68,
+    "usd": 0.0000456
+  },
+  "createdAt": "2026-01-07T23:00:39.723Z",
+  "updatedAt": "2026-01-07T23:00:57.315Z"
+}

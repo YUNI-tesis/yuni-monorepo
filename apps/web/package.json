@@ -14,7 +14,7 @@
     "db:push": "dotenv -e .env.local --expand -- prisma db push",
     "db:migrate": "dotenv -e .env.local --expand -- prisma migrate dev",
     "db:studio": "dotenv -e .env.local --expand -- prisma studio",
-    "rig:animations": "tsx scripts/add-animations.ts"
+    "rig:jaw": "tsx scripts/add-jaw-rig.ts"
   },
   "dependencies": {
     "@azure/storage-blob": "^12.28.0",

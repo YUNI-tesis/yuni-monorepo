@@ -90,8 +90,8 @@ export default function AgentDetailPage() {
 
   return (
     <div className="h-[calc(100vh-5rem)] bg-[#0E0418] flex overflow-hidden">
-      {/* Sidebar - Always visible */}
-      <div className="w-80 border-r border-white/10 p-6 overflow-y-auto bg-[#0E0418] flex-shrink-0 z-10">
+      {/* Sidebar */}
+      <div className="w-80 border-r border-white/10 p-6 overflow-y-auto bg-[#0E0418] flex-shrink-0">
         <div className="mb-6">
           <h1 className="text-2xl font-bold mb-2 text-white">{agent.name}</h1>
           <p className="text-sm text-white/70 mb-4">{agent.description}</p>
@@ -104,7 +104,6 @@ export default function AgentDetailPage() {
               modelPath="/assets/pennywise-rigged.glb"
               style={{ width: "100%", height: "100%", minHeight: "250px" }}
               className="rounded-xl"
-              lipsyncAnimation={false}
             />
           </div>
         </div>

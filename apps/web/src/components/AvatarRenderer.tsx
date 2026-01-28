@@ -4,20 +4,6 @@ import { Canvas, useFrame } from "@react-three/fiber";
 import { OrbitControls, useGLTF } from "@react-three/drei";
 import { useRef, useEffect, useState, Suspense } from "react";
 import * as THREE from "three";
-import {
-  VisemeType,
-  detectVisemeFromFrequency,
-  FREQUENCY_TO_VISEME,
-} from "@/constants/visemesMapping";
-import {
-  MOUTH_MORPH_TARGETS,
-  findMorphTargetIndex,
-  getVisemeMorphIndices,
-} from "@/constants/morphTargets";
-import {
-  FacialExpression,
-  getExpressionConfig,
-} from "@/constants/facialExpressions";
 
 interface AvatarRendererProps {
   modelPath: string;
@@ -31,6 +17,22 @@ interface AvatarRendererProps {
 const JAW_BONE_REGEX = /jaw|mouth/i;
 const HEAD_BONE_REGEX = /head|neck|skull/i;
 const BONE_FALLBACK_REGEX = /jaw|head|face|mouth|skull|neck|chest|spine/i;
+const EYE_BLINK_MORPH_REGEX = /eyeBlink|blink|eye.*close|EyeBlink|eyeBlinkLeft|eyeBlinkRight/i;
+const EYE_BONE_REGEX = /eye/i;
+
+const BLINK_DURATION = 0.14;
+const BLINK_INTERVAL_MIN = 2;
+const BLINK_INTERVAL_MAX = 5;
+
+function smoothstep(t: number): number {
+  const x = Math.max(0, Math.min(1, t));
+  return x * x * (3 - 2 * x);
+}
+
+function blinkCurve(t: number): number {
+  if (t <= 0.5) return smoothstep(t / 0.5);
+  return 1 - smoothstep((t - 0.5) / 0.5);
+}
 
 function Avatar({
   modelPath,
@@ -46,12 +48,16 @@ function Avatar({
   const { scene } = useGLTF(modelPath);
   const jawBone = useRef<THREE.Object3D | null>(null);
   const headBone = useRef<THREE.Object3D | null>(null);
-  const mouthMorphs = useRef<{ mesh: THREE.Mesh; viseme: VisemeType; indices: number[] }[]>([]);
+  const mouthMorphs = useRef<{ mesh: THREE.Mesh; index: number }[]>([]);
+  const blinkMorphs = useRef<{ mesh: THREE.Mesh; index: number }[]>([]);
+  const blinkBones = useRef<THREE.Object3D[]>([]);
   const openSmoothed = useRef(0);
-  const spreadSmoothed = useRef(0);
-  const protrudeSmoothed = useRef(0);
-  const currentViseme = useRef<VisemeType>(VisemeType.X);
-  const currentExpression = useRef<FacialExpression>(FacialExpression.DEFAULT);
+  const spreadSmoothed = useRef(0.5);
+  const blinkState = useRef({
+    phase: "idle" as "idle" | "blinking",
+    startTime: 0,
+    nextBlinkAt: 2,
+  });
 
   useEffect(() => {
     scene.traverse((obj: THREE.Object3D) => {
@@ -66,6 +72,9 @@ function Avatar({
           const h = bones.find((b) => HEAD_BONE_REGEX.test(b.name) && !JAW_BONE_REGEX.test(b.name));
           if (h && h !== jawBone.current) headBone.current = h;
         }
+        // Eye bones for blink (rotate to simulate close)
+        const eyeBones = bones.filter((b) => EYE_BONE_REGEX.test(b.name));
+        if (eyeBones.length) blinkBones.current = eyeBones;
       }
       const geom = mesh.geometry as THREE.BufferGeometry & {
         morphTargetInfluences?: number[];
@@ -73,31 +82,29 @@ function Avatar({
         morphTargetDictionary?: Record<string, number>;
       };
       if (geom?.morphTargetInfluences && geom.morphTargetInfluences.length > 0) {
+        // Mouth: first morph as fallback if no name match; prefer ones with "mouth"/"oh"/"ee"
         const dict = geom.morphTargetDictionary ?? {};
-        
-        // Find viseme morph targets using constants
-        for (const viseme of Object.values(VisemeType)) {
-          const indices = getVisemeMorphIndices(dict, viseme);
-          if (indices.length > 0) {
-            const existing = mouthMorphs.current.find(
-              (m) => m.mesh === mesh && m.viseme === viseme
-            );
-            if (!existing) {
-              mouthMorphs.current.push({ mesh, viseme, indices });
-            }
+        const targets = geom.morphTargets ?? [];
+        let mouthIdx: number | null = null;
+        for (const [name, idx] of Object.entries(dict)) {
+          if (/mouth|oh|ee|ah|ou|smile|A|E|I|O|U/i.test(name)) {
+            mouthIdx = idx;
+            break;
           }
         }
-        
-        // Fallback: if no viseme morphs found, try generic mouth morphs
-        if (mouthMorphs.current.filter((m) => m.mesh === mesh).length === 0) {
-          const openIdx = findMorphTargetIndex(dict, MOUTH_MORPH_TARGETS.OPEN);
-          const closedIdx = findMorphTargetIndex(dict, MOUTH_MORPH_TARGETS.CLOSED);
-          if (openIdx !== null || closedIdx !== null) {
-            mouthMorphs.current.push({
-              mesh,
-              viseme: VisemeType.C,
-              indices: [openIdx, closedIdx].filter((i): i is number => i !== null),
-            });
+        if (mouthIdx == null && targets.length) mouthIdx = 0;
+        if (mouthIdx != null && !mouthMorphs.current.some((m) => m.mesh === mesh))
+          mouthMorphs.current.push({ mesh, index: mouthIdx });
+        // Blink morphs
+        for (const [name, idx] of Object.entries(dict)) {
+          if (EYE_BLINK_MORPH_REGEX.test(name) && !blinkMorphs.current.some((m) => m.mesh === mesh && m.index === idx))
+            blinkMorphs.current.push({ mesh, index: idx });
+        }
+        if (blinkMorphs.current.length === 0 && targets.length) {
+          for (let i = 0; i < targets.length; i++) {
+            const t = targets[i] as { name?: string };
+            if (t?.name && EYE_BLINK_MORPH_REGEX.test(t.name))
+              blinkMorphs.current.push({ mesh, index: i });
           }
         }
       }
@@ -132,16 +139,49 @@ function Avatar({
         head.rotation.x = 0;
         head.rotation.y = 0;
       }
+      for (const { mesh, index } of blinkMorphs.current) {
+        const g = mesh.geometry as THREE.BufferGeometry & { morphTargetInfluences?: number[] };
+        if (g?.morphTargetInfluences && g.morphTargetInfluences[index] !== undefined)
+          g.morphTargetInfluences[index] = 0;
+      }
+      for (const bone of blinkBones.current) bone.rotation.x = 0;
       scene.scale.setScalar(1);
       return;
     }
 
-    // —— Speech Lip Sync (viseme-like analysis) ——
+    // —— Blinking (runs even without audio) ——
+    const bs = blinkState.current;
+    if (bs.phase === "idle") {
+      if (elapsed >= bs.nextBlinkAt) {
+        bs.phase = "blinking";
+        bs.startTime = elapsed;
+      }
+      // Keep eyes fully open when idle
+      for (const { mesh, index } of blinkMorphs.current) {
+        const g = mesh.geometry as THREE.BufferGeometry & { morphTargetInfluences?: number[] };
+        if (g?.morphTargetInfluences && g.morphTargetInfluences[index] !== undefined)
+          g.morphTargetInfluences[index] = 0;
+      }
+      for (const bone of blinkBones.current) bone.rotation.x = 0;
+    } else {
+      const blinkT = (elapsed - bs.startTime) / BLINK_DURATION;
+      if (blinkT >= 1) {
+        bs.phase = "idle";
+        bs.nextBlinkAt = elapsed + BLINK_INTERVAL_MIN + Math.random() * (BLINK_INTERVAL_MAX - BLINK_INTERVAL_MIN);
+      }
+      const amount = blinkCurve(blinkT);
+      for (const { mesh, index } of blinkMorphs.current) {
+        const g = mesh.geometry as THREE.BufferGeometry & { morphTargetInfluences?: number[] };
+        if (g?.morphTargetInfluences && g.morphTargetInfluences[index] !== undefined)
+          g.morphTargetInfluences[index] = amount;
+      }
+      for (const bone of blinkBones.current) bone.rotation.x = -amount * 0.4;
+    }
+
+    // —— Speech (needs analyser) ——
     const jaw = jawBone.current;
     const head = headBone.current;
-    
     if (!effectiveAnalyser || !dataArray.current || dataArray.current.length === 0) {
-      // Idle animation when no audio
       if (jaw) {
         jaw.rotation.x = 0;
         jaw.rotation.z = 0;
@@ -150,129 +190,50 @@ function Avatar({
         head.rotation.x = 0.02 * Math.sin(elapsed * 0.4);
         head.rotation.y = 0.01 * Math.sin(elapsed * 0.3);
       }
-      // Reset mouth morphs to rest state
-      for (const { mesh, viseme, indices } of mouthMorphs.current) {
-        const g = mesh.geometry as THREE.BufferGeometry & { morphTargetInfluences?: number[] };
-        if (g?.morphTargetInfluences) {
-          for (const idx of indices) {
-            if (g.morphTargetInfluences[idx] !== undefined) {
-              g.morphTargetInfluences[idx] = 0;
-            }
-          }
-        }
-      }
-      currentViseme.current = VisemeType.X;
       return;
     }
 
-    // Get frequency data
     effectiveAnalyser.getByteFrequencyData(dataArray.current as Uint8Array<ArrayBuffer>);
     const len = dataArray.current.length;
-    const sampleRate = effectiveAnalyser.context.sampleRate;
-    const nyquist = sampleRate / 2;
-    const binWidth = nyquist / len;
-
-    // Speech frequency bands (Hz)
-    let lowBand = 0;   // 85-255 Hz
-    let midBand = 0;   // 255-2000 Hz
-    let highBand = 0;  // 2000-4000 Hz
-    let vHighBand = 0; // 4000+ Hz
-    
+    const half = Math.floor(len / 2);
+    let low = 0,
+      mid = 0,
+      high = 0;
     for (let i = 0; i < len; i++) {
-      const freq = i * binWidth;
-      const value = dataArray.current[i];
-      
-      if (freq >= 85 && freq < 255) {
-        lowBand += value;
-      } else if (freq >= 255 && freq < 2000) {
-        midBand += value;
-      } else if (freq >= 2000 && freq < 4000) {
-        highBand += value;
-      } else if (freq >= 4000) {
-        vHighBand += value;
-      }
+      const v = dataArray.current[i];
+      if (i <= 5) low += v;
+      else if (i <= 20) mid += v;
+      else if (i <= half) high += v;
     }
+    const total = low + mid + high || 1;
+    const volume = total / len;
+    const openRaw = Math.min(1, volume / 28) * 0.85;
+    openSmoothed.current += (openRaw - openSmoothed.current) * 0.35;
+    const open = openSmoothed.current;
 
-    // Calculate overall volume
-    const totalEnergy = lowBand * 1.2 + midBand * 1.5 + highBand * 1.0 + vHighBand * 0.8;
-    const volume = Math.min(1, totalEnergy / 30000);
+    // spread: high/(low+1) → "ee" vs "oh"; map to jaw.rotation.z
+    const spreadRaw = Math.min(1, high / (low + 1));
+    spreadSmoothed.current += (spreadRaw - spreadSmoothed.current) * 0.2;
+    const spread = spreadSmoothed.current;
+    const spreadZ = (spread - 0.5) * 0.12;
 
-    // Detect viseme using constants
-    const detectedViseme = detectVisemeFromFrequency(
-      lowBand,
-      midBand,
-      highBand,
-      vHighBand,
-      totalEnergy,
-      volume
-    );
-
-    // Get viseme configuration from constants
-    const visemeConfig = FREQUENCY_TO_VISEME[detectedViseme];
-    const expressionConfig = getExpressionConfig(currentExpression.current);
-
-    // Calculate jaw parameters with expression influence
-    const baseJawOpen = visemeConfig.jawOpen * visemeConfig.intensity * volume;
-    const baseJawSpread = visemeConfig.jawSpread;
-    const baseJawProtrude = visemeConfig.jawProtrude;
-
-    // Apply expression adjustments
-    const finalJawOpen = Math.min(1, baseJawOpen + expressionConfig.jawOffset);
-    const finalJawSpread = baseJawSpread;
-    const finalJawProtrude = baseJawProtrude;
-
-    // Smooth transitions (critical for natural lip sync)
-    const smoothingFactor = 0.45; // Higher = smoother but more lag
-    openSmoothed.current += (finalJawOpen - openSmoothed.current) * smoothingFactor;
-    spreadSmoothed.current += (finalJawSpread - spreadSmoothed.current) * 0.35;
-    protrudeSmoothed.current += (finalJawProtrude - protrudeSmoothed.current) * 0.25;
-    
-    currentViseme.current = detectedViseme;
-
-    // Apply to jaw bone
     if (jaw) {
-      // X rotation: open/close (negative = open)
-      jaw.rotation.x = -openSmoothed.current * 0.85;
-      // Z rotation: spread (left/right for wide/narrow)
-      jaw.rotation.z = spreadSmoothed.current * 0.18;
-      // Y rotation: protrude/retract (subtle)
-      jaw.rotation.y = protrudeSmoothed.current * 0.12;
+      jaw.rotation.x = -open;
+      jaw.rotation.z = spreadZ;
     }
-
-    // Apply viseme morph targets
-    for (const { mesh, viseme, indices } of mouthMorphs.current) {
+    for (const { mesh, index } of mouthMorphs.current) {
       const g = mesh.geometry as THREE.BufferGeometry & { morphTargetInfluences?: number[] };
-      if (g?.morphTargetInfluences) {
-        // Reset all viseme morphs first
-        for (const idx of indices) {
-          if (g.morphTargetInfluences[idx] !== undefined) {
-            g.morphTargetInfluences[idx] = 0;
-          }
-        }
-        
-        // Apply current viseme morph
-        if (viseme === detectedViseme && indices.length > 0) {
-          const weight = openSmoothed.current * visemeConfig.intensity;
-          for (const idx of indices) {
-            if (g.morphTargetInfluences[idx] !== undefined) {
-              g.morphTargetInfluences[idx] = weight;
-            }
-          }
-        }
-      }
+      if (g?.morphTargetInfluences) g.morphTargetInfluences[index] = open;
     }
 
-    // Head: subtle nod with speech + idle sway + expression
+    // Head: subtle nod with speech + idle sway
     if (head) {
-      const speechNod = openSmoothed.current > 0.2 ? 0.028 * (openSmoothed.current - 0.2) : 0;
-      const expressionTilt = expressionConfig.headTilt;
-      head.rotation.x = speechNod + 0.018 * Math.sin(elapsed * 0.45) + expressionTilt.x;
-      head.rotation.y = 0.012 * Math.sin(elapsed * 0.35) + 0.006 * spreadSmoothed.current + expressionTilt.y;
+      head.rotation.x = 0.028 * (open - 0.35) + 0.018 * Math.sin(elapsed * 0.45);
+      head.rotation.y = 0.012 * Math.sin(elapsed * 0.35) + 0.008 * (spread - 0.5);
     }
 
-    // Fallback: scale entire scene if no jaw or morphs
     if (!jaw && mouthMorphs.current.length === 0) {
-      scene.scale.setScalar(1 + openSmoothed.current * 0.03);
+      scene.scale.setScalar(1 + open * 0.04);
     }
   });
 
@@ -322,7 +283,7 @@ export default function AvatarRenderer({
   return (
     <div style={style} className={className}>
       <Canvas
-        camera={{ position: [0, 0.25, 3], fov: 40 }}
+        camera={{ position: [0, 1.0, 3], fov: 40 }}
       >
         <Suspense fallback={null}>
           <ambientLight intensity={0.5} />

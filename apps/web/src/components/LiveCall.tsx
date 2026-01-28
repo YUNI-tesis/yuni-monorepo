@@ -51,10 +51,6 @@ export function LiveCall({ agentId, conversationId, userId, onClose }: LiveCallP
   const [isMuted, setIsMuted] = useState(false);
   const [callDuration, setCallDuration] = useState(0); // in seconds
   const [loadingHistory, setLoadingHistory] = useState(true);
-  
-  // Analyser for avatar lip sync (taps TTS playback)
-  const [playbackAnalyser, setPlaybackAnalyser] = useState<AnalyserNode | null>(null);
-  
   const callStartTimeRef = useRef<number | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -64,7 +60,6 @@ export function LiveCall({ agentId, conversationId, userId, onClose }: LiveCallP
   const audioContextRef = useRef<AudioContext | null>(null);
   const processorNodeRef = useRef<ScriptProcessorNode | null>(null);
   const playbackContextRef = useRef<AudioContext | null>(null);
-  const playbackAnalyserRef = useRef<AnalyserNode | null>(null);
   const audioQueueRef = useRef<AudioBuffer[]>([]);
   const isPlayingRef = useRef(false);
   const sessionIdRef = useRef<string>(`session_${Date.now()}`);
@@ -355,16 +350,9 @@ export function LiveCall({ agentId, conversationId, userId, onClose }: LiveCallP
 
   const playAudioChunk = useCallback(async (base64Audio: string, format?: string) => {
     try {
-      // Initialize playback AudioContext and analyser for lip sync if needed
+      // Initialize playback AudioContext if needed (separate from recording context)
       if (!playbackContextRef.current) {
-        const ctx = new AudioContext();
-        playbackContextRef.current = ctx;
-        const analyser = ctx.createAnalyser();
-        analyser.fftSize = 2048; // Higher FFT for better frequency resolution
-        analyser.smoothingTimeConstant = 0.3; // Smooth transitions
-        analyser.connect(ctx.destination);
-        playbackAnalyserRef.current = analyser;
-        setPlaybackAnalyser(analyser);
+        playbackContextRef.current = new AudioContext();
       }
 
       const audioContext = playbackContextRef.current;
@@ -404,14 +392,7 @@ export function LiveCall({ agentId, conversationId, userId, onClose }: LiveCallP
 
     const source = audioContext.createBufferSource();
     source.buffer = audioBuffer;
-    
-    // Route through analyser for avatar lip sync when available
-    const analyser = playbackAnalyserRef.current;
-    if (analyser) {
-      source.connect(analyser);
-    } else {
-      source.connect(audioContext.destination);
-    }
+    source.connect(audioContext.destination);
 
     source.onended = () => {
       playNextInQueue();
@@ -428,17 +409,12 @@ export function LiveCall({ agentId, conversationId, userId, onClose }: LiveCallP
     audioQueueRef.current = [];
     isPlayingRef.current = false;
 
-    // Stop current audio playback and clear lip-sync analyser
+    // Stop and recreate playback context to interrupt current audio
     if (playbackContextRef.current) {
-      playbackContextRef.current.close().then(() => {
-        playbackContextRef.current = null;
-        playbackAnalyserRef.current = null;
-        setPlaybackAnalyser(null);
-      }).catch(() => {
-        playbackContextRef.current = null;
-        playbackAnalyserRef.current = null;
-        setPlaybackAnalyser(null);
+      playbackContextRef.current.close().catch(() => {
+        // Context already closed, ignore error
       });
+      playbackContextRef.current = new AudioContext();
     }
   }, []);
 
@@ -629,19 +605,83 @@ export function LiveCall({ agentId, conversationId, userId, onClose }: LiveCallP
         </Button>
       </div>
 
-      {/* Main Content - Avatar Only (Full Screen) */}
-      <div className="flex-1 flex items-center justify-center min-h-0 p-8">
-        <div className="w-full h-full max-w-5xl flex items-center justify-center">
-          <div className="w-full h-full min-h-[500px] rounded-2xl overflow-hidden shadow-2xl">
+      {/* Main Content - Avatar + Messages */}
+      <div className="flex-1 flex min-h-0">
+        {/* Avatar - Left */}
+        <div className="flex-shrink-0 w-48 md:w-64 lg:w-72 p-4 border-r border-white/10 flex items-center justify-center">
+          <div className="w-full aspect-square rounded-xl overflow-hidden">
             <DynamicAvatarRenderer
               modelPath="/assets/pennywise-rigged.glb"
               style={{ width: "100%", height: "100%" }}
-              className="rounded-2xl overflow-hidden"
+              className="rounded-xl overflow-hidden"
               cameraControls={false}
-              playbackAnalyser={playbackAnalyser}
               lipsyncAnimation={true}
             />
           </div>
+        </div>
+
+        {/* Messages - Right */}
+        <div className="flex-1 overflow-y-auto min-w-0 p-6">
+          {loadingHistory ? (
+            <div className="flex items-center justify-center h-full">
+              <div className="flex items-center gap-3">
+                <div className="w-6 h-6 border-2 border-purple-500/30 border-t-purple-500 rounded-full animate-spin"></div>
+                <span className="text-gray-400">Cargando historial...</span>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {messages.length === 0 && !currentTranscript && (
+                <div className="flex items-center justify-center h-full">
+                  <p className="text-gray-500 text-sm">
+                    Inicia la conversación hablando
+                  </p>
+                </div>
+              )}
+
+              {messages.map((message, index) => (
+                <div
+                  key={index}
+                  className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
+                >
+                  <div
+                    className={`max-w-[70%] rounded-lg p-3 ${
+                      message.role === "user"
+                        ? "bg-gradient-to-br from-[#BE6ADC]/20 to-[#64C3D7]/20 border border-[#784EAB]/30 text-white glass-strong"
+                        : "glass-strong border border-white/10 text-gray-100"
+                    }`}
+                  >
+                    <p className="text-sm">{message.content}</p>
+                    <span className="text-xs opacity-70 mt-1 block">
+                      {message.timestamp.toLocaleTimeString()}
+                    </span>
+                  </div>
+                </div>
+              ))}
+
+              {/* Current transcript */}
+              {currentTranscript && (
+                <div className="flex justify-end">
+                  <div className="max-w-[70%] rounded-lg p-3 bg-gradient-to-br from-[#BE6ADC]/20 to-[#64C3D7]/20 border border-[#784EAB]/30 text-white opacity-75 glass-strong">
+                    <p className="text-sm">{currentTranscript}</p>
+                    <span className="text-xs opacity-70 mt-1 block">Escuchando...</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Error message */}
+              {error && (
+                <div className="flex justify-center">
+                  <div className="rounded-lg p-3 glass border border-red-500/30 bg-red-500/10 text-red-400">
+                    <p className="text-sm">{error}</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Auto-scroll anchor */}
+              <div ref={messagesEndRef} />
+            </div>
+          )}
         </div>
       </div>
 
