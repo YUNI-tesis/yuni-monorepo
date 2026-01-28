@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import { ConditionalTopBar } from "@/components/ConditionalTopBar";
 import { Providers } from "@/components/Providers";
+import { LiquidBackground } from "@/components/LiquidBackground";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -29,8 +29,11 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-[#0E0418] text-white`}
       >
-        <div className="min-h-screen flex flex-col">
-          <Providers>{children}</Providers>
+        <div className="min-h-screen flex flex-col relative">
+          <LiquidBackground />
+          <div className="relative z-10 flex-1 flex flex-col min-h-screen">
+            <Providers>{children}</Providers>
+          </div>
         </div>
       </body>
     </html>

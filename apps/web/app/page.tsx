@@ -4,7 +4,7 @@ import { Hero, About, Features, Technology, CTA, LandingNavbar } from "@/compone
 export default async function Home() {
   const user = await getCurrentUser();
 
-  // Always show landing page (public)
+  // Always show landing page (public). Fondo líquido viene del layout (LiquidBackground).
   return (
     <main className="relative">
       <LandingNavbar />

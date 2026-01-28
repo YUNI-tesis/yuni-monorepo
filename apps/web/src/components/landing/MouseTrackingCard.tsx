@@ -1,7 +1,9 @@
 "use client";
 
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { useState, useRef, MouseEvent as ReactMouseEvent } from "react";
+
+const hoverTransition = { duration: 0.4, ease: [0.4, 0, 0.2, 1] };
 
 interface MouseTrackingCardProps {
   children: React.ReactNode;
@@ -33,36 +35,56 @@ export function MouseTrackingCard({ children, className = "" }: MouseTrackingCar
       whileHover={{ scale: 1.02 }}
       transition={{ duration: 0.3 }}
     >
-      {/* Spotlight effect following mouse */}
-      {isHovered && (
-        <motion.div
-          className="absolute inset-0 pointer-events-none"
-          style={{
-            background: `radial-gradient(600px circle at ${mousePosition.x}px ${mousePosition.y}px, rgba(190, 106, 220, 0.15), transparent 40%)`,
-          }}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-        />
-      )}
+      <AnimatePresence>
+        {/* Fondo sólido al hacer hover para que no se vea tan transparente */}
+        {isHovered && (
+          <motion.div
+            key="solid-bg"
+            className="absolute inset-0 z-0 rounded-[12px] bg-[#0E0418]/95 pointer-events-none"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={hoverTransition}
+          />
+        )}
+      </AnimatePresence>
+      <AnimatePresence>
+        {/* Spotlight effect following mouse */}
+        {isHovered && (
+          <motion.div
+            key="spotlight"
+            className="absolute inset-0 z-0 pointer-events-none rounded-[12px] overflow-hidden"
+            style={{
+              background: `radial-gradient(600px circle at ${mousePosition.x}px ${mousePosition.y}px, rgba(190, 106, 220, 0.15), transparent 40%)`,
+            }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={hoverTransition}
+          />
+        )}
+      </AnimatePresence>
+      <AnimatePresence>
+        {/* Border gradient following mouse */}
+        {isHovered && (
+          <motion.div
+            key="border"
+            className="absolute inset-0 z-0 pointer-events-none"
+            style={{
+              background: `radial-gradient(400px circle at ${mousePosition.x}px ${mousePosition.y}px, rgba(190, 106, 220, 0.4), transparent 70%)`,
+              maskImage: "linear-gradient(white, white) content-box, linear-gradient(white, white)",
+              maskComposite: "exclude",
+              padding: "1px",
+            }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={hoverTransition}
+          />
+        )}
+      </AnimatePresence>
 
-      {/* Border gradient following mouse */}
-      {isHovered && (
-        <motion.div
-          className="absolute inset-0 pointer-events-none"
-          style={{
-            background: `radial-gradient(400px circle at ${mousePosition.x}px ${mousePosition.y}px, rgba(190, 106, 220, 0.4), transparent 70%)`,
-            maskImage: "linear-gradient(white, white) content-box, linear-gradient(white, white)",
-            maskComposite: "exclude",
-            padding: "1px",
-          }}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-        />
-      )}
-
-      {children}
+      <div className="relative z-10">{children}</div>
     </motion.div>
   );
 }

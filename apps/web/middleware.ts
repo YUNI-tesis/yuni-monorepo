@@ -4,10 +4,16 @@ import { getToken } from "next-auth/jwt";
 export default async function middleware(req: NextRequest) {
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
   const isAuthPage = req.nextUrl.pathname.startsWith("/auth");
+  const isLandingPage = req.nextUrl.pathname === "/";
 
   // If user is authenticated and tries to access auth pages, redirect to agents
   if (token && isAuthPage) {
     return NextResponse.redirect(new URL("/agents", req.url));
+  }
+
+  // Allow unauthenticated access to landing page
+  if (isLandingPage) {
+    return NextResponse.next();
   }
 
   // If user is not authenticated and tries to access protected pages, redirect to login
