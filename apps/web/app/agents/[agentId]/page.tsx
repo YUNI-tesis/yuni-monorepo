@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Agent } from "@/lib/schemas";
 import { AgentEditor } from "@/components/AgentEditor";
 import { ChatPanel } from "@/components/ChatPanel";
+import { DocumentsSection } from "@/components/DocumentsSection";
 import { Button } from "@/components/common";
 import DynamicAvatarRenderer from "@/components/DynamicAvatarRenderer";
 
@@ -150,6 +151,7 @@ export default function AgentDetailPage() {
               {agent.context || "Sin contexto"}
             </p>
           </div>
+          <DocumentsSection agentId={agentId} />
         </div>
 
         <div className="flex gap-3">

@@ -6,7 +6,7 @@ import { applyGuardrails } from "../tools/guardrails.js";
 import { accumulateCost } from "../tools/costTracker.js";
 import { invokeLLM } from "../tools/llmFactory.js";
 import { getModelName } from "../tools/llmConfig.js";
-import { retrieveRelevantChunks, formatRetrievalContext } from "../tools/retrieval.js";
+import { retrieveContextForAgent, formatRetrievalContext, type RetrievalContext } from "../tools/retrieval.js";
 import { randomUUID } from "crypto";
 
 interface GraphState {
@@ -78,16 +78,18 @@ export function createChatGraph(apiKey?: string) {
     };
   }
 
-  // Node 3.5: Retrieve relevant chunks from documents
-  async function retrieveChunksNode(state: GraphState): Promise<Partial<GraphState>> {
+  // Node 3.5: Retrieve context (summaries + chunks) from documents
+  async function retrieveContextNode(state: GraphState): Promise<Partial<GraphState>> {
     if (!state.agent || state.blocked) {
       // Skip retrieval if blocked or agent not loaded
       return { retrievalContext: "" };
     }
 
     const query = state.sanitizedUserMessage || state.userMessage;
-    const chunks = await retrieveRelevantChunks(state.agentId, query, 6);
-    const retrievalContext = formatRetrievalContext(chunks);
+    
+    // Intelligent retrieval: combines summaries + chunks based on query type
+    const context = await retrieveContextForAgent(state.agentId, query, 6);
+    const retrievalContext = formatRetrievalContext(context);
 
     return { retrievalContext };
   }
@@ -113,11 +115,25 @@ export function createChatGraph(apiKey?: string) {
     const retrievalContext = state.retrievalContext || "";
     if (retrievalContext) {
       systemPrompt += retrievalContext;
-      systemPrompt +=
-        "\n\nNote: If the user asks about information from uploaded documents and you cannot find it in the context above, respond: 'I couldn't find that in the uploaded documents.'";
+      systemPrompt += `
+
+CRITICAL INSTRUCTIONS FOR DOCUMENT-BASED RESPONSES:
+
+You have access to two types of context:
+1. DOCUMENT SUMMARIES: Use for general questions about topics, themes, and high-level content
+2. DETAILED CHUNKS: Use for specific questions requiring exact data, quotes, or precise details
+
+Response Rules:
+- ONLY use information explicitly present in the summaries or chunks above
+- For general questions: Primarily use the summaries (faster, comprehensive)
+- For specific questions (exact numbers, dates, quotes): Use the detailed chunks
+- If information is not in the provided context: Say "I couldn't find that information in the uploaded documents"
+- NEVER invent or assume information not present in the context
+- When citing specific data, reference the chunk: [doc:ID chunk:N]
+- If the user asks "according to the document" and you have no context, say: "No document context is available for this query"`;
     } else {
       systemPrompt +=
-        "\n\nNote: Do not claim information comes from uploaded documents unless retrieval context is provided above.";
+        "\n\nNote: No document context is available. Do not claim information comes from uploaded documents.";
     }
 
     // Build message history
@@ -195,7 +211,7 @@ export function createChatGraph(apiKey?: string) {
   graph.addNode("loadAgent", loadAgentNode);
   graph.addNode("loadConversation", loadConversationNode);
   graph.addNode("guardrails", guardrailsNode);
-  graph.addNode("retrieveChunks", retrieveChunksNode);
+  graph.addNode("retrieveContext", retrieveContextNode);
   graph.addNode("generateResponse", generateResponseNode);
   graph.addNode("persistConversation", persistConversationNode);
 
@@ -207,9 +223,9 @@ export function createChatGraph(apiKey?: string) {
   // @ts-expect-error - LangGraph type inference issue with addEdge overloads
   graph.addEdge("loadConversation", "guardrails");
   // @ts-expect-error - LangGraph type inference issue with addEdge overloads
-  graph.addEdge("guardrails", "retrieveChunks");
+  graph.addEdge("guardrails", "retrieveContext");
   // @ts-expect-error - LangGraph type inference issue with addEdge overloads
-  graph.addEdge("retrieveChunks", "generateResponse");
+  graph.addEdge("retrieveContext", "generateResponse");
   // @ts-expect-error - LangGraph type inference issue with addEdge overloads
   graph.addEdge("generateResponse", "persistConversation");
   // @ts-expect-error - LangGraph type inference issue with addEdge overloads

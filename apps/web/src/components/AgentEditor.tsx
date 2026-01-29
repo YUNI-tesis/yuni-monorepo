@@ -213,7 +213,9 @@ export function AgentEditor({ agentId, onEditSuccess }: AgentEditorProps) {
           </p>
           <VoiceSelector
             value={formData.voice}
-            onChange={(voice) => setFormData({ ...formData, voice })}
+            onChange={(voice) => {
+              setFormData(prev => ({ ...prev, voice }));
+            }}
           />
         </div>
 

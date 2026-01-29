@@ -49,6 +49,16 @@ export function VoiceSelector({ value, onChange }: VoiceSelectorProps) {
   const [elevenLabsVoices, setElevenLabsVoices] = useState<ElevenLabsVoice[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [initialized, setInitialized] = useState(false);
+
+  // Initialize from value prop
+  useEffect(() => {
+    if (value && !initialized) {
+      setProvider(value.provider);
+      setSelectedVoiceId(value.voiceId);
+      setInitialized(true);
+    }
+  }, [value, initialized]);
 
   // Fetch ElevenLabs voices when provider changes
   useEffect(() => {
@@ -57,14 +67,17 @@ export function VoiceSelector({ value, onChange }: VoiceSelectorProps) {
     }
   }, [provider]);
 
-  // Update parent when selection changes
+  // Update parent when selection changes (only after initialization)
   useEffect(() => {
-    onChange({
-      provider,
-      voiceId: selectedVoiceId,
-      speakingRate: 1.0,
-    });
-  }, [provider, selectedVoiceId, onChange]);
+    if (initialized && selectedVoiceId) {
+      onChange({
+        provider,
+        voiceId: selectedVoiceId,
+        speakingRate: 1.0,
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [provider, selectedVoiceId, initialized]);
 
   const fetchElevenLabsVoices = async () => {
     setLoading(true);
@@ -98,12 +111,18 @@ export function VoiceSelector({ value, onChange }: VoiceSelectorProps) {
 
   const handleProviderChange = (newProvider: "openai" | "elevenlabs") => {
     setProvider(newProvider);
+    setInitialized(true);
     // Reset voice selection
     if (newProvider === "openai") {
       setSelectedVoiceId("alloy");
     } else {
       setSelectedVoiceId("");
     }
+  };
+
+  const handleVoiceSelect = (voiceId: string) => {
+    setSelectedVoiceId(voiceId);
+    setInitialized(true);
   };
 
   return (
@@ -168,7 +187,7 @@ export function VoiceSelector({ value, onChange }: VoiceSelectorProps) {
               <button
                 key={voice.id}
                 type="button"
-                onClick={() => setSelectedVoiceId(voice.id)}
+                onClick={() => handleVoiceSelect(voice.id)}
                 className={`p-3 rounded-lg border text-left transition-all ${
                   selectedVoiceId === voice.id
                     ? "border-purple-500 bg-purple-500/20"
@@ -227,7 +246,7 @@ export function VoiceSelector({ value, onChange }: VoiceSelectorProps) {
                   <button
                     key={voice.voice_id}
                     type="button"
-                    onClick={() => setSelectedVoiceId(voice.voice_id)}
+                    onClick={() => handleVoiceSelect(voice.voice_id)}
                     className={`w-full p-3 rounded-lg border text-left transition-all ${
                       selectedVoiceId === voice.voice_id
                         ? "border-purple-500 bg-purple-500/20"

@@ -12,6 +12,8 @@ interface Document {
   sizeBytes: number;
   status: "PENDING" | "UPLOADING" | "UPLOADED" | "INGESTING" | "READY" | "FAILED";
   error: string | null;
+  summaryStatus: "PENDING" | "UPLOADING" | "UPLOADED" | "INGESTING" | "READY" | "FAILED" | null;
+  summaryError: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -45,17 +47,22 @@ export function DocumentsSection({ agentId }: DocumentsSectionProps) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    console.log("[DocumentsSection] Mounting with agentId:", agentId);
     fetchDocuments();
   }, [agentId]);
 
   async function fetchDocuments() {
     try {
       setLoading(true);
+      console.log("[DocumentsSection] Fetching documents for agent:", agentId);
       const res = await fetchWithAuth(`/api/agents/${agentId}/documents`);
+      console.log("[DocumentsSection] Response status:", res.status);
       if (!res.ok) throw new Error("Failed to fetch documents");
       const data: Document[] = await res.json();
+      console.log("[DocumentsSection] Documents loaded:", data.length);
       setDocuments(data);
     } catch (err: any) {
+      console.error("[DocumentsSection] Error fetching documents:", err);
       setError(err.message);
     } finally {
       setLoading(false);
@@ -107,7 +114,7 @@ export function DocumentsSection({ agentId }: DocumentsSectionProps) {
 
       const { document, upload } = await presignRes.json();
 
-      // Step 2: Upload file to Azure Blob Storage
+      // Step 2: Upload file to S3 Storage
       const uploadRes = await fetch(upload.url, {
         method: upload.method,
         headers: upload.headers,
@@ -184,6 +191,22 @@ export function DocumentsSection({ agentId }: DocumentsSectionProps) {
     }
   }
 
+  async function handleSummarize(documentId: string) {
+    try {
+      const res = await fetchWithAuth(`/api/documents/${documentId}/summarize`, {
+        method: "POST",
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to summarize document");
+      }
+      // Refresh to show updated status
+      await fetchDocuments();
+    } catch (err: any) {
+      setError(err.message);
+    }
+  }
+
   function formatFileSize(bytes: number): string {
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -191,81 +214,97 @@ export function DocumentsSection({ agentId }: DocumentsSectionProps) {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold">Documentos</h3>
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="text-sm font-semibold text-white">Documentos</h3>
         <label className="cursor-pointer">
           <input
             type="file"
             className="hidden"
-            accept=".pdf,.txt,.docx"
+            accept=".pdf,.txt,.docx,.jpg,.jpeg,.png"
             onChange={handleFileSelect}
             disabled={uploading}
           />
-          <span className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50">
+          <span className="px-3 py-1 text-xs bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 transition-colors">
             {uploading ? "Subiendo..." : "Subir"}
           </span>
         </label>
       </div>
 
       {error && (
-        <div className="text-xs text-red-600 bg-red-50 p-2 rounded">{error}</div>
+        <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/30 p-2 rounded-lg mb-2">
+          {error}
+        </div>
       )}
 
       {loading ? (
-        <div className="text-xs text-gray-600">Cargando...</div>
+        <div className="text-xs text-white/60">Cargando...</div>
       ) : documents.length === 0 ? (
-        <div className="text-xs text-gray-600">No hay documentos</div>
+        <div className="text-xs text-white/40">No hay documentos aún</div>
       ) : (
         <div className="space-y-2">
           {documents.map((doc) => (
             <div
               key={doc.id}
-              className="flex items-center justify-between p-2 bg-gray-50 rounded text-xs"
+              className="flex items-start gap-2 p-3 bg-white/5 rounded-lg border border-white/10 text-xs"
             >
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 mb-1">
                   <span
-                    className={`w-2 h-2 rounded-full ${STATUS_COLORS[doc.status]}`}
+                    className={`w-2 h-2 rounded-full flex-shrink-0 ${STATUS_COLORS[doc.status]}`}
                   />
-                  <span className="font-medium truncate">{doc.filename}</span>
-                  <span className="text-gray-500">
-                    {STATUS_LABELS[doc.status]}
-                  </span>
+                  <span className="font-medium truncate text-white">{doc.filename}</span>
                 </div>
-                <div className="text-gray-500 mt-1">
-                  {formatFileSize(doc.sizeBytes)} •{" "}
-                  {new Date(doc.createdAt).toLocaleDateString()}
+                <div className="text-white/40 text-[10px] space-y-0.5">
+                  <div>
+                    {STATUS_LABELS[doc.status]} • {formatFileSize(doc.sizeBytes)}
+                  </div>
+                  {doc.summaryStatus && (
+                    <div>
+                      Resumen: {STATUS_LABELS[doc.summaryStatus]}
+                    </div>
+                  )}
                 </div>
                 {doc.error && (
-                  <div className="text-red-600 mt-1">{doc.error}</div>
+                  <div className="text-red-400 text-[10px] mt-1">⚠️ {doc.error}</div>
+                )}
+                {doc.summaryError && (
+                  <div className="text-red-400 text-[10px] mt-1">⚠️ Resumen: {doc.summaryError}</div>
                 )}
               </div>
-              <div className="flex gap-1 ml-2">
+              <div className="flex flex-col gap-1">
                 {doc.status === "READY" && (
-                  <button
-                    onClick={() => handleDownload(doc.id, doc.filename)}
-                    className="px-2 py-1 text-xs bg-gray-200 hover:bg-gray-300 rounded"
-                  >
-                    Descargar
-                  </button>
+                  <>
+                    <button
+                      onClick={() => handleDownload(doc.id, doc.filename)}
+                      className="px-2 py-1 text-[10px] bg-white/10 hover:bg-white/20 text-white rounded transition-colors"
+                    >
+                      ⬇ Descargar
+                    </button>
+                    {(!doc.summaryStatus || doc.summaryStatus === "FAILED") && (
+                      <button
+                        onClick={() => handleSummarize(doc.id)}
+                        className="px-2 py-1 text-[10px] bg-blue-600/80 hover:bg-blue-600 text-white rounded transition-colors"
+                      >
+                        📝 Resumir
+                      </button>
+                    )}
+                  </>
                 )}
                 {doc.status === "UPLOADED" && (
                   <button
                     onClick={() => handleIngest(doc.id)}
-                    className="px-2 py-1 text-xs bg-purple-600 text-white hover:bg-purple-700 rounded"
+                    className="px-2 py-1 text-[10px] bg-purple-600/80 hover:bg-purple-600 text-white rounded transition-colors"
                   >
-                    Procesar
+                    ⚙️ Procesar
                   </button>
                 )}
-                <Button
+                <button
                   onClick={() => handleDelete(doc.id)}
-                  variant="destructive"
-                  size="sm"
-                  className="text-xs"
+                  className="px-2 py-1 text-[10px] bg-red-600/80 hover:bg-red-600 text-white rounded transition-colors"
                 >
-                  Eliminar
-                </Button>
+                  🗑️ Eliminar
+                </button>
               </div>
             </div>
           ))}

@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
 import { getObjectStorage } from "@/lib/storage/storage.factory";
-import { AzureBlobStorage } from "@/lib/storage/azure-blob.storage";
-import { loadStorageConfig } from "@/lib/storage/storage-config";
+import { S3Storage } from "@/lib/storage/s3.storage";
 import pdfParse from "pdf-parse";
 import * as mammoth from "mammoth";
 
@@ -78,10 +77,9 @@ export async function POST(
       const storage = getObjectStorage();
       let buffer: Buffer;
 
-      if (storage instanceof AzureBlobStorage) {
+      if (storage instanceof S3Storage) {
         buffer = await storage.downloadBlob(document.storageKey);
       } else {
-        // For other providers, we'd need to implement downloadBlob
         throw new Error("Server-side download not implemented for this storage provider");
       }
 

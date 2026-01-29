@@ -35,6 +35,8 @@ export async function GET(
         sizeBytes: true,
         status: true,
         error: true,
+        summaryStatus: true,
+        summaryError: true,
         createdAt: true,
         updatedAt: true,
       },

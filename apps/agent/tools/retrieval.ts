@@ -19,6 +19,26 @@ export interface DocumentChunk {
   text: string;
 }
 
+export interface DocumentSummary {
+  documentId: string;
+  filename: string;
+  mainTopic: string;
+  sections: Array<{
+    title: string;
+    description: string;
+  }>;
+  keyEntities: Array<{
+    type: string;
+    value: string;
+  }>;
+  conclusions: string[];
+}
+
+export interface RetrievalContext {
+  summaryContext: string;
+  detailedChunks: DocumentChunk[];
+}
+
 /**
  * Retrieve relevant document chunks for a given agent and query using naive keyword matching.
  * @param agentId - The agent ID to retrieve chunks for
@@ -89,9 +109,177 @@ export async function retrieveRelevantChunks(
 }
 
 /**
+ * Analyze query to determine if it's GENERAL or SPECIFIC
+ */
+function analyzeQueryType(query: string): "general" | "specific" {
+  const lowerQuery = query.toLowerCase();
+
+  // Specific query indicators
+  const specificIndicators = [
+    "exacto",
+    "exact",
+    "número",
+    "number",
+    "fecha",
+    "date",
+    "cuándo",
+    "when",
+    "cuánto",
+    "how much",
+    "how many",
+    "cita",
+    "quote",
+    "literalmente",
+    "literally",
+    "específicamente",
+    "specifically",
+    "página",
+    "page",
+    "sección",
+    "section",
+    "valor",
+    "value",
+  ];
+
+  // General query indicators
+  const generalIndicators = [
+    "resumen",
+    "summary",
+    "sobre qué",
+    "what about",
+    "de qué trata",
+    "qué es",
+    "what is",
+    "explica",
+    "explain",
+    "describe",
+    "general",
+    "visión general",
+    "overview",
+    "principales",
+    "main",
+  ];
+
+  // Check for specific indicators
+  for (const indicator of specificIndicators) {
+    if (lowerQuery.includes(indicator)) {
+      return "specific";
+    }
+  }
+
+  // Check for general indicators
+  for (const indicator of generalIndicators) {
+    if (lowerQuery.includes(indicator)) {
+      return "general";
+    }
+  }
+
+  // If query is short (< 10 words), likely general
+  if (query.split(/\s+/).length < 10) {
+    return "general";
+  }
+
+  // Default to specific for safety (better to over-retrieve than under-retrieve)
+  return "specific";
+}
+
+/**
+ * Retrieve document summaries for an agent
+ */
+async function getDocumentSummaries(agentId: string): Promise<DocumentSummary[]> {
+  try {
+    const documents = await prisma.document.findMany({
+      where: {
+        agentId,
+        status: "READY",
+        summaryStatus: "READY",
+        summary: { not: null },
+      },
+      select: {
+        id: true,
+        filename: true,
+        summary: true,
+      },
+    });
+
+    return documents.map((doc) => ({
+      documentId: doc.id,
+      filename: doc.filename,
+      ...(doc.summary as any),
+    }));
+  } catch (error: any) {
+    console.error("Error retrieving summaries:", error);
+    return [];
+  }
+}
+
+/**
+ * Intelligent retrieval combining summaries and chunks based on query type
+ */
+export async function retrieveContextForAgent(
+  agentId: string,
+  query: string,
+  limit: number = 6
+): Promise<RetrievalContext> {
+  const queryType = analyzeQueryType(query);
+
+  // Always get summaries
+  const summaries = await getDocumentSummaries(agentId);
+
+  if (queryType === "general") {
+    // For general queries, use primarily summaries
+    return {
+      summaryContext: formatSummaries(summaries),
+      detailedChunks: [], // No detailed chunks for general queries
+    };
+  }
+
+  // For specific queries, use summaries + detailed chunks
+  const chunks = await retrieveRelevantChunks(agentId, query, limit);
+
+  return {
+    summaryContext: formatSummaries(summaries),
+    detailedChunks: chunks,
+  };
+}
+
+/**
+ * Format document summaries into context string
+ */
+function formatSummaries(summaries: DocumentSummary[]): string {
+  if (summaries.length === 0) {
+    return "";
+  }
+
+  const summaryTexts = summaries.map((summary) => {
+    const sectionsText = summary.sections
+      .map((s) => `  - ${s.title}: ${s.description}`)
+      .join("\n");
+
+    const entitiesText =
+      summary.keyEntities.length > 0
+        ? `\nKey Entities: ${summary.keyEntities.map((e) => `${e.value} (${e.type})`).join(", ")}`
+        : "";
+
+    const conclusionsText =
+      summary.conclusions.length > 0
+        ? `\nConclusions:\n${summary.conclusions.map((c) => `  - ${c}`).join("\n")}`
+        : "";
+
+    return `[Document: ${summary.filename}]
+Topic: ${summary.mainTopic}
+
+Sections:
+${sectionsText}${entitiesText}${conclusionsText}`;
+  });
+
+  return `--- Document Summaries ---\n\n${summaryTexts.join("\n\n---\n\n")}\n\n--- End of Summaries ---`;
+}
+
+/**
  * Format retrieved chunks into a context string for the LLM prompt
  */
-export function formatRetrievalContext(chunks: DocumentChunk[]): string {
+export function formatDetailedChunks(chunks: DocumentChunk[]): string {
   if (chunks.length === 0) {
     return "";
   }
@@ -100,5 +288,26 @@ export function formatRetrievalContext(chunks: DocumentChunk[]): string {
     (chunk) => `[doc:${chunk.documentId} chunk:${chunk.index}]\n${chunk.text}`
   );
 
-  return `\n\n--- Relevant Context from Uploaded Documents ---\n${contextParts.join("\n\n---\n\n")}\n--- End of Context ---\n`;
+  return `\n\n--- Detailed Context from Documents ---\n${contextParts.join("\n\n---\n\n")}\n--- End of Detailed Context ---\n`;
+}
+
+/**
+ * Format complete retrieval context (summaries + chunks)
+ */
+export function formatRetrievalContext(context: RetrievalContext): string {
+  const parts: string[] = [];
+
+  if (context.summaryContext) {
+    parts.push(context.summaryContext);
+  }
+
+  if (context.detailedChunks.length > 0) {
+    parts.push(formatDetailedChunks(context.detailedChunks));
+  }
+
+  if (parts.length === 0) {
+    return "";
+  }
+
+  return `\n\n${parts.join("\n\n")}\n`;
 }

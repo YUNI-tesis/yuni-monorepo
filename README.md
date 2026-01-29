@@ -40,10 +40,14 @@ Yuni es una plataforma multi-agente donde los usuarios pueden crear, gestionar y
 - Incluir un botón "Modo Llamada (MVP)" que usa voz turn-based: grabar → transcribir → enviar → hablar respuesta
 
 ### 6. Documentos y RAG (Retrieval-Augmented Generation)
-- Subir documentos (PDF, TXT, DOCX) a Azure Blob Storage
-- Almacenamiento provider-agnóstico con abstracción ObjectStorage
-- Procesamiento de documentos: extracción de texto y chunking
-- RAG scaffolding con recuperación naive (keyword matching)
+- Subir documentos (PDF, TXT, DOCX, imágenes) a AWS S3
+- Procesamiento de documentos: extracción de texto y chunking automático
+- **Sistema inteligente de resúmenes:**
+  - Generación automática de resúmenes estructurados (tema principal, secciones, entidades clave, conclusiones)
+  - Retrieval híbrido: usa resúmenes para preguntas generales, chunks para preguntas específicas
+- RAG con dos niveles:
+  - **Nivel 1 (resúmenes):** Respuestas rápidas y eficientes a preguntas generales
+  - **Nivel 2 (chunks):** Acceso preciso a datos específicos, citas y detalles exactos
 - Integración automática de contexto de documentos en respuestas del agente
 
 ## Instalación
@@ -68,12 +72,12 @@ OPENAI_API_KEY=tu_api_key_aqui
 # Database (PostgreSQL)
 DATABASE_URL=postgresql://user:password@localhost:5432/yuni_ai
 
-# Azure Blob Storage (for document storage)
-STORAGE_PROVIDER=azure
-AZURE_STORAGE_ACCOUNT_NAME=tu_cuenta_azure
-AZURE_STORAGE_ACCOUNT_KEY=tu_clave_azure
-AZURE_STORAGE_CONTAINER_NAME=documents
-AZURE_STORAGE_PUBLIC_BASE_URL=https://tu_cuenta_azure.blob.core.windows.net  # Optional
+# AWS S3 Storage (for document storage)
+STORAGE_PROVIDER=s3
+AWS_ACCESS_KEY_ID=tu_access_key_id
+AWS_SECRET_ACCESS_KEY=tu_secret_access_key
+AWS_S3_BUCKET_NAME=yuni-documents
+AWS_REGION=us-east-1  # Optional, defaults to us-east-1
 
 # Document upload limits (optional, defaults to 20MB)
 DOC_MAX_SIZE_MB=20
@@ -81,6 +85,8 @@ DOC_MAX_SIZE_MB=20
 # NextAuth
 NEXTAUTH_SECRET=tu_secret_aqui
 ```
+
+**Nota sobre almacenamiento:** El sistema usa AWS S3 para almacenamiento de documentos. Asegúrate de configurar las credenciales de AWS y crear un bucket S3 antes de usar la funcionalidad de documentos.
 
 3. Ejecutar en modo desarrollo:
 ```bash
@@ -177,7 +183,10 @@ apps/
 1. **LoadAgent** - Carga la definición del agente
 2. **LoadConversation** - Carga o crea la conversación
 3. **Guardrails** - Aplica filtros de seguridad y validación
-4. **RetrieveChunks** - Recupera chunks relevantes de documentos (RAG)
+4. **RetrieveContext** - Retrieval inteligente de documentos (RAG)
+   - Analiza el tipo de consulta (general vs específica)
+   - Para preguntas generales: usa resúmenes de documentos
+   - Para preguntas específicas: combina resúmenes + chunks detallados
 5. **GenerateResponse** - Genera respuesta usando OpenAI con contexto de documentos
 6. **PersistConversation** - Guarda mensajes y actualiza costos
 
@@ -257,12 +266,19 @@ Ejecutar tests unitarios:
 
 ## Notas de Arquitectura
 
-- **Almacenamiento**: Actualmente basado en archivos JSON para agentes/conversaciones. PostgreSQL con Prisma para metadatos de documentos. Azure Blob Storage para archivos.
+- **Almacenamiento**: Actualmente basado en archivos JSON para agentes/conversaciones. PostgreSQL con Prisma para metadatos de documentos. AWS S3 para almacenamiento de archivos de documentos.
 - **Streaming**: Implementado usando Server-Sent Events (SSE) para respuestas del chat
 - **Seguridad**: Los guardrails se aplican antes de llamar al LLM, evitando costos innecesarios
 - **Costos**: Estimación aproximada basada en conteo de caracteres (1 token ≈ 4 caracteres). Para precisión, usar tokenización real del modelo.
-- **Documentos**: Almacenamiento provider-agnóstico con Azure Blob Storage como implementación actual. Soporte para PDF, TXT, DOCX con extracción de texto y chunking automático.
-- **RAG**: Recuperación naive basada en keyword matching (ILIKE). Preparado para migrar a embeddings/vector DB en el futuro.
+- **Documentos**: 
+  - Almacenamiento provider-agnóstico con AWS S3 como implementación por defecto
+  - Soporte para PDF, TXT, DOCX con extracción de texto y chunking automático
+  - Sistema de resúmenes estructurados generados con LLM
+- **RAG Inteligente**: 
+  - Sistema híbrido de dos niveles (resúmenes + chunks)
+  - Análisis automático del tipo de consulta para optimizar retrieval
+  - Resúmenes para eficiencia, chunks para precisión
+  - Preparado para migrar a embeddings/vector DB en el futuro.
 
 ## Licencia
 

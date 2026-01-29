@@ -49,6 +49,11 @@ model Document {
   status    DocumentStatus  @default(PENDING)
   error     String?         @db.Text
 
+  // Summary fields
+  summary   Json?           // Structured summary: { mainTopic, sections, keyEntities, conclusions }
+  summaryStatus DocumentStatus? // Can be different from ingestion status
+  summaryError  String?     @db.Text
+
   createdAt DateTime        @default(now())
   updatedAt DateTime        @updatedAt
 
