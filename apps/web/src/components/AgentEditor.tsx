@@ -119,7 +119,7 @@ export function AgentEditor({ agentId, onEditSuccess }: AgentEditorProps) {
         <div className="flex flex-col items-center pb-6 border-b border-white/10">
           <div className="relative mb-4 w-full max-w-md aspect-square">
             <DynamicAvatarRenderer
-              modelPath="/assets/pennywise-rigged.glb"
+              modelPath="https://models.readyplayer.me/697b77b6fd03bbd0ce0d0506.glb"
               style={{ width: "100%", height: "100%" }}
               className="rounded-xl overflow-hidden"
               cameraControls={true}

@@ -634,7 +634,7 @@ export function LiveCall({ agentId, conversationId, userId, onClose }: LiveCallP
         <div className="w-full h-full max-w-5xl flex items-center justify-center">
           <div className="w-full h-full min-h-[500px] rounded-2xl overflow-hidden shadow-2xl">
             <DynamicAvatarRenderer
-              modelPath="/assets/pennywise-rigged.glb"
+              modelPath="https://models.readyplayer.me/697b77b6fd03bbd0ce0d0506.glb"
               style={{ width: "100%", height: "100%" }}
               className="rounded-2xl overflow-hidden"
               cameraControls={false}

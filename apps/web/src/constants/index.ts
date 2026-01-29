@@ -1,8 +1,7 @@
 /**
  * Constants for avatar animation
- * Centralized configuration for visemes, morph targets, and facial expressions
+ * Centralized configuration for morph targets and facial expressions (Ready Player Me / ARKit / Oculus compatible)
  */
 
-export * from "./visemesMapping";
 export * from "./morphTargets";
 export * from "./facialExpressions";

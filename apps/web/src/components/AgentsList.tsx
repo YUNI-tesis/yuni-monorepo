@@ -106,7 +106,7 @@ export function AgentsList() {
               {/* Avatar 3D Model */}
               <div className="relative mb-4 aspect-square rounded-xl overflow-hidden bg-gradient-to-br from-purple-500/10 via-blue-500/10 to-cyan-500/10">
                 <DynamicAvatarRenderer
-                  modelPath="/assets/pennywise-rigged.glb"
+                  modelPath="https://models.readyplayer.me/697b77b6fd03bbd0ce0d0506.glb"
                   style={{ width: "100%", height: "100%", minHeight: "150px" }}
                   className="rounded-xl"
                 />
