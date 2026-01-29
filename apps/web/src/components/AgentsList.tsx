@@ -4,7 +4,9 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Agent } from "@/lib/schemas";
 import { fetchWithAuth } from "@/lib/fetch-client";
-import DynamicAvatarRenderer from "@/components/DynamicAvatarRenderer";
+import { getReadyPlayerMeThumbnailUrl } from "@/lib/avatar-utils";
+
+const DEFAULT_AVATAR_GLB = "https://models.readyplayer.me/697b77b6fd03bbd0ce0d0506.glb";
 
 export function AgentsList() {
   const [agents, setAgents] = useState<Agent[]>([]);
@@ -103,12 +105,12 @@ export function AgentsList() {
               {/* Gradient border on hover */}
               <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-purple-500/0 via-purple-500/10 to-cyan-500/0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"></div>
               
-              {/* Avatar 3D Model */}
-              <div className="relative mb-4 aspect-square rounded-xl overflow-hidden bg-gradient-to-br from-purple-500/10 via-blue-500/10 to-cyan-500/10">
-                <DynamicAvatarRenderer
-                  modelPath="https://models.readyplayer.me/697b77b6fd03bbd0ce0d0506.glb"
-                  style={{ width: "100%", height: "100%", minHeight: "150px" }}
-                  className="rounded-xl"
+              {/* Avatar 2D render (RPM thumbnail) */}
+              <div className="relative mb-4 aspect-square min-h-[180px] rounded-xl overflow-hidden bg-gradient-to-br from-purple-500/10 via-blue-500/10 to-cyan-500/10">
+                <img
+                  src={getReadyPlayerMeThumbnailUrl(DEFAULT_AVATAR_GLB, { size: 512 })}
+                  alt=""
+                  className="w-full h-full object-cover object-center rounded-xl"
                 />
               </div>
               

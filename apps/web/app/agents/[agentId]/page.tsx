@@ -8,7 +8,9 @@ import { AgentEditor } from "@/components/AgentEditor";
 import { ChatPanel } from "@/components/ChatPanel";
 import { DocumentsSection } from "@/components/DocumentsSection";
 import { Button } from "@/components/common";
-import DynamicAvatarRenderer from "@/components/DynamicAvatarRenderer";
+import { getReadyPlayerMeThumbnailUrl } from "@/lib/avatar-utils";
+
+const DEFAULT_AVATAR_GLB = "https://models.readyplayer.me/697b77b6fd03bbd0ce0d0506.glb";
 
 export default function AgentDetailPage() {
   const params = useParams();
@@ -98,13 +100,13 @@ export default function AgentDetailPage() {
           <p className="text-sm text-white/70 mb-4">{agent.description}</p>
         </div>
 
-        {/* Avatar Preview */}
-        <div className="mb-6">
-          <div className="relative w-full aspect-square rounded-xl overflow-hidden bg-gradient-to-br from-purple-500/10 via-blue-500/10 to-cyan-500/10">
-            <DynamicAvatarRenderer
-              modelPath="https://models.readyplayer.me/697b77b6fd03bbd0ce0d0506.glb"
-              style={{ width: "100%", height: "100%", minHeight: "250px" }}
-              lipsyncAnimation={false}
+        {/* Avatar 2D render (RPM thumbnail) */}
+        <div className="mb-6 w-full">
+          <div className="relative w-full aspect-square min-h-[200px] rounded-xl overflow-hidden bg-gradient-to-br from-purple-500/10 via-blue-500/10 to-cyan-500/10">
+            <img
+              src={getReadyPlayerMeThumbnailUrl(DEFAULT_AVATAR_GLB, { size: 512 })}
+              alt=""
+              className="w-full h-full object-cover object-center rounded-xl"
             />
           </div>
         </div>

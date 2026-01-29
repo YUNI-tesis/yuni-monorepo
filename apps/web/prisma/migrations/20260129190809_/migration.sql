@@ -76,6 +76,9 @@ CREATE TABLE "documents" (
     "storageKey" TEXT NOT NULL,
     "status" "DocumentStatus" NOT NULL DEFAULT 'PENDING',
     "error" TEXT,
+    "summary" JSONB,
+    "summaryStatus" "DocumentStatus",
+    "summaryError" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
