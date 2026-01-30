@@ -26,16 +26,16 @@ export function Select({
   return (
     <div className="w-full">
       {label && (
-        <label className="block text-sm font-medium text-white mb-2">
+        <label className="block text-sm font-medium text-theme mb-2">
           {label}
         </label>
       )}
       <select
         className={`
           w-full px-4 py-3
-          bg-white/5 border border-white/10 rounded-lg
-          text-white
-          focus:outline-none focus:ring-2 focus:ring-[#D365FF] focus:border-[#D365FF]
+          bg-surface border border-theme rounded-lg
+          text-theme
+          focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] focus-visible:border-[var(--color-focus-ring)]
           transition-all duration-200
           disabled:opacity-50 disabled:cursor-not-allowed
           ${error ? "border-red-500 focus:ring-red-500" : ""}
@@ -44,16 +44,16 @@ export function Select({
         {...props}
       >
         {options.map((option) => (
-          <option key={option.value} value={option.value} className="bg-[#0E0418]">
+          <option key={option.value} value={option.value} className="bg-background">
             {option.label}
           </option>
         ))}
       </select>
       {error && (
-        <p className="mt-1 text-sm text-red-400">{error}</p>
+        <p className="mt-1 text-sm text-error-theme" role="alert">{error}</p>
       )}
       {helperText && !error && (
-        <p className="mt-1 text-sm text-gray-500">{helperText}</p>
+        <p className="mt-1 text-sm text-muted-theme">{helperText}</p>
       )}
     </div>
   );

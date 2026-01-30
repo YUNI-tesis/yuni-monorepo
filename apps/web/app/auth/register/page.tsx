@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Logo } from "@/components/Logo";
+import { AuthBar } from "@/components/AuthBar";
 import { Button, TextField, Card } from "@/components/common";
 
 export const dynamic = "force-dynamic";
@@ -44,21 +45,23 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#0E0418] px-4">
+    <div className="flex min-h-screen flex-col bg-background">
+      <AuthBar />
+      <div className="flex flex-1 items-center justify-center px-4 pt-20">
       <div className="w-full max-w-md space-y-8">
         <div className="text-center">
           <Logo size="lg" className="justify-center mb-4" />
-          <h2 className="mt-6 text-center text-2xl font-semibold text-white">
+          <h2 className="mt-6 text-center text-2xl font-semibold text-foreground">
             Create your account
           </h2>
-          <p className="mt-2 text-sm text-white/70">
+          <p className="mt-2 text-sm text-muted-foreground">
             Join YUNI to start creating AI avatars
           </p>
         </div>
         <Card variant="bordered" padding="lg">
           <form className="space-y-6" onSubmit={handleSubmit}>
             {error && (
-              <div className="bg-red-500/20 border border-red-500/50 text-red-400 px-4 py-3 rounded-lg text-sm">
+              <div className="bg-red-500/20 border border-red-500/50 text-error-theme px-4 py-3 rounded-lg text-sm" role="alert">
                 {error}
               </div>
             )}
@@ -112,15 +115,16 @@ export default function RegisterPage() {
             </div>
 
             <div className="text-center">
-              <p className="text-sm text-white/70">
+              <p className="text-sm text-muted-foreground">
                 Already have an account?{" "}
-                <Link href="/auth/login" className="font-medium text-[#D365FF] hover:text-[#BE6ADC] transition-colors">
+                <Link href="/auth/login" className="font-medium text-accent-theme hover:opacity-80 transition-colors">
                   Sign in
                 </Link>
               </p>
             </div>
           </form>
         </Card>
+      </div>
       </div>
     </div>
   );

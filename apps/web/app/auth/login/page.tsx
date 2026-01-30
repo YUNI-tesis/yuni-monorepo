@@ -5,6 +5,7 @@ import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Logo } from "@/components/Logo";
+import { AuthBar } from "@/components/AuthBar";
 import { Button, TextField, Card } from "@/components/common";
 
 export const dynamic = "force-dynamic";
@@ -50,26 +51,28 @@ function LoginForm() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#0E0418] px-4">
+    <div className="flex min-h-screen flex-col bg-background">
+      <AuthBar />
+      <div className="flex flex-1 items-center justify-center px-4 pt-20">
       <div className="w-full max-w-md space-y-8">
         <div className="text-center">
           <Logo size="lg" className="justify-center mb-4" />
-          <h2 className="mt-6 text-center text-2xl font-semibold text-white">
+            <h2 className="mt-6 text-center text-2xl font-semibold text-foreground">
             Sign in to your account
           </h2>
-          <p className="mt-2 text-sm text-white/70">
+          <p className="mt-2 text-sm text-muted-foreground">
             Enter your credentials to access YUNI
           </p>
         </div>
         <Card variant="bordered" padding="lg">
           <form className="space-y-6" onSubmit={handleSubmit}>
             {success && (
-              <div className="bg-green-500/20 border border-green-500/50 text-green-400 px-4 py-3 rounded-lg text-sm">
+              <div className="bg-green-500/20 border border-green-500/50 text-success-theme px-4 py-3 rounded-lg text-sm" role="status">
                 Account created successfully! Please sign in.
               </div>
             )}
             {error && (
-              <div className="bg-red-500/20 border border-red-500/50 text-red-400 px-4 py-3 rounded-lg text-sm">
+              <div className="bg-red-500/20 border border-red-500/50 text-error-theme px-4 py-3 rounded-lg text-sm" role="alert">
                 {error}
               </div>
             )}
@@ -111,15 +114,16 @@ function LoginForm() {
             </div>
 
             <div className="text-center">
-              <p className="text-sm text-white/70">
+              <p className="text-sm text-muted-foreground">
                 Don't have an account?{" "}
-                <Link href="/auth/register" className="font-medium text-[#D365FF] hover:text-[#BE6ADC] transition-colors">
+                <Link href="/auth/register" className="font-medium text-accent-theme hover:opacity-80 transition-colors">
                   Sign up
                 </Link>
               </p>
             </div>
           </form>
         </Card>
+      </div>
       </div>
     </div>
   );
@@ -128,16 +132,16 @@ function LoginForm() {
 export default function LoginPage() {
   return (
     <Suspense fallback={
-      <div className="flex min-h-screen items-center justify-center bg-[#0E0418] px-4">
+      <div className="flex min-h-screen items-center justify-center bg-background px-4">
         <div className="w-full max-w-md space-y-8">
           <div className="text-center">
             <Logo size="lg" className="justify-center mb-4" />
-            <h2 className="mt-6 text-center text-2xl font-semibold text-white">
+            <h2 className="mt-6 text-center text-2xl font-semibold text-foreground">
               Sign in to your account
             </h2>
           </div>
           <Card variant="bordered" padding="lg">
-            <div className="text-center text-white/70">Cargando...</div>
+            <div className="text-center text-muted-foreground">Cargando...</div>
           </Card>
         </div>
       </div>

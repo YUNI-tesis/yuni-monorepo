@@ -49,7 +49,7 @@ export function Waveform({
 
   return (
     <div
-      className={`flex items-end justify-center gap-1 rounded-lg bg-white/5 p-2 border border-white/10 ${className}`}
+      className={`flex items-end justify-center gap-1 rounded-lg bg-surface p-2 border border-theme ${className}`}
       style={{ height: `${height}px` }}
     >
       {waveformData.map((value, index) => (

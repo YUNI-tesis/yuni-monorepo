@@ -59,7 +59,7 @@ export default function LoginPage() {
             </div>
           )}
           {error && (
-            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 px-4 py-3 rounded">
+            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-error-theme px-4 py-3 rounded">
               {error}
             </div>
           )}
@@ -109,7 +109,7 @@ export default function LoginPage() {
           </div>
 
           <div className="text-center">
-            <p className="text-sm text-gray-600 dark:text-gray-400">
+            <p className="text-sm text-muted-theme">
               Don't have an account?{" "}
               <Link href="/auth/register" className="font-medium text-blue-600 hover:text-blue-500">
                 Sign up

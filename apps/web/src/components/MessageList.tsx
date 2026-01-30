@@ -18,8 +18,8 @@ export function MessageList({ messages }: MessageListProps) {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
               </svg>
             </div>
-            <p className="text-gray-400 text-lg">No hay mensajes aún</p>
-            <p className="text-gray-500 text-sm mt-1">Comienza una conversación con tu agente</p>
+            <p className="text-muted-theme text-lg">No hay mensajes aún</p>
+            <p className="text-muted-foreground text-sm mt-1">Comienza una conversación con tu agente</p>
           </div>
         </div>
       ) : (
@@ -39,7 +39,7 @@ export function MessageList({ messages }: MessageListProps) {
               className={`max-w-[75%] rounded-2xl px-5 py-4 ${
                 message.role === "user"
                   ? "glass-strong border border-purple-500/30 bg-gradient-to-br from-purple-600/20 to-blue-600/20 text-white"
-                  : "glass-strong border border-white/10 text-gray-100"
+                  : "glass-strong border border-theme text-foreground"
               }`}
             >
               <p className="whitespace-pre-wrap leading-relaxed">{message.content}</p>

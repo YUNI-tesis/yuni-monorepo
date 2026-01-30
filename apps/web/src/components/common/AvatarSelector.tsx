@@ -36,7 +36,7 @@ export function AvatarSelector({
 
   return (
     <div className="space-y-4">
-      <label className="block text-sm font-medium text-white mb-2">
+      <label className="block text-sm font-medium text-theme mb-2">
         Avatar
       </label>
       
@@ -50,19 +50,19 @@ export function AvatarSelector({
               cursor-pointer transition-all duration-200
               ${selectedAvatarId === avatar.id 
                 ? "border-[#D365FF] ring-2 ring-[#D365FF] ring-opacity-50" 
-                : "hover:border-white/30"
+                : "hover:border-theme-strong"
               }
             `}
             onClick={() => onSelect?.(avatar.id)}
           >
-            <div className="aspect-square mb-3 rounded-lg bg-white/5 flex items-center justify-center">
+            <div className="aspect-square mb-3 rounded-lg bg-surface flex items-center justify-center">
               <div className="w-16 h-16 rounded-full gradient-primary" />
             </div>
-            <p className="text-sm font-medium text-white text-center">
+            <p className="text-sm font-medium text-foreground text-center">
               {avatar.name}
             </p>
             {selectedAvatarId === avatar.id && (
-              <div className="mt-2 flex items-center justify-center gap-2 text-[#D365FF] text-xs">
+              <div className="mt-2 flex items-center justify-center gap-2 text-accent-theme text-xs">
                 <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                   <path
                     fillRule="evenodd"

@@ -584,7 +584,7 @@ export function LiveCall({ agentId, conversationId, userId, onClose }: LiveCallP
   return (
     <div className="flex flex-col h-full bg-gradient-to-b from-transparent to-black/20 overflow-hidden">
       {/* Header */}
-      <div className="flex-shrink-0 flex items-center justify-between px-6 py-4 border-b border-white/10 glass-strong">
+      <div className="flex-shrink-0 flex items-center justify-between px-6 py-4 border-b border-theme glass-strong">
         <div className="flex items-center space-x-4">
           <div className="flex items-center space-x-3">
             <div
@@ -599,14 +599,14 @@ export function LiveCall({ agentId, conversationId, userId, onClose }: LiveCallP
               }`}
             />
             <div className="flex flex-col">
-              <span className="font-medium text-white">
+              <span className="font-medium text-foreground">
                 {state === "connecting" && "Conectando..."}
                 {state === "error" && "Error de conexión"}
                 {state === "idle" && "Inactivo"}
                 {state !== "connecting" && state !== "error" && state !== "idle" && "Llamada en curso"}
               </span>
               {state !== "connecting" && state !== "error" && state !== "idle" && (
-                <span className="text-xs text-gray-400">
+                <span className="text-xs text-muted-theme">
                   {formatDuration(callDuration)}
                 </span>
               )}
@@ -614,7 +614,7 @@ export function LiveCall({ agentId, conversationId, userId, onClose }: LiveCallP
           </div>
 
           {/* Cost Meter */}
-          <div className="border-l border-white/10 pl-4">
+          <div className="border-l border-theme pl-4">
             <CostMeter conversationId={conversationId} />
           </div>
         </div>
@@ -646,13 +646,13 @@ export function LiveCall({ agentId, conversationId, userId, onClose }: LiveCallP
       </div>
 
       {/* Controls - Fixed at Bottom */}
-      <div className="flex-shrink-0 flex items-center justify-center space-x-4 px-6 py-4 border-t border-white/10 glass-strong">
+      <div className="flex-shrink-0 flex items-center justify-center space-x-4 px-6 py-4 border-t border-theme glass-strong">
         <button
           onClick={handleToggleMute}
           className={`p-4 rounded-full transition-all ${
             isMuted
               ? "bg-red-600/80 hover:bg-red-600 border border-red-500/30"
-              : "glass border border-white/10 hover:bg-white/10"
+              : "glass border border-theme hover:bg-surface-hover"
           }`}
           title={isMuted ? "Desactivar silencio" : "Silenciar"}
         >

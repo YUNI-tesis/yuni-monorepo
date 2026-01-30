@@ -23,8 +23,8 @@ export function Card({
   };
 
   const variantStyles = {
-    default: "bg-white/5 backdrop-blur-sm",
-    bordered: "bg-white/5 backdrop-blur-sm border border-white/10",
+    default: "bg-surface backdrop-blur-sm",
+    bordered: "bg-surface backdrop-blur-sm border border-theme",
   };
 
   return (

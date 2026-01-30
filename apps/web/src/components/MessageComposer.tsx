@@ -20,7 +20,7 @@ export function MessageComposer({ onSend, disabled }: MessageComposerProps) {
   }
 
   return (
-    <div className="px-6 py-4 border-t border-white/10 glass-strong">
+    <div className="px-6 py-4 border-t border-theme glass-strong">
       <form onSubmit={handleSubmit}>
         <div className="flex gap-3">
           <textarea
@@ -35,7 +35,7 @@ export function MessageComposer({ onSend, disabled }: MessageComposerProps) {
             disabled={disabled}
             placeholder="Escribe un mensaje..."
             rows={2}
-            className="flex-1 px-4 py-3 glass rounded-xl border border-white/10 text-white placeholder-gray-500 resize-none focus:outline-none focus:border-purple-500/50 focus:ring-2 focus:ring-purple-500/20 transition-all bg-white/5 focus-gradient disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex-1 px-4 py-3 glass rounded-xl border border-theme text-theme placeholder:text-muted-theme resize-none focus:outline-none focus-visible:border-[var(--color-focus-ring)] focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] transition-all bg-surface focus-gradient disabled:opacity-50 disabled:cursor-not-allowed"
           />
           <Button
             variant="outline"
@@ -54,7 +54,7 @@ export function MessageComposer({ onSend, disabled }: MessageComposerProps) {
             )}
           </Button>
         </div>
-        <p className="text-xs text-gray-500 pt-2 px-1">
+        <p className="text-xs text-muted-theme pt-2 px-1">
           Presiona Enter para enviar, Shift+Enter para nueva línea
         </p>
       </form>

@@ -3,18 +3,18 @@ import path from "path";
 import fs from "fs";
 import { config } from "dotenv";
 
-// Load environment variables from monorepo root .env.local
-const rootEnvPath = path.resolve(__dirname, "../../.env.local");
+// Load environment variables from monorepo root .env
+const rootEnvPath = path.resolve(__dirname, "../../.env");
 const localEnvPath = path.resolve(__dirname, ".env.local");
 
-// Always sync root .env.local to local .env.local if root exists
+// Always sync root .env to local .env.local if root exists
 if (fs.existsSync(rootEnvPath)) {
-  // Load root .env.local into process.env
+  // Load root .env into process.env
   const result = config({ path: rootEnvPath });
   if (result.error) {
-    console.warn("⚠️  Error loading root .env.local:", result.error);
+    console.warn("⚠️  Error loading root .env:", result.error);
   } else {
-    console.log("✅ Loaded environment variables from root .env.local");
+    console.log("✅ Loaded environment variables from root .env");
   }
 
   // Always sync/copy root to local so Next.js can read it automatically
@@ -30,10 +30,10 @@ if (fs.existsSync(rootEnvPath)) {
 
   if (shouldCopy) {
     fs.copyFileSync(rootEnvPath, localEnvPath);
-    console.log("✅ Synced root .env.local to apps/web/.env.local");
+    console.log("✅ Synced root .env to apps/web/.env.local");
   }
 } else {
-  console.warn("⚠️  Root .env.local not found at:", rootEnvPath);
+  console.warn("⚠️  Root .env not found at:", rootEnvPath);
 }
 
 const nextConfig: NextConfig = {

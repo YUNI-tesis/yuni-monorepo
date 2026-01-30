@@ -139,15 +139,15 @@ export function VoiceSelector({ value, onChange }: VoiceSelectorProps) {
             className={`p-4 rounded-lg border-2 transition-all ${
               provider === "openai"
                 ? "border-purple-500 bg-purple-500/20"
-                : "border-white/10 bg-white/5 hover:bg-white/10"
+                : "border-theme bg-surface hover:bg-surface-hover"
             }`}
           >
             <div className="text-left">
-              <div className="font-semibold text-white mb-1">OpenAI Realtime</div>
-              <div className="text-xs text-white/70">
+              <div className="font-semibold text-foreground mb-1">OpenAI Realtime</div>
+              <div className="text-xs text-muted-foreground">
                 ⚡ Latencia ultra-baja (~500ms)
               </div>
-              <div className="text-xs text-white/60 mt-1">
+              <div className="text-xs text-muted-theme mt-1">
                 Voces predeterminadas optimizadas
               </div>
             </div>
@@ -159,15 +159,15 @@ export function VoiceSelector({ value, onChange }: VoiceSelectorProps) {
             className={`p-4 rounded-lg border-2 transition-all ${
               provider === "elevenlabs"
                 ? "border-purple-500 bg-purple-500/20"
-                : "border-white/10 bg-white/5 hover:bg-white/10"
+                : "border-theme bg-surface hover:bg-surface-hover"
             }`}
           >
             <div className="text-left">
-              <div className="font-semibold text-white mb-1">ElevenLabs</div>
-              <div className="text-xs text-white/70">
+              <div className="font-semibold text-foreground mb-1">ElevenLabs</div>
+              <div className="text-xs text-muted-foreground">
                 🎨 Voces personalizadas
               </div>
-              <div className="text-xs text-white/60 mt-1">
+              <div className="text-xs text-muted-theme mt-1">
                 Mayor latencia (~2-3s)
               </div>
             </div>
@@ -177,7 +177,7 @@ export function VoiceSelector({ value, onChange }: VoiceSelectorProps) {
 
       {/* Voice Selection */}
       <div>
-        <label className="block text-sm font-medium text-white/90 mb-2">
+        <label className="block text-sm font-medium text-muted-strong-theme mb-2">
           Seleccionar Voz
         </label>
 
@@ -191,11 +191,11 @@ export function VoiceSelector({ value, onChange }: VoiceSelectorProps) {
                 className={`p-3 rounded-lg border text-left transition-all ${
                   selectedVoiceId === voice.id
                     ? "border-purple-500 bg-purple-500/20"
-                    : "border-white/10 bg-white/5 hover:bg-white/10"
+                    : "border-theme bg-surface hover:bg-surface-hover"
                 }`}
               >
-                <div className="font-medium text-white text-sm">{voice.name}</div>
-                <div className="text-xs text-white/60 mt-1">{voice.description}</div>
+                <div className="font-medium text-foreground text-sm">{voice.name}</div>
+                <div className="text-xs text-muted-theme mt-1">{voice.description}</div>
               </button>
             ))}
           </div>
@@ -204,8 +204,8 @@ export function VoiceSelector({ value, onChange }: VoiceSelectorProps) {
         {provider === "elevenlabs" && (
           <>
             {loading && (
-              <div className="flex items-center justify-center p-8 glass rounded-lg border border-white/10">
-                <div className="flex items-center space-x-2 text-white/70">
+              <div className="flex items-center justify-center p-8 glass rounded-lg border border-theme">
+                <div className="flex items-center space-x-2 text-muted-foreground">
                   <svg
                     className="animate-spin h-5 w-5"
                     xmlns="http://www.w3.org/2000/svg"
@@ -233,8 +233,8 @@ export function VoiceSelector({ value, onChange }: VoiceSelectorProps) {
 
             {error && (
               <div className="p-4 glass rounded-lg border border-red-500/30 bg-red-500/10">
-                <p className="text-sm text-red-400">{error}</p>
-                <p className="text-xs text-red-400/70 mt-1">
+                <p className="text-sm text-error-theme" role="alert">{error}</p>
+                <p className="text-xs text-error-theme opacity-90 mt-1">
                   Verifica que ELEVENLABS_API_KEY esté configurada
                 </p>
               </div>
@@ -250,18 +250,18 @@ export function VoiceSelector({ value, onChange }: VoiceSelectorProps) {
                     className={`w-full p-3 rounded-lg border text-left transition-all ${
                       selectedVoiceId === voice.voice_id
                         ? "border-purple-500 bg-purple-500/20"
-                        : "border-white/10 bg-white/5 hover:bg-white/10"
+                        : "border-theme bg-surface hover:bg-surface-hover"
                     }`}
                   >
                     <div className="flex items-center justify-between">
                       <div>
-                        <div className="font-medium text-white text-sm">{voice.name}</div>
+                        <div className="font-medium text-foreground text-sm">{voice.name}</div>
                         {voice.labels && (
                           <div className="flex flex-wrap gap-1 mt-1">
                             {Object.entries(voice.labels).map(([key, value]) => (
                               <span
                                 key={key}
-                                className="text-xs px-2 py-0.5 rounded bg-white/10 text-white/70"
+                                className="text-xs px-2 py-0.5 rounded bg-surface-hover text-muted-foreground"
                               >
                                 {value}
                               </span>
@@ -284,11 +284,11 @@ export function VoiceSelector({ value, onChange }: VoiceSelectorProps) {
             )}
 
             {!loading && !error && elevenLabsVoices.length === 0 && (
-              <div className="p-4 glass rounded-lg border border-white/10 text-center">
-                <p className="text-sm text-white/70">
+              <div className="p-4 glass rounded-lg border border-theme text-center">
+                <p className="text-sm text-muted-foreground">
                   No se encontraron voces de ElevenLabs
                 </p>
-                <p className="text-xs text-white/60 mt-1">
+                <p className="text-xs text-muted-theme mt-1">
                   Verifica tu configuración o crea voces en ElevenLabs
                 </p>
               </div>

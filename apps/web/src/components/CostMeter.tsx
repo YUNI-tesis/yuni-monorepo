@@ -39,17 +39,17 @@ export function CostMeter({ conversationId }: CostMeterProps) {
 
   if (loading) {
     return (
-      <div className="glass rounded-lg px-3 py-2 border border-white/10">
+      <div className="glass rounded-lg px-3 py-2 border border-theme">
         <div className="flex items-center gap-2">
           <div className="w-4 h-4 border-2 border-purple-500/30 border-t-purple-500 rounded-full animate-spin"></div>
-          <span className="text-xs text-gray-400">Cargando...</span>
+          <span className="text-xs text-muted-theme">Cargando...</span>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="glass rounded-lg px-4 py-2 border border-white/10">
+    <div className="glass rounded-lg px-4 py-2 border border-theme">
       <div className="flex items-center gap-3">
         <div className="flex items-center gap-2">
           <svg className="w-4 h-4 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -58,7 +58,7 @@ export function CostMeter({ conversationId }: CostMeterProps) {
           <span className="text-sm font-semibold text-white">${cost.usd.toFixed(4)}</span>
         </div>
         <div className="h-4 w-px bg-white/20"></div>
-        <div className="text-xs text-gray-400">
+        <div className="text-xs text-muted-theme">
           <span className="text-purple-300">{cost.tokensIn.toLocaleString()}</span> in / <span className="text-blue-300">{cost.tokensOut.toLocaleString()}</span> out
         </div>
       </div>

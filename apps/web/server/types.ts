@@ -426,7 +426,7 @@ export interface ErrorMessage {
 
 export interface MetricsMessage {
   type: "metrics";
-  latency: {
+  latency?: {
     asr?: number; // Audio to transcript
     llm?: number; // Transcript to text response
     tts?: number; // Text to first audio chunk
@@ -436,6 +436,10 @@ export interface MetricsMessage {
     input_tokens?: number;
     output_tokens?: number;
     audio_seconds?: number;
+  };
+  rag?: {
+    total: number; // RAG pipeline total latency
+    contextLength: number; // Length of formatted context
   };
 }
 

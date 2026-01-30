@@ -6,7 +6,7 @@ import Link from "next/link";
 import { Agent } from "@/lib/schemas";
 import { AgentEditor } from "@/components/AgentEditor";
 import { ChatPanel } from "@/components/ChatPanel";
-import { DocumentsSection } from "@/components/DocumentsSection";
+import { AgentContextSection } from "@/components/AgentContextSection";
 import { Button } from "@/components/common";
 import { getReadyPlayerMeThumbnailUrl } from "@/lib/avatar-utils";
 
@@ -55,17 +55,17 @@ export default function AgentDetailPage() {
 
   if (loading) {
     return (
-      <div className="h-[calc(100vh-5rem)] bg-[#0E0418] p-8 overflow-y-auto">
-        <div className="text-white">Cargando...</div>
+      <div className="h-[calc(100vh-5rem)] bg-background p-8 overflow-y-auto">
+        <div className="text-foreground">Cargando...</div>
       </div>
     );
   }
 
   if (error || !agent) {
     return (
-      <div className="h-[calc(100vh-5rem)] bg-[#0E0418] p-8 overflow-y-auto">
-        <div className="text-red-400">Error: {error || "Agente no encontrado"}</div>
-        <Link href="/agents" className="text-[#D365FF] hover:underline mt-4 inline-block">
+      <div className="h-[calc(100vh-5rem)] bg-background p-8 overflow-y-auto">
+        <div className="text-error-theme" role="alert">Error: {error || "Agente no encontrado"}</div>
+        <Link href="/agents" className="text-accent-theme hover:underline mt-4 inline-block">
           ← Volver a Agentes
         </Link>
       </div>
@@ -74,16 +74,16 @@ export default function AgentDetailPage() {
 
   if (editing) {
     return (
-      <div className="h-[calc(100vh-5rem)] bg-[#0E0418] overflow-y-auto">
+      <div className="min-h-screen bg-background">
         <div className="max-w-4xl mx-auto p-8">
           <div className="mb-6">
           <button
               onClick={() => setEditing(false)}
-              className="text-[#D365FF] hover:underline mb-4 inline-block text-sm cursor-pointer"
+              className="text-accent-theme hover:underline mb-4 inline-block text-sm cursor-pointer"
             >
               ← Cancelar edición
             </button>
-            <h1 className="text-3xl font-bold text-white">Editar Agente</h1>
+            <h1 className="text-3xl font-bold text-foreground">Editar Agente</h1>
           </div>
           <AgentEditor agentId={agentId} onEditSuccess={() => setEditing(false)} />
         </div>
@@ -92,12 +92,12 @@ export default function AgentDetailPage() {
   }
 
   return (
-    <div className="h-[calc(100vh-5rem)] bg-[#0E0418] flex overflow-hidden">
+    <div className="h-[calc(100vh-5rem)] bg-background flex overflow-hidden">
       {/* Sidebar - Always visible */}
-      <div className="w-80 border-r border-white/10 p-6 overflow-y-auto bg-[#0E0418] flex-shrink-0 z-10">
+      <div className="w-80 border-r border-theme p-6 overflow-y-auto bg-background flex-shrink-0 z-10">
         <div className="mb-6">
-          <h1 className="text-2xl font-bold mb-2 text-white">{agent.name}</h1>
-          <p className="text-sm text-white/70 mb-4">{agent.description}</p>
+          <h1 className="text-2xl font-bold mb-2 text-foreground">{agent.name}</h1>
+          <p className="text-sm text-muted-foreground mb-4">{agent.description}</p>
         </div>
 
         {/* Avatar 2D render (RPM thumbnail) */}
@@ -113,8 +113,8 @@ export default function AgentDetailPage() {
 
         <div className="space-y-4 mb-6">
           <div>
-            <h3 className="text-sm font-semibold mb-2 text-white">Voz</h3>
-            <div className="bg-white/5 p-3 rounded-lg border border-white/10">
+            <h3 className="text-sm font-semibold mb-2 text-foreground">Voz</h3>
+            <div className="bg-surface p-3 rounded-lg border border-theme">
               {agent.voice ? (
                 <div className="space-y-1">
                   <div className="flex items-center gap-2">
@@ -122,38 +122,37 @@ export default function AgentDetailPage() {
                       {agent.voice.provider === "openai" ? "OpenAI Realtime" : "ElevenLabs"}
                     </span>
                     {agent.voice.provider === "openai" && (
-                      <span className="px-2 py-0.5 text-xs bg-green-500/20 text-green-300 rounded">
+                      <span className="px-2 py-0.5 text-xs bg-green-500/20 text-success-theme rounded">
                         Baja latencia
                       </span>
                     )}
                   </div>
-                  <p className="text-xs text-white/60">
-                    Voz: <span className="text-white/80">{agent.voice.voiceId}</span>
+                    <p className="text-xs text-muted-foreground">
+                    Voz: <span className="text-muted-strong-theme">{agent.voice.voiceId}</span>
                   </p>
                   {agent.voice.speakingRate && agent.voice.speakingRate !== 1.0 && (
-                    <p className="text-xs text-white/60">
-                      Velocidad: <span className="text-white/80">{agent.voice.speakingRate}x</span>
+                    <p className="text-xs text-muted-foreground">
+                      Velocidad: <span className="text-muted-strong-theme">{agent.voice.speakingRate}x</span>
                     </p>
                   )}
                 </div>
               ) : (
-                <p className="text-xs text-white/40">Voz predeterminada (OpenAI Alloy)</p>
+                <p className="text-xs text-muted-theme">Voz predeterminada (OpenAI Alloy)</p>
               )}
             </div>
           </div>
           <div>
-            <h3 className="text-sm font-semibold mb-2 text-white">System Prompt</h3>
-            <p className="text-xs text-white/60 whitespace-pre-wrap bg-white/5 p-3 rounded-lg border border-white/10">
+            <h3 className="text-sm font-semibold mb-2 text-foreground">System Prompt</h3>
+            <p className="text-xs text-muted-foreground whitespace-pre-wrap bg-surface p-3 rounded-lg border border-theme">
               {agent.systemPrompt}
             </p>
           </div>
-          <div>
-            <h3 className="text-sm font-semibold mb-2 text-white">Contexto</h3>
-            <p className="text-xs text-white/60 whitespace-pre-wrap bg-white/5 p-3 rounded-lg border border-white/10 max-h-40 overflow-y-auto">
-              {agent.context || "Sin contexto"}
-            </p>
-          </div>
-          <DocumentsSection agentId={agentId} />
+          <AgentContextSection
+            agentId={agentId}
+            readOnly={true}
+            contextText={agent.context ?? ""}
+            variant="sidebar"
+          />
         </div>
 
         <div className="flex gap-3">

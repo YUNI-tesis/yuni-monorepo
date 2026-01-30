@@ -82,14 +82,21 @@ export function createChatGraph(apiKey?: string) {
   async function retrieveContextNode(state: GraphState): Promise<Partial<GraphState>> {
     if (!state.agent || state.blocked) {
       // Skip retrieval if blocked or agent not loaded
+      console.log(`[RAG] Skipping retrieval: blocked=${state.blocked}, agent loaded=${!!state.agent}`);
       return { retrievalContext: "" };
     }
 
     const query = state.sanitizedUserMessage || state.userMessage;
+    console.log(`[RAG] Retrieving context for agentId=${state.agentId}`);
     
     // Intelligent retrieval: combines summaries + chunks based on query type
     const context = await retrieveContextForAgent(state.agentId, query, 6);
     const retrievalContext = formatRetrievalContext(context);
+    
+    console.log(`[RAG] Retrieval context length: ${retrievalContext.length} chars`);
+    if (retrievalContext) {
+      console.log(`[RAG] Context preview: ${retrievalContext.substring(0, 200)}...`);
+    }
 
     return { retrievalContext };
   }

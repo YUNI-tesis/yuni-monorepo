@@ -4,10 +4,11 @@
  */
 
 import WebSocket, { WebSocketServer } from "ws";
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient } from "@yuni/database";
 import { RealtimeClient } from "./realtime-client";
 import { synthesizeWithAgentVoice } from "./tts-providers";
 import { buildSystemPrompt } from "../src/lib/agent-utils";
+import { retrieveContextForAgent, formatRetrievalContext } from "../src/lib/retrieval";
 import type {
   CallConnection,
   ClientMessage,
@@ -18,6 +19,7 @@ import type {
   VoiceMode,
   OpenAIRealtimeVoice,
 } from "./types";
+import type { RetrievalContext } from "../src/lib/retrieval";
 
 const prisma = new PrismaClient();
 
@@ -426,6 +428,95 @@ async function handleRealtimeEvent(
         const asrLatency = Date.now() - connection.metrics.asrStartTime;
         console.log(`[Metrics] ASR latency: ${asrLatency}ms`);
       }
+
+      // ========================================
+      // ✨ RAG Integration for LiveCall (Fase A: MVP)
+      // ========================================
+      const ragStartTime = Date.now();
+      
+      try {
+        console.log(`[RAG LiveCall] Retrieving context for agent ${connection.agentId}`);
+        console.log(`[RAG LiveCall] Query: "${event.transcript}"`);
+        
+        // Retrieve context from documents
+        const retrievalContext: RetrievalContext = await retrieveContextForAgent(
+          connection.agentId,
+          event.transcript,
+          6 // limit
+        );
+        
+        const formattedContext = formatRetrievalContext(retrievalContext);
+        
+        if (formattedContext) {
+          console.log(`[RAG LiveCall] Found context (${formattedContext.length} chars)`);
+          
+          // Get agent for base prompt
+          const agent = await prisma.agent.findUnique({
+            where: { id: connection.agentId }
+          });
+          
+          if (!agent) {
+            throw new Error("Agent not found");
+          }
+          
+          // Build updated prompt with RAG context
+          const basePrompt = buildSystemPrompt({
+            id: agent.id,
+            name: agent.name,
+            description: agent.description,
+            systemPrompt: agent.systemPrompt,
+            context: agent.context,
+            toolsAllowed: agent.toolsAllowed as any,
+            voice: agent.voice as any,
+            createdAt: agent.createdAt.toISOString(),
+            updatedAt: agent.updatedAt.toISOString(),
+          });
+          
+          const updatedPrompt = basePrompt + formattedContext + `
+
+CRITICAL INSTRUCTIONS FOR DOCUMENT-BASED RESPONSES:
+
+You have access to two types of context:
+1. DOCUMENT SUMMARIES: Use for general questions about topics, themes, and high-level content
+2. DETAILED CHUNKS: Use for specific questions requiring exact data, quotes, or precise details
+
+Response Rules:
+- ONLY use information explicitly present in the summaries or chunks above
+- For general questions: Primarily use the summaries (faster, comprehensive)
+- For specific questions (exact numbers, dates, quotes, passwords, codes): Use the detailed chunks
+- If information is not in the provided context: Say "I couldn't find that information in the uploaded documents"
+- NEVER invent or assume information not present in the context
+- When citing specific data, mention it comes from the uploaded documents`;
+          
+          // Update Realtime session with new instructions
+          const realtimeClient = connection.realtimeWs as any as RealtimeClient;
+          await realtimeClient.updateSession({
+            instructions: updatedPrompt,
+          });
+          
+          const ragLatency = Date.now() - ragStartTime;
+          console.log(`[Metrics] RAG latency: ${ragLatency}ms`);
+          
+          // Send RAG metrics to client
+          sendToClient(connection.ws, {
+            type: "metrics",
+            rag: {
+              total: ragLatency,
+              contextLength: formattedContext.length,
+            }
+          });
+        } else {
+          console.log(`[RAG LiveCall] No document context found`);
+          const ragLatency = Date.now() - ragStartTime;
+          console.log(`[Metrics] RAG latency (no context): ${ragLatency}ms`);
+        }
+      } catch (error: any) {
+        console.error(`[RAG LiveCall] Error retrieving context:`, error);
+        // Continue without RAG if it fails (graceful degradation)
+      }
+      // ========================================
+      // END RAG Integration
+      // ========================================
 
       updateConnectionState(connection, "generating");
       connection.metrics.llmStartTime = Date.now();

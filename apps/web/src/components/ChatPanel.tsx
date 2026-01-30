@@ -149,7 +149,7 @@ export function ChatPanel({ agentId, conversationId: initialConversationId }: Ch
       <div className="flex items-center justify-center h-full">
         <div className="text-center">
           <div className="w-16 h-16 border-4 border-purple-500/30 border-t-purple-500 rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-gray-400">Cargando conversación...</p>
+          <p className="text-muted-theme">Cargando conversación...</p>
         </div>
       </div>
     );
@@ -159,7 +159,7 @@ export function ChatPanel({ agentId, conversationId: initialConversationId }: Ch
     return (
       <div className="flex items-center justify-center h-full">
         <div className="glass rounded-xl border border-red-500/30 bg-red-500/10 px-6 py-4">
-          <p className="text-red-400">Error: No se pudo crear la conversación</p>
+          <p className="text-error-theme" role="alert">Error: No se pudo crear la conversación</p>
         </div>
       </div>
     );
@@ -168,16 +168,16 @@ export function ChatPanel({ agentId, conversationId: initialConversationId }: Ch
   return (
     <div className="flex flex-col h-full bg-gradient-to-b from-transparent to-black/20 overflow-hidden">
       {/* Fixed Header */}
-      <div className="flex-shrink-0 px-6 py-4 border-b border-white/10 glass-strong flex justify-between items-center">
+      <div className="flex-shrink-0 px-6 py-4 border-b border-theme glass-strong flex justify-between items-center">
         <div className="flex items-center gap-6">
           <h2 className="text-2xl font-bold gradient-text tracking-tight">Chat</h2>
-          <div className="flex gap-2 glass rounded-xl p-1 border border-white/10">
+          <div className="flex gap-2 glass rounded-xl p-1 border border-theme">
             <button
               onClick={() => setCallMode(false)}
               className={`cursor-pointer px-4 py-2 text-sm font-medium rounded-lg transition-all ${
                 !callMode
                   ? "bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow-lg"
-                  : "text-gray-400 hover:text-white hover:bg-white/5"
+                  : "text-muted-foreground hover:text-theme hover:bg-surface"
               }`}
             >
               <span className="flex items-center gap-2">
@@ -192,7 +192,7 @@ export function ChatPanel({ agentId, conversationId: initialConversationId }: Ch
               className={`cursor-pointer px-4 py-2 text-sm font-medium rounded-lg transition-all ${
                 callMode
                   ? "bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow-lg"
-                  : "text-gray-400 hover:text-white hover:bg-white/5"
+                  : "text-muted-foreground hover:text-theme hover:bg-surface"
               }`}
             >
               <span className="flex items-center gap-2">
@@ -233,7 +233,7 @@ export function ChatPanel({ agentId, conversationId: initialConversationId }: Ch
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
                       </svg>
                     </div>
-                    <div className="max-w-[75%] glass-strong rounded-2xl px-5 py-4 border border-white/10 text-gray-100">
+                    <div className="max-w-[75%] glass-strong rounded-2xl px-5 py-4 border border-theme text-foreground">
                       <p className="whitespace-pre-wrap leading-relaxed">{streamingText}</p>
                       <span className="inline-block w-2 h-4 bg-purple-400 rounded animate-pulse ml-1" />
                     </div>

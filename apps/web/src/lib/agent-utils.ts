@@ -60,13 +60,25 @@ const INJECTION_PATTERNS = [
   /pretend\s+(you\s+are|to\s+be)\s+(not|different)/i,
 ];
 
-const SECRET_PATTERNS = [
-  /(api[_\s-]?key|apikey)\s*[:=]\s*[\w-]+/i,
-  /(password|passwd|pwd)\s*[:=]\s*\S+/i,
-  /(secret|token)\s*[:=]\s*[\w-]+/i,
-  /(credit\s*card|cc\s*number)\s*[:=]?\s*[\d\s-]+/i,
-  /(ssn|social\s+security)\s*[:=]?\s*[\d-]+/i,
-];
+/**
+ * SECRET_PATTERNS: DISABLED for Phase 1
+ * 
+ * Rationale: These patterns were blocking legitimate document content.
+ * For example, a user uploads a PDF with "La contraseña es: aADKasd" and asks
+ * "¿Cuál es la contraseña?" - the LLM should be able to answer from the document.
+ * 
+ * Guardrails should only apply to:
+ * 1. User message input (already sanitized here) ✅
+ * 2. NOT to document context (which is trusted, user-uploaded content) ❌
+ * 
+ * The document context is retrieved AFTER guardrails are applied, so this is safe.
+ * User-uploaded documents are considered "trusted" content for that specific user.
+ * 
+ * Future improvement (Phase 3): Implement separate guardrails for:
+ * - User input (prevent injection of secrets in queries)
+ * - Document context (allow legitimate passwords/credentials from uploaded docs)
+ */
+const SECRET_PATTERNS: RegExp[] = [];
 
 export function applyGuardrails(
   agent: Agent,

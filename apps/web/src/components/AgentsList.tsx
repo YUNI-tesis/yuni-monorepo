@@ -36,7 +36,7 @@ export function AgentsList() {
       <div className="flex items-center justify-center min-h-[400px]">
         <div className="text-center">
           <div className="w-16 h-16 border-4 border-purple-500/30 border-t-purple-500 rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-gray-400">Cargando agentes...</p>
+          <p className="text-muted-theme">Cargando agentes...</p>
         </div>
       </div>
     );
@@ -45,7 +45,7 @@ export function AgentsList() {
   if (error) {
     return (
       <div className="p-6 glass rounded-xl border border-red-500/30 bg-red-500/10">
-        <p className="text-red-400">Error: {error}</p>
+        <p className="text-error-theme" role="alert">Error: {error}</p>
       </div>
     );
   }
@@ -61,7 +61,7 @@ export function AgentsList() {
             </svg>
           </div>
           <h3 className="text-3xl font-bold gradient-text mb-3">No hay agentes creados aún</h3>
-          <p className="text-gray-400 text-lg">Comienza creando tu primer agente de IA</p>
+          <p className="text-muted-theme text-lg">Comienza creando tu primer agente de IA</p>
         </div>
         <Link
           href="/agents/new"
@@ -81,7 +81,7 @@ export function AgentsList() {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h2 className="text-4xl font-bold gradient-text mb-2 tracking-tight">Tus Agentes</h2>
-          <p className="text-gray-400">Gestiona tus asistentes de IA personalizados</p>
+          <p className="text-muted-theme">Gestiona tus asistentes de IA personalizados</p>
         </div>
         <Link
           href="/agents/new"
@@ -101,7 +101,7 @@ export function AgentsList() {
             className="group relative block"
             style={{ animationDelay: `${index * 0.05}s` }}
           >
-            <div className="glass-strong rounded-2xl p-6 h-full flex flex-col transition-all duration-300 hover-lift border border-white/10 hover:border-purple-500/50 relative overflow-hidden">
+            <div className="glass-strong rounded-2xl p-6 h-full flex flex-col transition-all duration-300 hover-lift border border-theme hover:border-purple-500/50 relative overflow-hidden">
               {/* Gradient border on hover */}
               <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-purple-500/0 via-purple-500/10 to-cyan-500/0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"></div>
               
@@ -118,15 +118,15 @@ export function AgentsList() {
                 {agent.name}
               </h3>
               
-              <p className="text-sm text-gray-400 line-clamp-2 mb-4 flex-grow">
+              <p className="text-sm text-muted-theme line-clamp-2 mb-4 flex-grow">
                 {agent.description || "Sin descripción"}
               </p>
               
-              <div className="flex items-center justify-between pt-4 border-t border-white/10">
+              <div className="flex items-center justify-between pt-4 border-t border-theme">
                 <span className="px-2.5 py-1 text-xs font-medium rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30">
                   Activo
                 </span>
-                <div className="text-xs text-gray-500">
+                <div className="text-xs text-muted-foreground">
                   {new Date(agent.createdAt).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })}
                 </div>
               </div>

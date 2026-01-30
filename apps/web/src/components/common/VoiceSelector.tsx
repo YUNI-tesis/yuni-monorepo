@@ -33,7 +33,7 @@ export function VoiceSelector({
 
   return (
     <div className="space-y-4">
-      <label className="block text-sm font-medium text-white mb-2">
+      <label className="block text-sm font-medium text-theme mb-2">
         Voice
       </label>
       
@@ -45,7 +45,7 @@ export function VoiceSelector({
               p-4 rounded-lg border cursor-pointer transition-all duration-200
               ${selectedVoiceId === voice.id
                 ? "border-[#D365FF] bg-[#D365FF]/10 ring-2 ring-[#D365FF] ring-opacity-50"
-                : "border-white/10 bg-white/5 hover:border-white/20 hover:bg-white/10"
+                : "border-theme bg-surface hover:border-theme-strong hover:bg-surface-hover"
               }
             `}
             onClick={() => onSelect?.(voice.id)}
@@ -67,10 +67,10 @@ export function VoiceSelector({
                 </div>
               )}
               <div className="flex-1">
-                <p className="text-sm font-medium text-white">{voice.name}</p>
+                <p className="text-sm font-medium text-foreground">{voice.name}</p>
               </div>
               {selectedVoiceId === voice.id && (
-                <div className="text-[#D365FF]">
+                <div className="text-accent-theme">
                   <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
                     <path
                       fillRule="evenodd"

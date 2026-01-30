@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAuth } from "@/lib/auth-helpers";
-import { prisma } from "@/lib/prisma";
+import { prisma } from "@yuni/database";
 import { getObjectStorage } from "@/lib/storage/storage.factory";
 
 const ConfirmUploadRequestSchema = z.object({

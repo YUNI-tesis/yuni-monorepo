@@ -52,13 +52,19 @@ export async function retrieveRelevantChunks(
   limit: number = 6
 ): Promise<DocumentChunk[]> {
   // Extract keywords from query (words >= 3 chars)
+  // Support Unicode letters (including ñ, á, é, etc.) and numbers
   const keywords = query
     .toLowerCase()
     .split(/\s+/)
+    .map((word) => word.replace(/[^\p{L}\p{N}]/gu, "")) // Remove punctuation (¿?.,;:!etc)
     .filter((word) => word.length >= 3)
-    .filter((word) => /^[a-z0-9]+$/i.test(word)); // Only alphanumeric
+    .filter((word) => /^[\p{L}\p{N}]+$/u.test(word)) // Unicode letters and numbers
+    .filter((word) => !/^[0-9]+$/.test(word)); // Exclude pure numbers
+
+  console.log(`[RAG] Extracted keywords: [${keywords.join(", ")}]`);
 
   if (keywords.length === 0) {
+    console.log(`[RAG] No valid keywords found`);
     return [];
   }
 
@@ -113,73 +119,45 @@ export async function retrieveRelevantChunks(
  */
 function analyzeQueryType(query: string): "general" | "specific" {
   const lowerQuery = query.toLowerCase();
+  
+  // Remove punctuation for better matching
+  const cleanQuery = lowerQuery.replace(/[^\p{L}\p{N}\s]/gu, "");
 
-  // Specific query indicators
   const specificIndicators = [
-    "exacto",
-    "exact",
-    "número",
-    "number",
-    "fecha",
-    "date",
-    "cuándo",
-    "when",
-    "cuánto",
-    "how much",
-    "how many",
-    "cita",
-    "quote",
-    "literalmente",
-    "literally",
-    "específicamente",
-    "specifically",
-    "página",
-    "page",
-    "sección",
-    "section",
-    "valor",
-    "value",
+    "contraseña", "password", "clave", "código", "code",
+    "exacto", "exact", "número", "number", "fecha", "date",
+    "cuándo", "when", "cuánto", "how much", "how many",
+    "cita", "quote", "literalmente", "literally",
+    "específicamente", "specifically", "página", "page",
+    "sección", "section", "valor", "value", "cuál", "cual",
+    "which", "qué dice", "what does", "dónde dice", "where does",
   ];
 
-  // General query indicators
   const generalIndicators = [
-    "resumen",
-    "summary",
-    "sobre qué",
-    "what about",
-    "de qué trata",
-    "qué es",
-    "what is",
-    "explica",
-    "explain",
-    "describe",
-    "general",
-    "visión general",
-    "overview",
-    "principales",
-    "main",
+    "resumen", "summary", "sobre qué", "what about",
+    "de qué trata", "qué es", "what is", "explica", "explain",
+    "describe", "general", "visión general", "overview",
+    "principales", "main",
   ];
 
-  // Check for specific indicators
+  // Check for specific indicators first (higher priority)
   for (const indicator of specificIndicators) {
-    if (lowerQuery.includes(indicator)) {
+    if (cleanQuery.includes(indicator)) {
+      console.log(`[RAG] Matched specific indicator: "${indicator}"`);
       return "specific";
     }
   }
 
   // Check for general indicators
   for (const indicator of generalIndicators) {
-    if (lowerQuery.includes(indicator)) {
+    if (cleanQuery.includes(indicator)) {
+      console.log(`[RAG] Matched general indicator: "${indicator}"`);
       return "general";
     }
   }
 
-  // If query is short (< 10 words), likely general
-  if (query.split(/\s+/).length < 10) {
-    return "general";
-  }
-
-  // Default to specific for safety (better to over-retrieve than under-retrieve)
+  // Default to specific for safety (better to retrieve chunks than miss info)
+  console.log(`[RAG] No indicator matched, defaulting to specific`);
   return "specific";
 }
 
@@ -221,25 +199,34 @@ export async function retrieveContextForAgent(
   query: string,
   limit: number = 6
 ): Promise<RetrievalContext> {
+  console.log(`[RAG] Query: "${query}"`);
   const queryType = analyzeQueryType(query);
+  console.log(`[RAG] Query type: ${queryType}`);
 
-  // Always get summaries
   const summaries = await getDocumentSummaries(agentId);
+  console.log(`[RAG] Found ${summaries.length} document summaries`);
 
-  if (queryType === "general") {
-    // For general queries, use primarily summaries
+  // Always retrieve chunks for specific queries OR when summaries are not available
+  const shouldRetrieveChunks = queryType === "specific" || summaries.length === 0;
+  
+  if (shouldRetrieveChunks) {
+    const chunks = await retrieveRelevantChunks(agentId, query, limit);
+    console.log(`[RAG] Found ${chunks.length} relevant chunks`);
+    if (chunks.length > 0) {
+      console.log(`[RAG] First chunk preview: ${chunks[0].text.substring(0, 100)}...`);
+    }
+
     return {
       summaryContext: formatSummaries(summaries),
-      detailedChunks: [], // No detailed chunks for general queries
+      detailedChunks: chunks,
     };
   }
 
-  // For specific queries, use summaries + detailed chunks
-  const chunks = await retrieveRelevantChunks(agentId, query, limit);
-
+  // For general queries with available summaries, use summaries only
+  console.log(`[RAG] Using summaries only (general query with ${summaries.length} summaries)`);
   return {
     summaryContext: formatSummaries(summaries),
-    detailedChunks: chunks,
+    detailedChunks: [],
   };
 }
 

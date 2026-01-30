@@ -62,7 +62,7 @@ export default function AgentDetailPage() {
   if (error || !agent) {
     return (
       <div className="min-h-screen bg-white dark:bg-black p-8">
-        <div className="text-red-600">Error: {error || "Agente no encontrado"}</div>
+        <div className="text-error-theme" role="alert">Error: {error || "Agente no encontrado"}</div>
         <Link href="/agents" className="text-blue-600 hover:underline mt-4 inline-block">
           ← Volver a Agentes
         </Link>
@@ -99,19 +99,19 @@ export default function AgentDetailPage() {
             ← Volver a Agentes
           </Link>
           <h1 className="text-2xl font-bold mb-2">{agent.name}</h1>
-          <p className="text-sm text-gray-600 mb-4">{agent.description}</p>
+          <p className="text-sm text-muted-theme mb-4">{agent.description}</p>
         </div>
 
         <div className="space-y-4 mb-6">
           <div>
             <h3 className="text-sm font-semibold mb-2">System Prompt</h3>
-            <p className="text-xs text-gray-600 whitespace-pre-wrap bg-gray-50 p-2 rounded">
+            <p className="text-xs text-muted-theme whitespace-pre-wrap bg-surface p-2 rounded">
               {agent.systemPrompt}
             </p>
           </div>
           <div>
             <h3 className="text-sm font-semibold mb-2">Contexto</h3>
-            <p className="text-xs text-gray-600 whitespace-pre-wrap bg-gray-50 p-2 rounded max-h-40 overflow-y-auto">
+            <p className="text-xs text-muted-theme whitespace-pre-wrap bg-surface p-2 rounded max-h-40 overflow-y-auto">
               {agent.context || "Sin contexto"}
             </p>
           </div>

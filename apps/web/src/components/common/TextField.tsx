@@ -1,7 +1,6 @@
 "use client";
 
 import React from "react";
-import { theme } from "@/lib/theme";
 
 export interface TextFieldProps extends React.InputHTMLAttributes<HTMLInputElement | HTMLTextAreaElement> {
   label?: string;
@@ -22,9 +21,9 @@ export function TextField({
 }: TextFieldProps) {
   const baseInputStyles = `
     w-full px-4 py-3
-    bg-white/5 border border-white/10 rounded-lg
-    text-white placeholder:text-gray-500
-    focus:outline-none focus:ring-2 focus:ring-[#D365FF] focus:border-[#D365FF]
+    bg-surface border border-theme rounded-lg
+    text-theme placeholder:text-muted-theme
+    focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] focus-visible:border-[var(--color-focus-ring)]
     transition-all duration-200
     disabled:opacity-50 disabled:cursor-not-allowed
   `;
@@ -34,7 +33,7 @@ export function TextField({
   return (
     <div className="w-full">
       {label && (
-        <label className="block text-sm font-medium text-white mb-2">
+        <label className="block text-sm font-medium text-theme mb-2">
           {label}
         </label>
       )}
@@ -44,10 +43,10 @@ export function TextField({
         {...(props as any)}
       />
       {error && (
-        <p className="mt-1 text-sm text-red-400">{error}</p>
+        <p className="mt-1 text-sm text-error-theme" role="alert">{error}</p>
       )}
       {helperText && !error && (
-        <p className="mt-1 text-sm text-gray-500">{helperText}</p>
+        <p className="mt-1 text-sm text-muted-theme">{helperText}</p>
       )}
     </div>
   );

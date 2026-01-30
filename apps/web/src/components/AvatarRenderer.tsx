@@ -2,13 +2,40 @@
 
 import { Canvas, useFrame } from "@react-three/fiber";
 import { OrbitControls, useGLTF } from "@react-three/drei";
-import { useRef, useEffect, useState, Suspense } from "react";
+import { useRef, useEffect, useState, Suspense, Component, ReactNode } from "react";
 import * as THREE from "three";
 import {
   buildChannelToIndexMap,
   LIPSYNC_VISEME_CHANNELS,
   type RPMChannelName,
 } from "@/constants/morphTargets";
+
+// Error Boundary to catch 3D loading errors
+class ThreeErrorBoundary extends Component<
+  { children: ReactNode; onError: () => void },
+  { hasError: boolean }
+> {
+  constructor(props: { children: ReactNode; onError: () => void }) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: Error) {
+    console.error("3D Avatar Error:", error);
+    this.props.onError();
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return null;
+    }
+    return this.props.children;
+  }
+}
 
 const HEAD_NODE_NAMES = ["Wolf3D_Head", "Head"] as const;
 
@@ -271,6 +298,21 @@ function Avatar({
   return <primitive object={scene as any} />;
 }
 
+function ErrorFallback({ style, className }: { style?: React.CSSProperties; className?: string }) {
+  return (
+    <div style={style} className={className}>
+      <div className="flex flex-col items-center justify-center h-full bg-gradient-to-br from-purple-500/10 via-blue-500/10 to-cyan-500/10 rounded-xl">
+        <div className="w-20 h-20 rounded-full bg-surface border border-theme flex items-center justify-center mb-3">
+          <svg className="w-10 h-10 text-muted-theme" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+          </svg>
+        </div>
+        <span className="text-muted-theme text-xs">Avatar no disponible</span>
+      </div>
+    </div>
+  );
+}
+
 export default function AvatarRenderer({
   modelPath,
   style,
@@ -280,44 +322,67 @@ export default function AvatarRenderer({
   lipsyncAnimation = false,
 }: AvatarRendererProps) {
   const [ready, setReady] = useState(false);
+  const [error, setError] = useState(false);
 
   useEffect(() => {
     const id = requestAnimationFrame(() => setReady(true));
     return () => cancelAnimationFrame(id);
   }, []);
 
+  // Preload and catch errors
+  useEffect(() => {
+    if (!ready) return;
+    
+    useGLTF.preload(modelPath);
+    
+    // Listen for fetch errors
+    const handleError = () => {
+      console.error(`Failed to load avatar model: ${modelPath}`);
+      setError(true);
+    };
+    
+    // Simple error detection via fetch attempt
+    fetch(modelPath, { method: 'HEAD' }).catch(handleError);
+  }, [modelPath, ready]);
+
   if (!ready) {
     return (
       <div style={style} className={className}>
         <div className="flex items-center justify-center h-full bg-black/5">
-          <span className="text-gray-500 text-sm">Loading…</span>
+          <span className="text-muted-theme text-sm">Loading…</span>
         </div>
       </div>
     );
   }
 
+  if (error) {
+    return <ErrorFallback style={style} className={className} />;
+  }
+
   return (
     <div style={style} className={className}>
-      <Canvas
-        camera={{
-          position: [0, HEAD_CENTER_Y + 0.05, 0.9],
-          fov: 42,
-          near: 0.1,
-          far: 1000,
-        }}
-      >
-        <FaceCamera />
-        <Suspense fallback={null}>
-          <ambientLight intensity={0.5} />
-          <directionalLight position={[5, 5, 5]} />
-          <Avatar
-            modelPath={modelPath}
-            playbackAnalyser={playbackAnalyser ?? null}
-            lipsyncAnimation={lipsyncAnimation}
-          />
-          {cameraControls && <OrbitControls />}
-        </Suspense>
-      </Canvas>
+      <ThreeErrorBoundary onError={() => setError(true)}>
+        <Canvas
+          camera={{
+            position: [0, HEAD_CENTER_Y + 0.05, 0.9],
+            fov: 42,
+            near: 0.1,
+            far: 1000,
+          }}
+        >
+          <FaceCamera />
+          <Suspense fallback={null}>
+            <ambientLight intensity={0.5} />
+            <directionalLight position={[5, 5, 5]} />
+            <Avatar
+              modelPath={modelPath}
+              playbackAnalyser={playbackAnalyser ?? null}
+              lipsyncAnimation={lipsyncAnimation}
+            />
+            {cameraControls && <OrbitControls />}
+          </Suspense>
+        </Canvas>
+      </ThreeErrorBoundary>
     </div>
   );
 }

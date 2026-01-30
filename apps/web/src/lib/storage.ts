@@ -1,4 +1,4 @@
-import { prisma } from "./prisma";
+import { prisma } from "@yuni/database";
 import { Agent, AgentSchema, ConversationState, ConversationStateSchema } from "./schemas";
 
 // Types for Prisma query results

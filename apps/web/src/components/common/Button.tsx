@@ -1,7 +1,6 @@
 "use client";
 
 import React from "react";
-import { theme } from "@/lib/theme";
 
 export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: "primary" | "secondary" | "outline" | "ghost" | "destructive";
@@ -23,9 +22,9 @@ export function Button({
   
   const variantStyles = {
     primary: "gradient-primary text-white hover:shadow-lg hover:shadow-purple-500/50",
-    secondary: "bg-[#333F55] text-white hover:bg-[#3d4a61]",
-    outline: "border border-white/20 text-white hover:bg-white/10 hover:border-white/30",
-    ghost: "text-white hover:bg-white/10",
+    secondary: "bg-[var(--color-blue-gray)] text-white hover:opacity-90",
+    outline: "border border-theme-strong text-theme hover:bg-surface-hover hover:border-theme",
+    ghost: "text-theme hover:bg-surface-hover",
     destructive: "bg-red-600/80 text-white hover:bg-red-600 hover:shadow-lg hover:shadow-red-500/50 border border-red-500/30",
   };
 

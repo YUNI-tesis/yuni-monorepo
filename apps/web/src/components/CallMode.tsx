@@ -29,7 +29,7 @@ export function CallMode({ agentId, conversationId, onClose }: CallModeProps) {
       return (
         <div className="flex items-center justify-center h-full">
           <div className="glass rounded-xl border border-red-500/30 bg-red-500/10 px-6 py-4">
-            <p className="text-red-400">Error: Sesión no válida</p>
+            <p className="text-error-theme" role="alert">Error: Sesión no válida</p>
           </div>
         </div>
       );
@@ -187,7 +187,7 @@ export function CallMode({ agentId, conversationId, onClose }: CallModeProps) {
         <div className="text-center">
           <button
             onClick={onClose}
-            className="text-sm text-white/70 hover:text-white transition-colors px-4 py-2 rounded-lg hover:bg-white/5"
+            className="text-sm text-muted-foreground hover:text-theme transition-colors px-4 py-2 rounded-lg hover:bg-surface"
           >
             Cancelar
           </button>
