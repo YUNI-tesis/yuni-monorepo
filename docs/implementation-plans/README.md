@@ -23,14 +23,34 @@ Documentación de planes de implementación y logs de progreso para mejoras del 
    - **Estado**: Implementación completa, testing pendiente ⏳
    - **Fecha**: 2025-01-30
 
+3. **[RAG_LIVECALL_IMPLEMENTATION.md](./RAG_LIVECALL_IMPLEMENTATION.md)** - RAG en LiveCall/Voice Mode
+   - Análisis del problema (RAG funciona en Chat pero NO en LiveCall)
+   - Solución: Retrieval dinámico por turno
+   - Análisis de latencia (+85-425ms overhead)
+   - Plan de implementación en 3 fases (MVP, Básica, Avanzada)
+   - Código específico para cada fase
+   - Testing y troubleshooting
+   - **Estado**: Listo para implementar 🚀
+   - **Fecha**: 2025-01-30
+
 ### Infrastructure & Architecture
 
-3. **[PRISMA_UNIFICATION_PLAN.md](./PRISMA_UNIFICATION_PLAN.md)** - Unificación de Schemas de Prisma
+4. **[PRISMA_UNIFICATION_PLAN.md](./PRISMA_UNIFICATION_PLAN.md)** - Unificación de Schemas de Prisma
    - Consolidación de schemas duplicados en paquete compartido
    - Plan paso a paso con validaciones
    - Migración de `apps/web/prisma` y `apps/agent/prisma` a `packages/database`
    - Tests de validación y plan de rollback
    - **Estado**: Plan completo, pendiente implementación 📋
+   - **Fecha**: 2025-01-30
+
+### UI/UX
+
+5. **[LIGHT_THEME_IMPLEMENTATION_PLAN.md](./LIGHT_THEME_IMPLEMENTATION_PLAN.md)** - Light Theme
+   - Análisis de páginas y tema actual (dark)
+   - Viabilidad de light theme manteniendo el mismo estilo (gradientes, acentos)
+   - Ubicación UX del switch de tema (Navbar, TopBar, auth)
+   - Plan de ejecución en 4 fases (fundamentos CSS, migración componentes, switch, ajustes)
+   - **Estado**: ✅ Implementado (2025-01-30)
    - **Fecha**: 2025-01-30
 
 ---
@@ -187,6 +207,7 @@ Ver detalles completos en: `PHASE_1_IMPLEMENTATION_LOG.md` → "Plan de Testing"
 - **Main Plan**: [RAG_IMPROVEMENT_PLAN.md](./RAG_IMPROVEMENT_PLAN.md)
 - **Implementation Log**: [PHASE_1_IMPLEMENTATION_LOG.md](./PHASE_1_IMPLEMENTATION_LOG.md)
 - **Prisma Unification**: [PRISMA_UNIFICATION_PLAN.md](./PRISMA_UNIFICATION_PLAN.md)
+- **Light Theme**: [LIGHT_THEME_IMPLEMENTATION_PLAN.md](./LIGHT_THEME_IMPLEMENTATION_PLAN.md)
 
 ---
 

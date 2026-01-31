@@ -6,7 +6,12 @@
   "scripts": {
     "dev": "pnpm -r dev",
     "lint": "pnpm -r lint",
-    "test": "pnpm -r test"
+    "test": "pnpm -r test",
+    "db:generate": "pnpm --filter @yuni/database db:generate",
+    "db:push": "pnpm --filter @yuni/database db:push",
+    "db:migrate": "pnpm --filter @yuni/database db:migrate",
+    "db:studio": "pnpm --filter @yuni/database db:studio",
+    "db:seed": "pnpm --filter @yuni/database db:seed"
   },
   "keywords": [],
   "author": "",

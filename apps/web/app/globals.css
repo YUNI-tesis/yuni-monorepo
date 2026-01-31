@@ -81,6 +81,7 @@
 }
 
 @theme {
+  --font-sans: "Outfit", ui-sans-serif, system-ui, sans-serif;
   --color-background: #0E0418;
   --color-foreground: #ededed;
   --color-purple: #784EAB;
@@ -91,7 +92,7 @@
 
 body {
   background: var(--color-bg-primary);
-  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+  font-family: "Outfit", sans-serif;
   min-height: 100vh;
 }
 
@@ -105,6 +106,11 @@ body {
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
+}
+
+/* Fuente de marca YUNI (Audiowide) */
+.font-brand {
+  font-family: "Audiowide", sans-serif;
 }
 
 /* Card styles */

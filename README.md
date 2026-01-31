@@ -8,11 +8,11 @@ Yuni es una plataforma multi-agente donde los usuarios pueden crear, gestionar y
 
 - **apps/web** → Next.js App Router + Vercel AI SDK para streaming UI
 - **apps/agent** → LangGraph (Node/TS) agent runtime + tools
+- **packages/database** → Prisma client compartido y utilidades de base de datos
 - TypeScript strict, ESLint + Prettier
 - Zod para validación en runtime (API bodies + model outputs)
-- Almacenamiento: JSON basado en archivos en `/data` (preparado para DB como Supabase)
-- Sin migraciones de DB; mantenerlo simple
-- Variables de entorno vía `.env.local`. NO hardcodear keys.
+- Base de datos PostgreSQL con Prisma ORM
+- Variables de entorno centralizadas en `.env` en la raíz. NO hardcodear keys.
 
 ## Características (MVP1)
 
@@ -50,11 +50,38 @@ Yuni es una plataforma multi-agente donde los usuarios pueden crear, gestionar y
   - **Nivel 2 (chunks):** Acceso preciso a datos específicos, citas y detalles exactos
 - Integración automática de contexto de documentos en respuestas del agente
 
+## Environment Variables
+
+Este proyecto usa un **único archivo `.env`** en la raíz del monorepo para todas las configuraciones.
+
+### Setup Inicial
+
+1. Copia el archivo de ejemplo:
+```bash
+cp .env.example .env
+```
+
+2. Edita `.env` con tus credenciales reales.
+
+### Estructura
+
+```
+.env                   # Variables compartidas (raíz del monorepo)
+.env.example          # Template con valores de ejemplo
+apps/web/.env.local   # Auto-generado por next.config.ts (no tocar)
+```
+
+**Nota importante:** 
+- ✅ Edita solo `.env` en la raíz
+- ❌ No edites `apps/web/.env.local` (se sincroniza automáticamente)
+- 🔒 `.env` está en `.gitignore` (nunca commitees credenciales)
+
 ## Instalación
 
 ### Requisitos previos
 - Node.js 20+
 - pnpm 10.8.1+
+- PostgreSQL 14+ (local o remoto)
 
 ### Configuración
 
@@ -63,10 +90,24 @@ Yuni es una plataforma multi-agente donde los usuarios pueden crear, gestionar y
 pnpm install
 ```
 
-2. Configurar variables de entorno:
-Crea un archivo `.env.local` en la raíz del proyecto:
+2. Generar Prisma Client:
+```bash
+pnpm db:generate
+```
+
+3. Aplicar migraciones a la base de datos:
+```bash
+cd packages/database
+pnpm exec dotenv -e ../../.env -- prisma migrate deploy
+```
+
+4. Configurar variables de entorno (ver sección "Environment Variables" arriba)
+
+### Variables Requeridas
+
+Tu archivo `.env` debe incluir:
 ```env
-# LLM Configuration
+# OpenAI API Key
 OPENAI_API_KEY=tu_api_key_aqui
 
 # Database (PostgreSQL)

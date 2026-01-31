@@ -83,7 +83,9 @@ export function Logo({
         </div>
       )}
       {showText && (
-        <span className={`font-bold gradient-text ${sizeClasses[size]}`}>YUNI</span>
+        <span className={`font-bold gradient-text font-brand ${sizeClasses[size]}`}>
+          YUNI
+        </span>
       )}
     </Link>
   );

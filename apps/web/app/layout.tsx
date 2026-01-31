@@ -1,18 +1,17 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/components/Providers";
 import { LiquidBackgroundLandingOnly } from "@/components/LiquidBackgroundLandingOnly";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
 
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
 });
+
+// Fuentes de display cargadas por link (evita error next/font/google/target.css en monorepo/Turbopack)
+const GOOGLE_FONTS_URL =
+  "https://fonts.googleapis.com/css2?family=Audiowide&family=Bebas+Neue&family=Exo+2&family=Inter:wght@400;500;600&family=Michroma&family=Orbitron&family=Outfit:wght@400;500&family=Plus+Jakarta+Sans:wght@400;500&family=Rajdhani:wght@500&family=Raleway&family=Sora&family=Space+Grotesk&family=Space+Mono&family=Syne&family=Tektur&family=Unbounded&family=Zen+Dots&display=swap";
 
 export const metadata: Metadata = {
   title: "YUNI - AI Avatar Platform",
@@ -32,8 +31,11 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="dark">
+      <head>
+        <link href={GOOGLE_FONTS_URL} rel="stylesheet" />
+      </head>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-[#0E0418] text-white`}
+        className={`${geistMono.variable} font-sans antialiased bg-[#0E0418] text-white`}
       >
         <div className="min-h-screen flex flex-col relative">
           <LiquidBackgroundLandingOnly />

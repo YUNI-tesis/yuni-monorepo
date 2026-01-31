@@ -54,16 +54,14 @@ export function Hero() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.3, duration: 0.8 }}
           >
-            <span 
-              className="gradient-text"
-              style={{
-                textShadow: "0 0 40px rgba(190, 106, 220, 0.3)",
-              }}
+            <span
+              className="gradient-text font-brand"
+              style={{ textShadow: "0 0 40px rgba(190, 106, 220, 0.3)" }}
             >
               YUNI
             </span>
           </motion.h1>
-          
+
           <motion.p
             className="text-lg md:text-xl text-white/90 mb-2 md:mb-3 max-w-3xl mx-auto font-light"
             initial={{ opacity: 0, y: 20 }}
