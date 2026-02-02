@@ -30,6 +30,9 @@ function getInitialTheme(): Theme {
 function applyTheme(theme: Theme) {
   if (typeof document === "undefined") return;
   document.documentElement.setAttribute("data-theme", theme);
+  // CSS usa la clase .dark (no data-theme); hay que sincronizar la clase para que el toggle y las variables respondan.
+  document.documentElement.classList.remove("dark", "light");
+  document.documentElement.classList.add(theme);
 }
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {

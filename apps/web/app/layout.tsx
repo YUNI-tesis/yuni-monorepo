@@ -30,12 +30,18 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="dark">
+    <html lang="en" suppressHydrationWarning>
       <head>
+        {/* Evita flash: aplica tema desde localStorage antes del primer paint */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `document.documentElement.className = localStorage.getItem('yuni-theme') === 'light' ? 'light' : 'dark';`,
+          }}
+        />
         <link href={GOOGLE_FONTS_URL} rel="stylesheet" />
       </head>
       <body
-        className={`${geistMono.variable} font-sans antialiased bg-[#0E0418] text-white`}
+        className={`${geistMono.variable} font-sans antialiased bg-background text-foreground`}
       >
         <div className="min-h-screen flex flex-col relative">
           <LiquidBackgroundLandingOnly />
