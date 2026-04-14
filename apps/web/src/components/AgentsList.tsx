@@ -4,9 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Agent } from "@/lib/schemas";
 import { fetchWithAuth } from "@/lib/fetch-client";
-import { getReadyPlayerMeThumbnailUrl } from "@/lib/avatar-utils";
-
-const DEFAULT_AVATAR_GLB = "https://models.readyplayer.me/697b77b6fd03bbd0ce0d0506.glb";
+import { AgentAvatarPreview } from "@/components/AgentAvatarPreview";
 
 export function AgentsList() {
   const [agents, setAgents] = useState<Agent[]>([]);
@@ -24,8 +22,8 @@ export function AgentsList() {
       if (!res.ok) throw new Error("Failed to fetch agents");
       const data = await res.json();
       setAgents(data);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (error: unknown) {
+      setError(error instanceof Error ? error.message : "Failed to fetch agents");
     } finally {
       setLoading(false);
     }
@@ -105,12 +103,12 @@ export function AgentsList() {
               {/* Gradient border on hover */}
               <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-purple-500/0 via-purple-500/10 to-cyan-500/0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"></div>
               
-              {/* Avatar 2D render (RPM thumbnail) */}
+              {/* Avatar preview */}
               <div className="relative mb-4 aspect-square min-h-[180px] rounded-xl overflow-hidden bg-gradient-to-br from-purple-500/10 via-blue-500/10 to-cyan-500/10">
-                <img
-                  src={getReadyPlayerMeThumbnailUrl(DEFAULT_AVATAR_GLB, { size: 512 })}
-                  alt=""
-                  className="w-full h-full object-cover object-center rounded-xl"
+                <AgentAvatarPreview
+                  name={agent.name}
+                  avatar={agent.avatar}
+                  className="h-full min-h-[180px] w-full"
                 />
               </div>
               
@@ -137,4 +135,3 @@ export function AgentsList() {
     </div>
   );
 }
-

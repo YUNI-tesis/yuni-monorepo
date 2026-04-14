@@ -1,9 +1,6 @@
-import { getCurrentUser } from "@/lib/auth-helpers";
 import { Hero, About, Features, Technology, CTA, LandingNavbar } from "@/components/landing";
 
 export default async function Home() {
-  const user = await getCurrentUser();
-
   // Always show landing page (public). Fondo líquido viene del layout (LiquidBackground).
   return (
     <main className="relative">

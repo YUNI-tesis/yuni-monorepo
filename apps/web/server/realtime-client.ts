@@ -25,6 +25,7 @@ export class RealtimeClient {
   private config: RealtimeClientConfig;
   private sessionId?: string;
   private isConnected = false;
+  private isClosing = false;
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 3;
   private reconnectDelay = 1000; // Start with 1 second
@@ -38,26 +39,60 @@ export class RealtimeClient {
    * Connect to OpenAI Realtime API
    */
   async connect(): Promise<void> {
+    const configuredModel =
+      this.config.model ||
+      (process.env.OPENAI_REALTIME_MODEL as RealtimeModel | undefined);
+    const modelCandidates: RealtimeModel[] = configuredModel
+      ? [configuredModel]
+      : ["gpt-realtime", "gpt-4o-realtime-preview-2024-12-17"];
+
+    let lastError: Error | null = null;
+
+    for (const model of modelCandidates) {
+      try {
+        await this.connectWithModel(model);
+        return;
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error("Realtime connection failed");
+        console.error(`[Realtime] Failed to connect with model ${model}:`, lastError.message);
+      }
+    }
+
+    throw lastError || new Error("Realtime connection failed");
+  }
+
+  private async connectWithModel(model: RealtimeModel): Promise<void> {
+    this.isClosing = false;
+
     return new Promise((resolve, reject) => {
-      const model = this.config.model || "gpt-4o-realtime-preview-2024-12-17";
+      let settled = false;
+      let allowReconnect = false;
       const url = `wss://api.openai.com/v1/realtime?model=${model}`;
 
       this.ws = new WebSocket(url, {
         headers: {
           Authorization: `Bearer ${this.config.apiKey}`,
-          "OpenAI-Beta": "realtime=v1",
         },
       });
 
       const connectionTimeout = setTimeout(() => {
         if (!this.isConnected) {
-          reject(new Error("Realtime connection timeout"));
-          this.ws?.close();
+          const timeoutError = new Error(`Realtime connection timeout (${model})`);
+          if (!settled) {
+            settled = true;
+            reject(timeoutError);
+          }
+
+          if (this.ws && this.ws.readyState === WebSocket.CONNECTING) {
+            this.ws.terminate();
+          } else {
+            this.ws?.close();
+          }
         }
       }, 10000); // 10 second timeout
 
       this.ws.on("open", () => {
-        console.log("[Realtime] WebSocket connection opened");
+        console.log(`[Realtime] WebSocket connection opened (${model})`);
       });
 
       this.ws.on("message", (data: WebSocket.Data) => {
@@ -71,6 +106,7 @@ export class RealtimeClient {
             this.sessionId = event.session.id;
             this.isConnected = true;
             this.reconnectAttempts = 0;
+            allowReconnect = true;
             console.log(`[Realtime] Session created: ${this.sessionId}`);
 
             // Update session config if provided
@@ -78,7 +114,10 @@ export class RealtimeClient {
               this.updateSession(this.config.sessionConfig);
             }
 
-            resolve();
+            if (!settled) {
+              settled = true;
+              resolve();
+            }
           }
         } catch (error) {
           console.error("[Realtime] Error parsing message:", error);
@@ -90,16 +129,20 @@ export class RealtimeClient {
         console.error("[Realtime] WebSocket error:", error);
         clearTimeout(connectionTimeout);
         this.config.onError?.(error);
-        reject(error);
+        if (!settled) {
+          settled = true;
+          reject(error);
+        }
       });
 
       this.ws.on("close", (code, reason) => {
         console.log(`[Realtime] WebSocket closed: ${code} - ${reason}`);
+        clearTimeout(connectionTimeout);
         this.isConnected = false;
         this.config.onClose?.();
 
         // Attempt reconnection with exponential backoff
-        if (this.reconnectAttempts < this.maxReconnectAttempts) {
+        if (allowReconnect && !this.isClosing && this.reconnectAttempts < this.maxReconnectAttempts) {
           this.reconnectAttempts++;
           const delay = this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1);
           console.log(`[Realtime] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
@@ -235,6 +278,7 @@ export class RealtimeClient {
    * Close the connection
    */
   close(): void {
+    this.isClosing = true;
     this.isConnected = false;
     this.reconnectAttempts = this.maxReconnectAttempts; // Prevent reconnection
     this.ws?.close();

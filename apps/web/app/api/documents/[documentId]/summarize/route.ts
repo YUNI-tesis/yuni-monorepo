@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth-helpers";
-import { prisma } from "@yuni/database";
-import { generateDocumentSummary } from "../../../../../../agent/tools/summarization";
+import { prisma, Prisma } from "@yuni/database";
+import { generateDocumentSummary } from "@/lib/summarization";
 
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ documentId: string }> }
 ) {
+  void request;
+
   try {
     const user = await requireAuth();
     const { documentId } = await params;
@@ -63,7 +65,7 @@ export async function POST(
       const updatedDocument = await prisma.document.update({
         where: { id: documentId },
         data: {
-          summary: summary as any,
+          summary: summary as Prisma.InputJsonValue,
           summaryStatus: "READY",
           summaryError: null,
         },
@@ -74,25 +76,32 @@ export async function POST(
         status: updatedDocument.summaryStatus,
         summary: updatedDocument.summary,
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Summarization failed";
+
       // Update status to FAILED
       await prisma.document.update({
         where: { id: documentId },
         data: {
           summaryStatus: "FAILED",
-          summaryError: error.message || "Summarization failed",
+          summaryError: message,
         },
       });
 
       throw error;
     }
-  } catch (error: any) {
-    if (error.status === 401) {
+  } catch (error: unknown) {
+    if (
+      typeof error === "object" &&
+      error !== null &&
+      "status" in error &&
+      error.status === 401
+    ) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     console.error("Error in summarize route:", error);
     return NextResponse.json(
-      { error: error.message || "Internal server error" },
+      { error: error instanceof Error ? error.message : "Internal server error" },
       { status: 500 }
     );
   }

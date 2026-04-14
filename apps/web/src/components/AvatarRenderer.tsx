@@ -7,7 +7,7 @@ import * as THREE from "three";
 import {
   buildChannelToIndexMap,
   LIPSYNC_VISEME_CHANNELS,
-  type RPMChannelName,
+  type LipSyncChannelName,
 } from "@/constants/morphTargets";
 
 // Error Boundary to catch 3D loading errors
@@ -103,7 +103,7 @@ interface AvatarProps {
   lipsyncAnimation: boolean;
 }
 
-/** Head-center Y for RPM half-body (origin at feet). LookAt and camera aim at this. */
+/** Head-center Y for the default half-body framing. */
 const HEAD_CENTER_Y = 1.58;
 
 function FaceCamera() {
@@ -140,7 +140,7 @@ function Avatar({
   const headMesh = getHeadMesh(nodes as Record<string, THREE.Object3D>);
 
   const dataArray = useRef<Uint8Array | null>(null);
-  const channelMapRef = useRef<Partial<Record<RPMChannelName, number>> | null>(null);
+  const channelMapRef = useRef<Partial<Record<LipSyncChannelName, number>> | null>(null);
   const lastVolumeRef = useRef(0);
   const bonesRef = useRef<NaturalMotionBones | null>(null);
   const nextBlinkAtRef = useRef(0);

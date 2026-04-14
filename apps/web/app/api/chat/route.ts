@@ -7,6 +7,7 @@ import { accumulateCost } from "@/lib/cost-utils";
 import { getLLMConfig, getModelName } from "@/lib/llm-config";
 import { ChatMessage } from "@/lib/schemas";
 import { requireAuth } from "@/lib/auth-helpers";
+import { getErrorMessage, jsonErrorResponse } from "@/lib/api-errors";
 
 export async function POST(request: NextRequest) {
   try {
@@ -19,8 +20,8 @@ export async function POST(request: NextRequest) {
     try {
       const config = getLLMConfig();
       apiKey = config.apiKey;
-    } catch (error: any) {
-      return new Response(JSON.stringify({ error: error.message || "LLM configuration error" }), {
+    } catch (error: unknown) {
+      return new Response(JSON.stringify({ error: getErrorMessage(error, "LLM configuration error") }), {
         status: 500,
         headers: { "Content-Type": "application/json" },
       });
@@ -84,8 +85,8 @@ export async function POST(request: NextRequest) {
           
           controller.enqueue(encoder.encode(`data: [DONE]\n\n`));
           controller.close();
-        } catch (error: any) {
-          controller.error(error);
+        } catch (error: unknown) {
+          controller.error(error instanceof Error ? error : new Error("Streaming failed"));
         }
       },
     });
@@ -97,23 +98,11 @@ export async function POST(request: NextRequest) {
         "Connection": "keep-alive",
       },
     });
-  } catch (error: any) {
-    if (error.status === 401) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
-    if (error.name === "ZodError") {
-      return new Response(JSON.stringify({ error: error.errors }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
-    return new Response(JSON.stringify({ error: error.message }), {
-      status: 500,
+  } catch (error: unknown) {
+    const response = jsonErrorResponse(error);
+    return new Response(JSON.stringify(await response.json()), {
+      status: response.status,
       headers: { "Content-Type": "application/json" },
     });
   }
 }
-

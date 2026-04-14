@@ -1,24 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getConversation } from "@/lib/storage";
 import { requireAuth } from "@/lib/auth-helpers";
+import { errorHasMessage, jsonErrorResponse } from "@/lib/api-errors";
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ conversationId: string }> }
 ) {
+  void request;
+
   try {
     const user = await requireAuth();
     const { conversationId } = await params;
     const conversation = await getConversation(conversationId, user.id);
     return NextResponse.json(conversation);
-  } catch (error: any) {
-    if (error.status === 401) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  } catch (error: unknown) {
+    if (errorHasMessage(error, "not found")) {
+      return NextResponse.json({ error: error instanceof Error ? error.message : "Not found" }, { status: 404 });
     }
-    if (error.message.includes("not found")) {
-      return NextResponse.json({ error: error.message }, { status: 404 });
-    }
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return jsonErrorResponse(error);
   }
 }
-

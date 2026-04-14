@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 
 export interface WaveformProps {
   data?: number[];
@@ -21,23 +21,27 @@ export function Waveform({
   color = "gradient",
   className = "",
 }: WaveformProps) {
-  const [animatedData, setAnimatedData] = useState<number[]>([]);
+  const createRandomData = useCallback(
+    () => Array.from({ length: 50 }, () => Math.random() * 0.5 + 0.25),
+    []
+  );
+
+  const [animatedData, setAnimatedData] = useState<number[]>(() => {
+    if (data) {
+      return data;
+    }
+
+    return autoAnimate ? createRandomData() : [];
+  });
 
   useEffect(() => {
     if (!data && autoAnimate) {
-      // Generate random waveform data for animation
-      const generateRandomData = () => {
-        return Array.from({ length: 50 }, () => Math.random() * 0.5 + 0.25);
-      };
-      setAnimatedData(generateRandomData());
       const interval = setInterval(() => {
-        setAnimatedData(generateRandomData());
+        setAnimatedData(createRandomData());
       }, 100);
       return () => clearInterval(interval);
-    } else if (data) {
-      setAnimatedData(data);
     }
-  }, [data, autoAnimate]);
+  }, [autoAnimate, createRandomData, data]);
 
   const colorClasses = {
     gradient: "gradient-primary",
@@ -45,7 +49,7 @@ export function Waveform({
     accent: "bg-[#D365FF]",
   };
 
-  const waveformData = animatedData.length > 0 ? animatedData : Array(50).fill(0.3);
+  const waveformData = data ?? (animatedData.length > 0 ? animatedData : Array(50).fill(0.3));
 
   return (
     <div
@@ -65,4 +69,3 @@ export function Waveform({
     </div>
   );
 }
-

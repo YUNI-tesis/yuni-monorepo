@@ -43,8 +43,8 @@ function LoginForm() {
         router.push("/agents");
         router.refresh();
       }
-    } catch (err: any) {
-      setError(err.message || "An error occurred");
+    } catch (error: unknown) {
+      setError(error instanceof Error ? error.message : "An error occurred");
     } finally {
       setLoading(false);
     }
@@ -115,7 +115,7 @@ function LoginForm() {
 
             <div className="text-center">
               <p className="text-sm text-muted-foreground">
-                Don't have an account?{" "}
+                Don&apos;t have an account?{" "}
                 <Link href="/auth/register" className="font-medium text-accent-theme hover:opacity-80 transition-colors">
                   Sign up
                 </Link>

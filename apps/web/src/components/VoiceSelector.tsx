@@ -5,7 +5,7 @@
  * Allows selecting voice provider (OpenAI or ElevenLabs) and voice ID
  */
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 
 interface VoiceConfig {
   provider: "openai" | "elevenlabs";
@@ -39,6 +39,11 @@ interface ElevenLabsVoice {
   preview_url?: string;
 }
 
+interface ElevenLabsVoicesResponse {
+  voices?: ElevenLabsVoice[];
+  error?: string;
+}
+
 export function VoiceSelector({ value, onChange }: VoiceSelectorProps) {
   const [provider, setProvider] = useState<"openai" | "elevenlabs">(
     value?.provider || "openai"
@@ -60,12 +65,43 @@ export function VoiceSelector({ value, onChange }: VoiceSelectorProps) {
     }
   }, [value, initialized]);
 
+  const fetchElevenLabsVoices = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const response = await fetch("/api/voices/elevenlabs");
+      
+      if (!response.ok) {
+        const errorData = (await response.json()) as ElevenLabsVoicesResponse;
+        throw new Error(errorData.error || "Failed to fetch ElevenLabs voices");
+      }
+
+      const data = (await response.json()) as ElevenLabsVoicesResponse;
+      const voices = data.voices || [];
+      setElevenLabsVoices(voices);
+      
+      // Set first voice as default if not already selected
+      if (voices.length > 0 && !selectedVoiceId) {
+        setSelectedVoiceId(voices[0].voice_id);
+      }
+    } catch (error: unknown) {
+      console.error("[VoiceSelector] Error fetching ElevenLabs voices:", error);
+      setError(error instanceof Error ? error.message : "Failed to fetch ElevenLabs voices");
+      // Fallback to OpenAI if ElevenLabs fails
+      setProvider("openai");
+      setSelectedVoiceId("alloy");
+    } finally {
+      setLoading(false);
+    }
+  }, [selectedVoiceId]);
+
   // Fetch ElevenLabs voices when provider changes
   useEffect(() => {
     if (provider === "elevenlabs") {
-      fetchElevenLabsVoices();
+      void fetchElevenLabsVoices();
     }
-  }, [provider]);
+  }, [provider, fetchElevenLabsVoices]);
 
   // Update parent when selection changes (only after initialization)
   useEffect(() => {
@@ -78,36 +114,6 @@ export function VoiceSelector({ value, onChange }: VoiceSelectorProps) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [provider, selectedVoiceId, initialized]);
-
-  const fetchElevenLabsVoices = async () => {
-    setLoading(true);
-    setError(null);
-
-    try {
-      const response = await fetch("/api/voices/elevenlabs");
-      
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to fetch ElevenLabs voices");
-      }
-
-      const data = await response.json();
-      setElevenLabsVoices(data.voices || []);
-      
-      // Set first voice as default if not already selected
-      if (data.voices.length > 0 && !selectedVoiceId) {
-        setSelectedVoiceId(data.voices[0].voice_id);
-      }
-    } catch (err: any) {
-      console.error("[VoiceSelector] Error fetching ElevenLabs voices:", err);
-      setError(err.message);
-      // Fallback to OpenAI if ElevenLabs fails
-      setProvider("openai");
-      setSelectedVoiceId("alloy");
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleProviderChange = (newProvider: "openai" | "elevenlabs") => {
     setProvider(newProvider);

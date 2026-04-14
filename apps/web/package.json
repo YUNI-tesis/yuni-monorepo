@@ -7,8 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "ws:dev": "dotenv -e ../../.env --expand -- tsx --watch server/ws-server.ts",
-    "ws:start": "dotenv -e ../../.env --expand -- node -r ts-node/register server/ws-server.ts",
+    "ws:dev": "dotenv -e .env.local -e ../../.env.local -e ../../.env --expand -- node --watch --import tsx server/ws-server.ts",
+    "ws:start": "dotenv -e .env.local -e ../../.env.local -e ../../.env --expand -- node --import tsx server/ws-server.ts",
     "sync-env": "./sync-env.sh",
     "rig:animations": "tsx scripts/add-animations.ts"
   },
@@ -16,6 +16,7 @@
     "@aws-sdk/client-s3": "^3.699.0",
     "@aws-sdk/s3-request-presigner": "^3.699.0",
     "@google/generative-ai": "^0.21.0",
+    "@heygen/liveavatar-web-sdk": "^0.0.13",
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.5.0",
     "@yuni/database": "workspace:*",

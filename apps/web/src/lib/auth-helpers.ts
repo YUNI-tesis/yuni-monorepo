@@ -1,4 +1,5 @@
 import { auth } from "./auth";
+import { AppRouteError } from "./api-errors";
 
 export async function getCurrentUser() {
   const session = await auth();
@@ -11,11 +12,7 @@ export async function getCurrentUser() {
 export async function requireAuth() {
   const user = await getCurrentUser();
   if (!user) {
-    // Throw an error that can be caught in API routes
-    const error: any = new Error("Unauthorized");
-    error.status = 401;
-    error.message = "Unauthorized";
-    throw error;
+    throw new AppRouteError("Unauthorized", 401);
   }
   return user;
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef, useCallback } from "react";
-import { Trash, More, MoreSquare, Menu } from "iconsax-react";
+import { Trash, Menu } from "iconsax-react";
 import { fetchWithAuth } from "@/lib/fetch-client";
 
 const MAX_SIZE_MB = 20;

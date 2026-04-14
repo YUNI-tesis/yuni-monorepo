@@ -3,12 +3,13 @@
  */
 
 import type WebSocket from "ws";
+import type { RealtimeClient } from "./realtime-client";
 
 // ============================================================================
 // OpenAI Realtime API Types
 // ============================================================================
 
-export type RealtimeModel = "gpt-4o-realtime-preview-2024-12-17";
+export type RealtimeModel = "gpt-realtime" | "gpt-4o-realtime-preview-2024-12-17";
 
 // OpenAI Realtime voices (updated list)
 export type OpenAIRealtimeVoice = 
@@ -366,6 +367,7 @@ export interface InitMessage {
   userId: string;
   agentId: string;
   conversationId: string;
+  avatarRuntime?: "builtin" | "heygen";
 }
 
 export interface AudioChunkMessage {
@@ -412,6 +414,11 @@ export interface ResponseChunkMessage {
   text: string;
 }
 
+export interface ResponseCompleteMessage {
+  type: "response_complete";
+  text: string;
+}
+
 export interface AudioChunkResponseMessage {
   type: "audio_chunk";
   audio: string; // base64-encoded audio
@@ -453,6 +460,7 @@ export type ServerMessage =
   | StateMessage
   | TranscriptMessage
   | ResponseChunkMessage
+  | ResponseCompleteMessage
   | AudioChunkResponseMessage
   | ErrorMessage
   | MetricsMessage
@@ -473,9 +481,10 @@ export interface CallConnection {
   userId: string;
   agentId: string;
   conversationId: string;
+  avatarRuntime: "builtin" | "heygen";
   
   // Realtime connection
-  realtimeWs?: WebSocket;
+  realtimeClient?: RealtimeClient;
   realtimeSessionId?: string;
   isRealtimeConnected: boolean;
   

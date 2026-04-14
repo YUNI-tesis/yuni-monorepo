@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Agent } from "@/lib/schemas";
@@ -8,9 +8,8 @@ import { AgentEditor } from "@/components/AgentEditor";
 import { ChatPanel } from "@/components/ChatPanel";
 import { AgentContextSection } from "@/components/AgentContextSection";
 import { Button } from "@/components/common";
-import { getReadyPlayerMeThumbnailUrl } from "@/lib/avatar-utils";
-
-const DEFAULT_AVATAR_GLB = "https://models.readyplayer.me/697b77b6fd03bbd0ce0d0506.glb";
+import { AgentAvatarPreview } from "@/components/AgentAvatarPreview";
+import { fetchWithAuth } from "@/lib/fetch-client";
 
 export default function AgentDetailPage() {
   const params = useParams();
@@ -21,35 +20,38 @@ export default function AgentDetailPage() {
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (agentId) {
-      fetchAgent();
-    }
-  }, [agentId]);
+  const getErrorMessage = (error: unknown) =>
+    error instanceof Error ? error.message : "Unexpected error";
 
-  async function fetchAgent() {
+  const fetchAgent = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await fetch(`/api/agents/${agentId}`);
+      const res = await fetchWithAuth(`/api/agents/${agentId}`);
       if (!res.ok) throw new Error("Failed to fetch agent");
       const data: Agent = await res.json();
       setAgent(data);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (error: unknown) {
+      setError(getErrorMessage(error));
     } finally {
       setLoading(false);
     }
-  }
+  }, [agentId]);
+
+  useEffect(() => {
+    if (agentId) {
+      void fetchAgent();
+    }
+  }, [agentId, fetchAgent]);
 
   async function handleDelete() {
     if (!confirm("¿Estás seguro de que quieres eliminar este agente?")) return;
 
     try {
-      const res = await fetch(`/api/agents/${agentId}`, { method: "DELETE" });
+      const res = await fetchWithAuth(`/api/agents/${agentId}`, { method: "DELETE" });
       if (!res.ok) throw new Error("Failed to delete agent");
       router.push("/agents");
-    } catch (err: any) {
-      setError(err.message);
+    } catch (error: unknown) {
+      setError(getErrorMessage(error));
     }
   }
 
@@ -85,7 +87,13 @@ export default function AgentDetailPage() {
             </button>
             <h1 className="text-3xl font-bold text-foreground">Editar Agente</h1>
           </div>
-          <AgentEditor agentId={agentId} onEditSuccess={() => setEditing(false)} />
+          <AgentEditor
+            agentId={agentId}
+            onEditSuccess={(updatedAgent) => {
+              setAgent(updatedAgent);
+              setEditing(false);
+            }}
+          />
         </div>
       </div>
     );
@@ -100,18 +108,38 @@ export default function AgentDetailPage() {
           <p className="text-sm text-muted-foreground mb-4">{agent.description}</p>
         </div>
 
-        {/* Avatar 2D render (RPM thumbnail) */}
+        {/* Avatar preview */}
         <div className="mb-6 w-full">
           <div className="relative w-full aspect-square min-h-[200px] rounded-xl overflow-hidden bg-gradient-to-br from-purple-500/10 via-blue-500/10 to-cyan-500/10">
-            <img
-              src={getReadyPlayerMeThumbnailUrl(DEFAULT_AVATAR_GLB, { size: 512 })}
-              alt=""
-              className="w-full h-full object-cover object-center rounded-xl"
+            <AgentAvatarPreview
+              name={agent.name}
+              avatar={agent.avatar}
+              className="h-full min-h-[200px] w-full"
             />
           </div>
         </div>
 
         <div className="space-y-4 mb-6">
+          <div>
+            <h3 className="text-sm font-semibold mb-2 text-foreground">Avatar</h3>
+            <div className="bg-surface p-3 rounded-lg border border-theme">
+              {agent.avatar?.provider === "heygen" ? (
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-medium text-cyan-200">Avatar seleccionado</span>
+                    <span className="px-2 py-0.5 text-xs bg-cyan-500/10 text-cyan-100 rounded">
+                      Video y voz
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Este es el avatar que verán tus usuarios durante la llamada.
+                  </p>
+                </div>
+              ) : (
+                <p className="text-xs text-muted-theme">Todavía no hay un avatar seleccionado.</p>
+              )}
+            </div>
+          </div>
           <div>
             <h3 className="text-sm font-semibold mb-2 text-foreground">Voz</h3>
             <div className="bg-surface p-3 rounded-lg border border-theme">
@@ -188,4 +216,3 @@ export default function AgentDetailPage() {
       </div>
   );
 }
-

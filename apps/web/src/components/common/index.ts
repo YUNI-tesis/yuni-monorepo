@@ -8,6 +8,3 @@ export { Tag, type TagProps } from "./Tag";
 export { Select, type SelectProps, type SelectOption } from "./Select";
 export { Card, type CardProps } from "./Card";
 export { Waveform, type WaveformProps } from "./Waveform";
-export { AvatarSelector, type AvatarSelectorProps, type AvatarOption } from "./AvatarSelector";
-export { VoiceSelector, type VoiceSelectorProps, type VoiceOption } from "./VoiceSelector";
-

@@ -1,17 +1,18 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Agent, CreateAgentSchema } from "@/lib/schemas";
+import { useState, useEffect, useCallback } from "react";
+import { Agent } from "@/lib/schemas";
 import { useRouter } from "next/navigation";
 import { fetchWithAuth } from "@/lib/fetch-client";
 import { Button } from "@/components/common";
-import DynamicAvatarRenderer from "@/components/DynamicAvatarRenderer";
+import { AgentAvatarPreview } from "@/components/AgentAvatarPreview";
 import { VoiceSelector } from "@/components/VoiceSelector";
 import { AgentContextSection } from "@/components/AgentContextSection";
+import type { HeyGenAvatarOption } from "@/lib/heygen";
 
 interface AgentEditorProps {
   agentId?: string;
-  onEditSuccess?: () => void;
+  onEditSuccess?: (agent: Agent) => void;
 }
 
 export function AgentEditor({ agentId, onEditSuccess }: AgentEditorProps) {
@@ -19,6 +20,9 @@ export function AgentEditor({ agentId, onEditSuccess }: AgentEditorProps) {
   const [loading, setLoading] = useState(!!agentId);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [avatarOptions, setAvatarOptions] = useState<HeyGenAvatarOption[]>([]);
+  const [loadingAvatarOptions, setLoadingAvatarOptions] = useState(false);
+  const [avatarOptionsError, setAvatarOptionsError] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     name: "",
     description: "",
@@ -30,15 +34,19 @@ export function AgentEditor({ agentId, onEditSuccess }: AgentEditorProps) {
       voiceId: "alloy",
       speakingRate: 1.0,
     },
+    avatar: {
+      provider: "heygen" as "builtin" | "heygen",
+      avatarId: "",
+      mode: "live" as const,
+      previewImageUrl: "",
+      metadata: {} as Record<string, unknown>,
+    },
   });
 
-  useEffect(() => {
-    if (agentId) {
-      fetchAgent();
-    }
-  }, [agentId]);
+  const getErrorMessage = (error: unknown) =>
+    error instanceof Error ? error.message : "Unexpected error";
 
-  async function fetchAgent() {
+  const fetchAgent = useCallback(async () => {
     try {
       setLoading(true);
       const res = await fetchWithAuth(`/api/agents/${agentId}`);
@@ -59,13 +67,57 @@ export function AgentEditor({ agentId, onEditSuccess }: AgentEditorProps) {
           voiceId: "alloy",
           speakingRate: 1.0,
         },
+        avatar: agent.avatar ? {
+          provider: agent.avatar.provider || "heygen",
+          avatarId: agent.avatar.avatarId || "",
+          mode: "live",
+          previewImageUrl: agent.avatar.previewImageUrl || "",
+          metadata: agent.avatar.metadata || {},
+        } : {
+          provider: "heygen",
+          avatarId: "",
+          mode: "live",
+          previewImageUrl: "",
+          metadata: {},
+        },
       });
-    } catch (err: any) {
-      setError(err.message);
+    } catch (error: unknown) {
+      setError(getErrorMessage(error));
     } finally {
       setLoading(false);
     }
-  }
+  }, [agentId]);
+
+  useEffect(() => {
+    if (agentId) {
+      void fetchAgent();
+    }
+  }, [agentId, fetchAgent]);
+
+  const fetchAvatarOptions = useCallback(async () => {
+    try {
+      setLoadingAvatarOptions(true);
+      setAvatarOptionsError(null);
+      const res = await fetchWithAuth("/api/heygen/avatars");
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.error || "No pudimos cargar los avatares");
+      }
+
+      const data = (await res.json()) as { avatars?: HeyGenAvatarOption[] };
+      setAvatarOptions(data.avatars || []);
+    } catch {
+      setAvatarOptions([]);
+      setAvatarOptionsError("No pudimos cargar los avatares ahora mismo. Probá de nuevo en unos segundos.");
+    } finally {
+      setLoadingAvatarOptions(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void fetchAvatarOptions();
+  }, [fetchAvatarOptions]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -73,12 +125,29 @@ export function AgentEditor({ agentId, onEditSuccess }: AgentEditorProps) {
     setError(null);
 
     try {
+      if (!formData.avatar.avatarId) {
+        throw new Error("Elegí un avatar antes de guardar el agente.");
+      }
+
+      const payload = {
+        ...formData,
+        avatar: {
+          provider: "heygen" as const,
+          avatarId: formData.avatar.avatarId || undefined,
+          mode: "live" as const,
+          previewImageUrl: formData.avatar.previewImageUrl || undefined,
+          metadata:
+            Object.keys(formData.avatar.metadata || {}).length > 0
+              ? formData.avatar.metadata
+              : undefined,
+        },
+      };
       const url = agentId ? `/api/agents/${agentId}` : "/api/agents";
       const method = agentId ? "PATCH" : "POST";
       const res = await fetchWithAuth(url, {
         method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(payload),
       });
 
       if (!res.ok) {
@@ -87,10 +156,10 @@ export function AgentEditor({ agentId, onEditSuccess }: AgentEditorProps) {
       }
 
       const agent: Agent = await res.json();
-      onEditSuccess?.();
+      onEditSuccess?.(agent);
       router.push(`/agents/${agent.id}`);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (error: unknown) {
+      setError(getErrorMessage(error));
     } finally {
       setSaving(false);
     }
@@ -119,13 +188,21 @@ export function AgentEditor({ agentId, onEditSuccess }: AgentEditorProps) {
         {/* Avatar Preview Section */}
         <div className="flex flex-col items-center pb-6 border-b border-theme">
           <div className="relative mb-4 w-full max-w-md aspect-square">
-            <DynamicAvatarRenderer
-              modelPath="https://models.readyplayer.me/697b77b6fd03bbd0ce0d0506.glb"
-              style={{ width: "100%", height: "100%" }}
-              className="rounded-xl overflow-hidden"
-              cameraControls={true}
+            <AgentAvatarPreview
+              name={formData.name || "Nuevo agente"}
+              avatar={{
+                provider: "heygen",
+                avatarId: formData.avatar.avatarId || undefined,
+                mode: "live",
+                previewImageUrl: formData.avatar.previewImageUrl || undefined,
+                metadata: formData.avatar.metadata,
+              }}
+              className="h-full w-full"
             />
           </div>
+          <p className="text-sm text-muted-foreground text-center">
+            Elegí la cara con la que tu agente se va a presentar en las llamadas.
+          </p>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -195,6 +272,96 @@ export function AgentEditor({ agentId, onEditSuccess }: AgentEditorProps) {
 
         {/* Voice Configuration Section */}
         <div className="pt-6 border-t border-theme">
+          <div className="mb-8">
+            <div className="mb-4 flex items-center gap-2">
+              <svg className="w-5 h-5 text-cyan-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14m-6 2H5a2 2 0 01-2-2V10a2 2 0 012-2h4l5-4v16l-5-4z" />
+              </svg>
+              <h3 className="text-lg font-semibold text-foreground">Avatar</h3>
+            </div>
+            <p className="text-sm text-muted-foreground mb-6">
+              Elegí el avatar que querés usar para este agente.
+            </p>
+            <div className="space-y-4">
+              <div className="rounded-2xl border border-theme bg-surface p-4">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-medium text-foreground">Avatares disponibles</p>
+                    <p className="text-xs text-muted-foreground">
+                      Elegí la apariencia que va a tener tu agente.
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => void fetchAvatarOptions()}
+                    isLoading={loadingAvatarOptions}
+                  >
+                    Recargar
+                  </Button>
+                </div>
+                {avatarOptionsError && (
+                  <p className="mt-3 text-sm text-error-theme">{avatarOptionsError}</p>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                {avatarOptions.map((option) => {
+                  const isSelected = formData.avatar.avatarId === option.avatarId;
+                  return (
+                    <button
+                      key={option.avatarId}
+                      type="button"
+                      onClick={() => {
+                        setFormData((prev) => ({
+                          ...prev,
+                          avatar: {
+                            provider: "heygen",
+                            avatarId: option.avatarId,
+                            mode: "live",
+                            previewImageUrl: option.previewImageUrl || "",
+                            metadata: {
+                              ...(prev.avatar.metadata || {}),
+                            },
+                          },
+                        }));
+                      }}
+                      className={`overflow-hidden rounded-2xl border text-left transition-all ${
+                        isSelected
+                          ? "border-cyan-400/70 shadow-lg shadow-cyan-500/10"
+                          : "border-theme hover:border-cyan-400/30"
+                      }`}
+                    >
+                      <AgentAvatarPreview
+                        name={option.name}
+                        avatar={{
+                          provider: "heygen",
+                          avatarId: option.avatarId,
+                          mode: "live",
+                          previewImageUrl: option.previewImageUrl,
+                        }}
+                        className="aspect-[4/5] w-full"
+                      />
+                      <div className="bg-surface px-4 py-3">
+                        <p className="text-sm font-medium text-foreground">{option.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {option.gender ? `${option.gender} · ` : ""}Listo para usar
+                        </p>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {!loadingAvatarOptions && avatarOptions.length === 0 && !avatarOptionsError && (
+                <p className="text-sm text-muted-foreground">
+                  No encontramos avatares disponibles por ahora.
+                </p>
+              )}
+            </div>
+          </div>
+
           <div className="mb-4 flex items-center gap-2">
             <svg className="w-5 h-5 text-[var(--color-accent)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
@@ -202,7 +369,7 @@ export function AgentEditor({ agentId, onEditSuccess }: AgentEditorProps) {
             <h3 className="text-lg font-semibold text-foreground">Configuración de Voz</h3>
           </div>
           <p className="text-sm text-muted-foreground mb-6">
-            Selecciona la voz que usará tu agente para las llamadas en tiempo real.
+            Elegí la voz con la que querés que hable tu agente.
           </p>
           <VoiceSelector
             value={formData.voice}
@@ -242,4 +409,3 @@ export function AgentEditor({ agentId, onEditSuccess }: AgentEditorProps) {
     </div>
   );
 }
-

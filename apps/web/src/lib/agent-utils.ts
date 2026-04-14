@@ -85,26 +85,22 @@ export function applyGuardrails(
   state: ConversationState,
   userMessage: string
 ): GuardrailResult {
-  let sanitized = userMessage.trim();
-  let blocked = false;
-  let refusal: string | undefined;
+  const sanitized = userMessage.trim();
+  void state;
 
   for (const pattern of INJECTION_PATTERNS) {
     if (pattern.test(sanitized)) {
-      blocked = true;
-      refusal = `I cannot comply with that request. I'm designed to stay within my role as ${agent.name}. How can I help you within my defined scope?`;
-      return { sanitizedUserMessage: sanitized, blocked, refusal };
+      const refusal = `I cannot comply with that request. I'm designed to stay within my role as ${agent.name}. How can I help you within my defined scope?`;
+      return { sanitizedUserMessage: sanitized, blocked: true, refusal };
     }
   }
 
   for (const pattern of SECRET_PATTERNS) {
     if (pattern.test(sanitized)) {
-      blocked = true;
-      refusal = `I cannot process messages that appear to contain sensitive information like API keys, passwords, or personal data. Please remove any sensitive information and try again.`;
-      return { sanitizedUserMessage: sanitized, blocked, refusal };
+      const refusal = `I cannot process messages that appear to contain sensitive information like API keys, passwords, or personal data. Please remove any sensitive information and try again.`;
+      return { sanitizedUserMessage: sanitized, blocked: true, refusal };
     }
   }
 
   return { sanitizedUserMessage: sanitized, blocked: false };
 }
-

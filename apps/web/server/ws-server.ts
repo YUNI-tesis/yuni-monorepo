@@ -9,6 +9,7 @@ import { RealtimeClient } from "./realtime-client";
 import { synthesizeWithAgentVoice } from "./tts-providers";
 import { buildSystemPrompt } from "../src/lib/agent-utils";
 import { retrieveContextForAgent, formatRetrievalContext } from "../src/lib/retrieval";
+import type { Agent } from "../src/lib/schemas";
 import type {
   CallConnection,
   ClientMessage,
@@ -97,7 +98,7 @@ async function handleClientMessage(ws: WebSocket, message: ClientMessage): Promi
       await handleInterrupt(ws, message);
       break;
     default:
-      console.warn(`[WebSocket] Unknown message type: ${(message as any).type}`);
+      console.warn(`[WebSocket] Unknown message type: ${(message as { type?: string }).type}`);
   }
 }
 
@@ -105,15 +106,11 @@ async function handleClientMessage(ws: WebSocket, message: ClientMessage): Promi
 // Voice Mode Detection
 // ============================================================================
 
-function determineVoiceMode(agentVoice: any): {
+function determineVoiceMode(agentVoice: Agent["voice"] | unknown): {
   mode: VoiceMode;
   config: Partial<RealtimeSessionConfig>;
 } {
-  const voiceConfig = agentVoice as {
-    provider?: "openai" | "elevenlabs";
-    voiceId?: string;
-    speakingRate?: number;
-  };
+  const voiceConfig = agentVoice as Agent["voice"];
 
   // Check if using OpenAI Realtime voice (low latency)
   if (
@@ -149,6 +146,7 @@ function determineVoiceMode(agentVoice: any): {
 async function handleInit(ws: WebSocket, message: ClientMessage & { type: "init" }): Promise<void> {
   try {
     const { sessionId, userId, agentId, conversationId } = message;
+    const avatarRuntime = message.avatarRuntime === "heygen" ? "heygen" : "builtin";
 
     // Fetch agent from database
     const agent = await prisma.agent.findUnique({
@@ -173,8 +171,8 @@ async function handleInit(ws: WebSocket, message: ClientMessage & { type: "init"
       description: agent.description,
       systemPrompt: agent.systemPrompt,
       context: agent.context,
-      toolsAllowed: agent.toolsAllowed as any,
-      voice: agent.voice as any,
+      toolsAllowed: agent.toolsAllowed as Agent["toolsAllowed"],
+      voice: agent.voice as Agent["voice"],
       createdAt: agent.createdAt.toISOString(),
       updatedAt: agent.updatedAt.toISOString(),
     });
@@ -186,6 +184,7 @@ async function handleInit(ws: WebSocket, message: ClientMessage & { type: "init"
       userId,
       agentId,
       conversationId,
+      avatarRuntime,
       isRealtimeConnected: false,
       voiceMode: mode,
       state: "connecting",
@@ -238,7 +237,7 @@ async function handleInit(ws: WebSocket, message: ClientMessage & { type: "init"
 
     // Connect to Realtime
     await realtimeClient.connect();
-    connection.realtimeWs = realtimeClient as any;
+    connection.realtimeClient = realtimeClient;
     connection.isRealtimeConnected = true;
 
     // Store cleanup function
@@ -280,7 +279,11 @@ async function handleAudioChunk(
     return;
   }
 
-  const realtimeClient = connection.realtimeWs as any as RealtimeClient;
+  const realtimeClient = connection.realtimeClient;
+  if (!realtimeClient) {
+    console.error("[WebSocket] Realtime client missing");
+    return;
+  }
 
   try {
     // Update state if not listening
@@ -305,12 +308,17 @@ async function handleAudioEnd(
   ws: WebSocket,
   message: ClientMessage & { type: "audio_end" }
 ): Promise<void> {
+  void message;
   const connection = findConnectionByWs(ws);
   if (!connection) return;
 
   if (!connection.isRealtimeConnected) return;
 
-  const realtimeClient = connection.realtimeWs as any as RealtimeClient;
+  const realtimeClient = connection.realtimeClient;
+  if (!realtimeClient) {
+    console.error("[WebSocket] Realtime client missing");
+    return;
+  }
 
   try {
     // Commit audio buffer
@@ -329,6 +337,7 @@ async function handleInterrupt(
   ws: WebSocket,
   message: ClientMessage & { type: "interrupt" }
 ): Promise<void> {
+  void message;
   const connection = findConnectionByWs(ws);
   if (!connection) return;
 
@@ -337,7 +346,11 @@ async function handleInterrupt(
   try {
     // Cancel Realtime response if there's an active response
     if (connection.isRealtimeConnected && connection.hasActiveResponse) {
-      const realtimeClient = connection.realtimeWs as any as RealtimeClient;
+      const realtimeClient = connection.realtimeClient;
+      if (!realtimeClient) {
+        console.error("[WebSocket] Realtime client missing");
+        return;
+      }
       realtimeClient.cancelResponse();
       connection.hasActiveResponse = false;
     }
@@ -379,7 +392,11 @@ async function handleRealtimeEvent(
       // If currently speaking or has active response, this is a barge-in
       if (connection.isSpeaking || connection.hasActiveResponse) {
         console.log("[Realtime] Barge-in detected");
-        const realtimeClient = connection.realtimeWs as any as RealtimeClient;
+        const realtimeClient = connection.realtimeClient;
+        if (!realtimeClient) {
+          console.error("[WebSocket] Realtime client missing during barge-in");
+          break;
+        }
         
         // Only cancel if there's an active response
         if (connection.hasActiveResponse) {
@@ -466,8 +483,8 @@ async function handleRealtimeEvent(
             description: agent.description,
             systemPrompt: agent.systemPrompt,
             context: agent.context,
-            toolsAllowed: agent.toolsAllowed as any,
-            voice: agent.voice as any,
+            toolsAllowed: agent.toolsAllowed as Agent["toolsAllowed"],
+            voice: agent.voice as Agent["voice"],
             createdAt: agent.createdAt.toISOString(),
             updatedAt: agent.updatedAt.toISOString(),
           });
@@ -489,8 +506,12 @@ Response Rules:
 - When citing specific data, mention it comes from the uploaded documents`;
           
           // Update Realtime session with new instructions
-          const realtimeClient = connection.realtimeWs as any as RealtimeClient;
-          await realtimeClient.updateSession({
+          const realtimeClient = connection.realtimeClient;
+          if (!realtimeClient) {
+            throw new Error("Realtime client missing");
+          }
+
+          realtimeClient.updateSession({
             instructions: updatedPrompt,
           });
           
@@ -510,7 +531,7 @@ Response Rules:
           const ragLatency = Date.now() - ragStartTime;
           console.log(`[Metrics] RAG latency (no context): ${ragLatency}ms`);
         }
-      } catch (error: any) {
+      } catch (error) {
         console.error(`[RAG LiveCall] Error retrieving context:`, error);
         // Continue without RAG if it fails (graceful degradation)
       }
@@ -536,6 +557,13 @@ Response Rules:
       // Complete text response
       connection.currentResponse = event.text;
       console.log(`[Realtime] Text response complete: "${event.text}"`);
+
+      if (connection.avatarRuntime === "heygen") {
+        sendToClient(connection.ws, {
+          type: "response_complete",
+          text: event.text,
+        });
+      }
 
       // Calculate LLM latency
       if (connection.metrics.llmStartTime) {
@@ -602,6 +630,13 @@ Response Rules:
           type: "response_chunk",
           text: event.transcript,
         });
+
+        if (connection.avatarRuntime === "heygen") {
+          sendToClient(connection.ws, {
+            type: "response_complete",
+            text: event.transcript,
+          });
+        }
       }
       break;
 
@@ -679,7 +714,7 @@ async function synthesizeAndStreamAudio(connection: CallConnection, text: string
       throw new Error("Agent not found");
     }
 
-    const voiceConfig = agent.voice as any;
+    const voiceConfig = agent.voice as Agent["voice"];
 
     // Generate and stream audio
     const audioGenerator = synthesizeWithAgentVoice(

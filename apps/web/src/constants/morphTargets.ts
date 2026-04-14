@@ -1,15 +1,8 @@
 /**
- * Morph Target Names — Ready Player Me Oculus OVR LipSync
- * Exact names from Ready Player Me GLBs (Oculus LipSync blend shapes).
- * Only drive existing morph targets; do not assume custom targets.
- *
- * Refs:
- * - https://docs.readyplayer.me/ready-player-me/api-reference/avatars/morph-targets/oculus-ovr-libsync
- * - https://docs.readyplayer.me/ready-player-me/api-reference/avatars/morph-targets/apple-arkit
+ * Morph target channel names used by the avatar renderer.
+ * The renderer only drives channels that already exist on the loaded model.
  */
-
-/** Oculus LipSync visemes + RPM additional blend shapes. Each channel maps to exact morph target name(s) for lookup. */
-export const RPM_MORPH_CHANNELS = {
+export const LIPSYNC_MORPH_CHANNELS = {
   // Oculus LipSync visemes (exact names)
   viseme_sil: ["viseme_sil"],
   viseme_PP: ["viseme_PP"],
@@ -26,7 +19,7 @@ export const RPM_MORPH_CHANNELS = {
   viseme_I: ["viseme_I"],
   viseme_O: ["viseme_O"],
   viseme_U: ["viseme_U"],
-  // Additional (RPM doc) + volume fallback when visemes missing
+  // Extra expressions and fallbacks for models with richer face rigs
   mouthOpen: ["mouthOpen", "jawOpen"],
   mouthClose: ["mouthClose"],
   mouthSmile: ["mouthSmile"],
@@ -40,13 +33,13 @@ export const RPM_MORPH_CHANNELS = {
   eyesLookDown: ["eyesLookDown"],
 } as const;
 
-export type RPMChannelName = keyof typeof RPM_MORPH_CHANNELS;
+export type LipSyncChannelName = keyof typeof LIPSYNC_MORPH_CHANNELS;
 
 /**
  * Ordered viseme channels for audio-driven lip sync (Oculus LipSync order).
  * Renderer maps analyser output to these and writes morphTargetInfluences.
  */
-export const LIPSYNC_VISEME_CHANNELS: readonly RPMChannelName[] = [
+export const LIPSYNC_VISEME_CHANNELS: readonly LipSyncChannelName[] = [
   "viseme_sil",
   "viseme_PP",
   "viseme_FF",
@@ -99,12 +92,12 @@ export function findMorphTargetIndex(
  */
 export function buildChannelToIndexMap(
   morphTargetDictionary: Record<string, number> | undefined
-): Partial<Record<RPMChannelName, number>> {
-  const map: Partial<Record<RPMChannelName, number>> = {};
+): Partial<Record<LipSyncChannelName, number>> {
+  const map: Partial<Record<LipSyncChannelName, number>> = {};
   if (!morphTargetDictionary) return map;
 
-  for (const channel of Object.keys(RPM_MORPH_CHANNELS) as RPMChannelName[]) {
-    const patterns = RPM_MORPH_CHANNELS[channel];
+  for (const channel of Object.keys(LIPSYNC_MORPH_CHANNELS) as LipSyncChannelName[]) {
+    const patterns = LIPSYNC_MORPH_CHANNELS[channel];
     const index = findMorphTargetIndex(morphTargetDictionary, patterns);
     if (index !== null) map[channel] = index;
   }

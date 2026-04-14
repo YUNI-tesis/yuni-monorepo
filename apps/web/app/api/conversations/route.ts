@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createConversation, listConversations } from "@/lib/storage";
 import { CreateConversationSchema } from "@/lib/schemas";
 import { requireAuth } from "@/lib/auth-helpers";
+import { jsonErrorResponse } from "@/lib/api-errors";
 
 export async function GET(request: NextRequest) {
   try {
@@ -10,11 +11,8 @@ export async function GET(request: NextRequest) {
     const agentId = searchParams.get("agentId") || undefined;
     const conversations = await listConversations(user.id, agentId);
     return NextResponse.json(conversations);
-  } catch (error: any) {
-    if (error.status === 401) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    return jsonErrorResponse(error);
   }
 }
 
@@ -25,14 +23,7 @@ export async function POST(request: NextRequest) {
     const data = CreateConversationSchema.parse(body);
     const conversation = await createConversation(user.id, data.agentId, data.mode);
     return NextResponse.json(conversation, { status: 201 });
-  } catch (error: any) {
-    if (error.status === 401) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-    if (error.name === "ZodError") {
-      return NextResponse.json({ error: error.errors }, { status: 400 });
-    }
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    return jsonErrorResponse(error);
   }
 }
-

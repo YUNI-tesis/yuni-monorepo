@@ -1,5 +1,23 @@
 import { z } from "zod";
 
+export const AgentAvatarSchema = z.object({
+  provider: z.enum(["builtin", "heygen"]).default("builtin"),
+  avatarId: z.string().optional(),
+  mode: z.literal("live").optional(),
+  previewImageUrl: z.string().url().optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+}).superRefine((avatar, ctx) => {
+  if (avatar.provider === "heygen" && !avatar.avatarId) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "avatarId is required when provider is heygen",
+      path: ["avatarId"],
+    });
+  }
+});
+
+export type AgentAvatar = z.infer<typeof AgentAvatarSchema>;
+
 // Agent schema
 export const AgentSchema = z.object({
   id: z.string(),
@@ -15,6 +33,7 @@ export const AgentSchema = z.object({
       speakingRate: z.number().optional(),
     })
     .optional(),
+  avatar: AgentAvatarSchema.optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -72,6 +91,7 @@ export const CreateAgentSchema = z.object({
       speakingRate: z.number().optional(),
     })
     .optional(),
+  avatar: AgentAvatarSchema.optional(),
 });
 
 export const UpdateAgentSchema = CreateAgentSchema.partial();
@@ -83,7 +103,7 @@ export const CreateConversationSchema = z.object({
 
 export const ChatRequestSchema = z.object({
   agentId: z.string(),
-  conversationId: z.string(),
+  conversationId: z.string().optional(),
   message: z.string().min(1, "Message cannot be empty"),
   mode: z.enum(["text", "voice"]).default("text"),
 });
@@ -96,4 +116,3 @@ export const TTSRequestSchema = z.object({
   text: z.string().min(1),
   voice: z.string().optional(),
 });
-

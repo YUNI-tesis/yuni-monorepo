@@ -8,16 +8,24 @@ set -e
 echo "🚀 Starting Yuni AI Development Servers..."
 echo ""
 
-# Check if .env.local exists
-if [ ! -f .env.local ]; then
+# Check if any supported env file exists
+if [ ! -f .env.local ] && [ ! -f ../../.env.local ] && [ ! -f ../../.env ]; then
   echo "⚠️  Warning: .env.local not found!"
   echo "   Please copy .env.example to .env.local and configure your environment variables."
   echo ""
   exit 1
 fi
 
-# Check if OPENAI_API_KEY is set
-if ! grep -q "OPENAI_API_KEY=sk-" .env.local; then
+# Check if OPENAI_API_KEY is set in the env source used by the websocket server
+ENV_FILE=".env.local"
+if [ ! -f "$ENV_FILE" ] && [ -f "../../.env.local" ]; then
+  ENV_FILE="../../.env.local"
+fi
+if [ ! -f "$ENV_FILE" ] && [ -f "../../.env" ]; then
+  ENV_FILE="../../.env"
+fi
+
+if ! grep -q "OPENAI_API_KEY=sk-" "$ENV_FILE"; then
   echo "⚠️  Warning: OPENAI_API_KEY not configured in .env.local"
   echo "   The Realtime API requires a valid OpenAI API key."
   echo ""

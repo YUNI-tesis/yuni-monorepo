@@ -1,5 +1,5 @@
-import { prisma } from "@yuni/database";
-import { Agent, AgentSchema, ConversationState, ConversationStateSchema } from "./schemas";
+import { Prisma, prisma } from "@yuni/database";
+import { Agent, ConversationState } from "./schemas";
 
 // Types for Prisma query results
 type PrismaAgent = Awaited<ReturnType<typeof prisma.agent.findFirst>>;
@@ -18,6 +18,10 @@ type PrismaConversation = {
   transcripts: PrismaTranscript[];
 };
 
+function toPrismaJsonValue<T>(value: T | undefined): Prisma.InputJsonValue | undefined {
+  return value === undefined ? undefined : (value as Prisma.InputJsonValue);
+}
+
 // Agent operations
 export async function createAgent(
   userId: string,
@@ -31,7 +35,8 @@ export async function createAgent(
       systemPrompt: data.systemPrompt,
       context: data.context,
       toolsAllowed: data.toolsAllowed,
-      voice: data.voice || undefined,
+      voice: toPrismaJsonValue(data.voice),
+      avatar: toPrismaJsonValue(data.avatar),
     },
   });
 
@@ -43,6 +48,7 @@ export async function createAgent(
     context: agent.context,
     toolsAllowed: agent.toolsAllowed as ("none" | "basic")[],
     voice: agent.voice as Agent["voice"],
+    avatar: agent.avatar as Agent["avatar"],
     createdAt: agent.createdAt.toISOString(),
     updatedAt: agent.updatedAt.toISOString(),
   };
@@ -70,7 +76,8 @@ export async function updateAgent(
       ...(updates.systemPrompt !== undefined && { systemPrompt: updates.systemPrompt }),
       ...(updates.context !== undefined && { context: updates.context }),
       ...(updates.toolsAllowed !== undefined && { toolsAllowed: updates.toolsAllowed }),
-      ...(updates.voice !== undefined && { voice: updates.voice || undefined }),
+      ...(updates.voice !== undefined && { voice: toPrismaJsonValue(updates.voice) }),
+      ...(updates.avatar !== undefined && { avatar: toPrismaJsonValue(updates.avatar) }),
     },
   });
 
@@ -82,6 +89,7 @@ export async function updateAgent(
     context: agent.context,
     toolsAllowed: agent.toolsAllowed as ("none" | "basic")[],
     voice: agent.voice as Agent["voice"],
+    avatar: agent.avatar as Agent["avatar"],
     createdAt: agent.createdAt.toISOString(),
     updatedAt: agent.updatedAt.toISOString(),
   };
@@ -119,6 +127,7 @@ export async function getAgent(id: string, userId: string): Promise<Agent> {
     context: agent.context,
     toolsAllowed: agent.toolsAllowed as ("none" | "basic")[],
     voice: agent.voice as Agent["voice"],
+    avatar: agent.avatar as Agent["avatar"],
     createdAt: agent.createdAt.toISOString(),
     updatedAt: agent.updatedAt.toISOString(),
   };
@@ -138,6 +147,7 @@ export async function listAgents(userId: string): Promise<Agent[]> {
     context: agent.context,
     toolsAllowed: agent.toolsAllowed as ("none" | "basic")[],
     voice: agent.voice as Agent["voice"],
+    avatar: agent.avatar as Agent["avatar"],
     createdAt: agent.createdAt.toISOString(),
     updatedAt: agent.updatedAt.toISOString(),
   }));

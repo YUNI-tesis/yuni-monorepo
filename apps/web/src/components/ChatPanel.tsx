@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { ConversationState, ChatMessage } from "@/lib/schemas";
 import { MessageList } from "./MessageList";
 import { MessageComposer } from "./MessageComposer";
@@ -20,15 +20,8 @@ export function ChatPanel({ agentId, conversationId: initialConversationId }: Ch
   const [sending, setSending] = useState(false);
   const [streamingText, setStreamingText] = useState("");
   const [callMode, setCallMode] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (initialConversationId) {
-      loadConversation(initialConversationId);
-    } else {
-      createNewConversation();
-    }
-  }, [initialConversationId, agentId]);
 
   useEffect(() => {
     scrollToBottom();
@@ -38,44 +31,87 @@ export function ChatPanel({ agentId, conversationId: initialConversationId }: Ch
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }
 
-  async function createNewConversation() {
+  const getErrorMessage = (value: unknown) =>
+    value instanceof Error ? value.message : "Unexpected error";
+
+  const loadLatestConversationForAgent = useCallback(async () => {
     try {
-      const res = await fetchWithAuth("/api/conversations", {
+      setError(null);
+      setLoading(true);
+
+      const res = await fetchWithAuth(`/api/conversations?agentId=${encodeURIComponent(agentId)}`);
+      if (!res.ok) {
+        throw new Error("Failed to load conversations");
+      }
+
+      const conversations: ConversationState[] = await res.json();
+      const existingConversation = conversations[0];
+
+      if (existingConversation) {
+        setConversation(existingConversation);
+        setMessages(existingConversation.messages);
+        return;
+      }
+
+      const createRes = await fetchWithAuth("/api/conversations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ agentId, mode: "text" }),
       });
-      if (!res.ok) throw new Error("Failed to create conversation");
-      const conv: ConversationState = await res.json();
-      setConversation(conv);
-      setMessages(conv.messages);
-    } catch (err: any) {
-      console.error("Failed to create conversation", err);
+      if (!createRes.ok) throw new Error("Failed to create conversation");
+
+      const newConversation: ConversationState = await createRes.json();
+      setConversation(newConversation);
+      setMessages(newConversation.messages);
+    } catch (error: unknown) {
+      console.error("Failed to load latest conversation", error);
+      setConversation(null);
+      setMessages([]);
+      setError(getErrorMessage(error));
     } finally {
       setLoading(false);
     }
-  }
+  }, [agentId]);
 
-  async function loadConversation(id: string) {
+  const loadConversation = useCallback(async (id: string) => {
     try {
+      setError(null);
       setLoading(true);
       const res = await fetchWithAuth(`/api/conversations/${id}`);
       if (!res.ok) throw new Error("Failed to load conversation");
       const conv: ConversationState = await res.json();
       setConversation(conv);
       setMessages(conv.messages);
-    } catch (err: any) {
-      console.error("Failed to load conversation", err);
+    } catch (error: unknown) {
+      console.error("Failed to load conversation", error);
+      setConversation(null);
+      setMessages([]);
+      setError(getErrorMessage(error));
     } finally {
       setLoading(false);
     }
-  }
+  }, []);
+
+  useEffect(() => {
+    setConversation(null);
+    setMessages([]);
+    setStreamingText("");
+    setCallMode(false);
+
+    if (initialConversationId) {
+      void loadConversation(initialConversationId);
+      return;
+    }
+
+    void loadLatestConversationForAgent();
+  }, [initialConversationId, agentId, loadLatestConversationForAgent, loadConversation]);
 
   async function handleSendMessage(message: string) {
     if (!conversation || sending) return;
 
     setSending(true);
     setStreamingText("");
+    setError(null);
 
     // Add user message immediately
     const userMessage: ChatMessage = {
@@ -128,16 +164,17 @@ export function ChatPanel({ agentId, conversationId: initialConversationId }: Ch
                   fullResponse += parsed.text;
                   setStreamingText(fullResponse);
                 }
-              } catch (e) {
+              } catch {
                 // Ignore parse errors
               }
             }
           }
         }
       }
-    } catch (err: any) {
-      console.error("Failed to send message", err);
+    } catch (error: unknown) {
+      console.error("Failed to send message", error);
       setMessages((prev) => prev.filter((m) => m.id !== userMessage.id));
+      setError(getErrorMessage(error));
     } finally {
       setSending(false);
       setStreamingText("");
@@ -159,7 +196,9 @@ export function ChatPanel({ agentId, conversationId: initialConversationId }: Ch
     return (
       <div className="flex items-center justify-center h-full">
         <div className="glass rounded-xl border border-red-500/30 bg-red-500/10 px-6 py-4">
-          <p className="text-error-theme" role="alert">Error: No se pudo crear la conversación</p>
+          <p className="text-error-theme" role="alert">
+            Error: {error || "No se pudo crear la conversación"}
+          </p>
         </div>
       </div>
     );
@@ -207,6 +246,14 @@ export function ChatPanel({ agentId, conversationId: initialConversationId }: Ch
         <CostMeter conversationId={conversation.id} />
       </div>
 
+      {error && (
+        <div className="px-6 pt-4">
+          <div className="glass rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3">
+            <p className="text-error-theme text-sm" role="alert">{error}</p>
+          </div>
+        </div>
+      )}
+
       {callMode ? (
         <CallMode
           agentId={agentId}
@@ -215,7 +262,7 @@ export function ChatPanel({ agentId, conversationId: initialConversationId }: Ch
             setCallMode(false);
             // Reload conversation to show any new messages
             if (conversation.id) {
-              loadConversation(conversation.id);
+              void loadConversation(conversation.id);
             }
           }}
         />
@@ -253,4 +300,3 @@ export function ChatPanel({ agentId, conversationId: initialConversationId }: Ch
     </div>
   );
 }
-
