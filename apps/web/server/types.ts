@@ -3,6 +3,7 @@
  */
 
 import type WebSocket from "ws";
+import type { RealtimeClient } from "./realtime-client";
 
 // ============================================================================
 // OpenAI Realtime API Types
@@ -366,6 +367,7 @@ export interface InitMessage {
   userId: string;
   agentId: string;
   conversationId: string;
+  avatarProvider?: "local3d" | "liveavatar";
 }
 
 export interface AudioChunkMessage {
@@ -471,7 +473,7 @@ export interface CallConnection {
   conversationId: string;
   
   // Realtime connection
-  realtimeWs?: WebSocket;
+  realtimeWs?: RealtimeClient;
   realtimeSessionId?: string;
   isRealtimeConnected: boolean;
   

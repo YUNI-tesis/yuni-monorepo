@@ -1,5 +1,9 @@
 import { prisma } from "./prisma";
-import { Agent, AgentSchema, ConversationState, ConversationStateSchema } from "./schemas";
+import {
+  Agent,
+  DEFAULT_LOCAL_AVATAR,
+  ConversationState,
+} from "./schemas";
 
 // Types for Prisma query results
 type PrismaAgent = Awaited<ReturnType<typeof prisma.agent.findFirst>>;
@@ -18,6 +22,21 @@ type PrismaConversation = {
   transcripts: PrismaTranscript[];
 };
 
+function toAgent(agent: NonNullable<PrismaAgent>): Agent {
+  return {
+    id: agent.id,
+    name: agent.name,
+    description: agent.description,
+    systemPrompt: agent.systemPrompt,
+    context: agent.context,
+    toolsAllowed: agent.toolsAllowed as ("none" | "basic")[],
+    voice: agent.voice as Agent["voice"],
+    avatar: (agent.avatar as Agent["avatar"]) || DEFAULT_LOCAL_AVATAR,
+    createdAt: agent.createdAt.toISOString(),
+    updatedAt: agent.updatedAt.toISOString(),
+  };
+}
+
 // Agent operations
 export async function createAgent(
   userId: string,
@@ -32,20 +51,11 @@ export async function createAgent(
       context: data.context,
       toolsAllowed: data.toolsAllowed,
       voice: data.voice || undefined,
+      avatar: data.avatar || DEFAULT_LOCAL_AVATAR,
     },
   });
 
-  return {
-    id: agent.id,
-    name: agent.name,
-    description: agent.description,
-    systemPrompt: agent.systemPrompt,
-    context: agent.context,
-    toolsAllowed: agent.toolsAllowed as ("none" | "basic")[],
-    voice: agent.voice as Agent["voice"],
-    createdAt: agent.createdAt.toISOString(),
-    updatedAt: agent.updatedAt.toISOString(),
-  };
+  return toAgent(agent);
 }
 
 export async function updateAgent(
@@ -71,20 +81,11 @@ export async function updateAgent(
       ...(updates.context !== undefined && { context: updates.context }),
       ...(updates.toolsAllowed !== undefined && { toolsAllowed: updates.toolsAllowed }),
       ...(updates.voice !== undefined && { voice: updates.voice || undefined }),
+      ...(updates.avatar !== undefined && { avatar: updates.avatar || DEFAULT_LOCAL_AVATAR }),
     },
   });
 
-  return {
-    id: agent.id,
-    name: agent.name,
-    description: agent.description,
-    systemPrompt: agent.systemPrompt,
-    context: agent.context,
-    toolsAllowed: agent.toolsAllowed as ("none" | "basic")[],
-    voice: agent.voice as Agent["voice"],
-    createdAt: agent.createdAt.toISOString(),
-    updatedAt: agent.updatedAt.toISOString(),
-  };
+  return toAgent(agent);
 }
 
 export async function deleteAgent(id: string, userId: string): Promise<void> {
@@ -111,17 +112,7 @@ export async function getAgent(id: string, userId: string): Promise<Agent> {
     throw new Error(`Agent ${id} not found`);
   }
 
-  return {
-    id: agent.id,
-    name: agent.name,
-    description: agent.description,
-    systemPrompt: agent.systemPrompt,
-    context: agent.context,
-    toolsAllowed: agent.toolsAllowed as ("none" | "basic")[],
-    voice: agent.voice as Agent["voice"],
-    createdAt: agent.createdAt.toISOString(),
-    updatedAt: agent.updatedAt.toISOString(),
-  };
+  return toAgent(agent);
 }
 
 export async function listAgents(userId: string): Promise<Agent[]> {
@@ -130,17 +121,7 @@ export async function listAgents(userId: string): Promise<Agent[]> {
     orderBy: { createdAt: "desc" },
   });
 
-  return agents.map((agent: NonNullable<PrismaAgent>) => ({
-    id: agent.id,
-    name: agent.name,
-    description: agent.description,
-    systemPrompt: agent.systemPrompt,
-    context: agent.context,
-    toolsAllowed: agent.toolsAllowed as ("none" | "basic")[],
-    voice: agent.voice as Agent["voice"],
-    createdAt: agent.createdAt.toISOString(),
-    updatedAt: agent.updatedAt.toISOString(),
-  }));
+  return agents.map((agent: NonNullable<PrismaAgent>) => toAgent(agent));
 }
 
 // Conversation operations

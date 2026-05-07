@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { Agent } from "@/lib/schemas";
+import { Agent, DEFAULT_LOCAL_AVATAR } from "@/lib/schemas";
 import { AgentEditor } from "@/components/AgentEditor";
 import { ChatPanel } from "@/components/ChatPanel";
 import { Button } from "@/components/common";
@@ -31,8 +31,8 @@ export default function AgentDetailPage() {
       if (!res.ok) throw new Error("Failed to fetch agent");
       const data: Agent = await res.json();
       setAgent(data);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to fetch agent");
     } finally {
       setLoading(false);
     }
@@ -45,8 +45,8 @@ export default function AgentDetailPage() {
       const res = await fetch(`/api/agents/${agentId}`, { method: "DELETE" });
       if (!res.ok) throw new Error("Failed to delete agent");
       router.push("/agents");
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to delete agent");
     }
   }
 
@@ -100,16 +100,40 @@ export default function AgentDetailPage() {
         {/* Avatar Preview */}
         <div className="mb-6">
           <div className="relative w-full aspect-square rounded-xl overflow-hidden bg-gradient-to-br from-purple-500/10 via-blue-500/10 to-cyan-500/10">
-            <DynamicAvatarRenderer
-              modelPath="/assets/pennywise-rigged.glb"
-              style={{ width: "100%", height: "100%", minHeight: "250px" }}
-              className="rounded-xl"
-              lipsyncAnimation={false}
-            />
+            {agent.avatar?.provider === "liveavatar" && agent.avatar.thumbnailUrl ? (
+              <img
+                src={agent.avatar.thumbnailUrl}
+                alt={agent.avatar.displayName || agent.name}
+                className="h-full w-full object-cover"
+              />
+            ) : (
+              <DynamicAvatarRenderer
+                modelPath={agent.avatar?.fallbackModelPath || DEFAULT_LOCAL_AVATAR.fallbackModelPath!}
+                style={{ width: "100%", height: "100%", minHeight: "250px" }}
+                className="rounded-xl"
+                lipsyncAnimation={false}
+              />
+            )}
           </div>
         </div>
 
         <div className="space-y-4 mb-6">
+          <div>
+            <h3 className="text-sm font-semibold mb-2 text-white">Avatar</h3>
+            <div className="bg-white/5 p-3 rounded-lg border border-white/10">
+              <p className="text-xs text-white/60">
+                Proveedor:{" "}
+                <span className="text-white/80">
+                  {agent.avatar?.provider === "liveavatar" ? "LiveAvatar" : "Local 3D"}
+                </span>
+              </p>
+              {agent.avatar?.displayName && (
+                <p className="text-xs text-white/60 mt-1">
+                  Avatar: <span className="text-white/80">{agent.avatar.displayName}</span>
+                </p>
+              )}
+            </div>
+          </div>
           <div>
             <h3 className="text-sm font-semibold mb-2 text-white">Voz</h3>
             <div className="bg-white/5 p-3 rounded-lg border border-white/10">
@@ -186,4 +210,3 @@ export default function AgentDetailPage() {
       </div>
   );
 }
-

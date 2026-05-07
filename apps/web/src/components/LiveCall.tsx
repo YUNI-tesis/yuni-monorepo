@@ -7,9 +7,14 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Button } from "@/components/common";
-import DynamicAvatarRenderer from "@/components/DynamicAvatarRenderer";
 import { CostMeter } from "@/components/CostMeter";
 import { fetchWithAuth } from "@/lib/fetch-client";
+import { AgentAvatar, DEFAULT_LOCAL_AVATAR } from "@/lib/schemas";
+import { Local3DAvatarRenderer } from "@/components/Local3DAvatarRenderer";
+import {
+  RemoteRealtimeAvatarHandle,
+  RemoteRealtimeAvatarRenderer,
+} from "@/components/RemoteRealtimeAvatarRenderer";
 
 // ============================================================================
 // Types
@@ -29,6 +34,24 @@ interface Message {
   role: "user" | "assistant";
   content: string;
   timestamp: Date;
+}
+
+type LiveCallServerMessage =
+  | { type: "ready"; sessionId: string }
+  | { type: "state"; state: CallState }
+  | { type: "transcript"; text: string; isFinal: boolean }
+  | { type: "response_chunk"; text: string }
+  | { type: "audio_chunk"; audio: string; format?: string }
+  | { type: "error"; error: string; code?: string }
+  | { type: "metrics"; latency?: Record<string, number>; usage?: Record<string, number> }
+  | { type: "audio_interrupted"; reason: "barge_in" | "manual" };
+
+interface ConversationPayload {
+  messages: Array<{
+    role: Message["role"];
+    content: string;
+    createdAt: string;
+  }>;
 }
 
 interface LiveCallProps {
@@ -51,6 +74,9 @@ export function LiveCall({ agentId, conversationId, userId, onClose }: LiveCallP
   const [isMuted, setIsMuted] = useState(false);
   const [callDuration, setCallDuration] = useState(0); // in seconds
   const [loadingHistory, setLoadingHistory] = useState(true);
+  const [agentAvatar, setAgentAvatar] = useState<AgentAvatar>(DEFAULT_LOCAL_AVATAR);
+  const [avatarLoaded, setAvatarLoaded] = useState(false);
+  const [remoteAvatarError, setRemoteAvatarError] = useState<string | null>(null);
   
   // Analyser for avatar lip sync (taps TTS playback)
   const [playbackAnalyser, setPlaybackAnalyser] = useState<AnalyserNode | null>(null);
@@ -69,12 +95,15 @@ export function LiveCall({ agentId, conversationId, userId, onClose }: LiveCallP
   const isPlayingRef = useRef(false);
   const sessionIdRef = useRef<string>(`session_${Date.now()}`);
   const connectionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const remoteAvatarRef = useRef<RemoteRealtimeAvatarHandle | null>(null);
+
+  const isRemoteAvatar = agentAvatar.provider !== "local3d";
 
   // ============================================================================
   // WebSocket Connection
   // ============================================================================
 
-  const connectWebSocket = () => {
+  const connectWebSocket = useCallback(() => {
     const ws = new WebSocket("ws://localhost:3001");
 
     ws.onopen = () => {
@@ -89,13 +118,14 @@ export function LiveCall({ agentId, conversationId, userId, onClose }: LiveCallP
           userId,
           agentId,
           conversationId,
+          avatarProvider: agentAvatar.provider,
         })
       );
     };
 
     ws.onmessage = (event) => {
       try {
-        const message = JSON.parse(event.data);
+        const message = JSON.parse(event.data) as LiveCallServerMessage;
         handleServerMessage(message);
       } catch (error) {
         console.error("[LiveCall] Error parsing message:", error);
@@ -113,13 +143,13 @@ export function LiveCall({ agentId, conversationId, userId, onClose }: LiveCallP
     };
 
     wsRef.current = ws;
-  };
+  }, [agentId, agentAvatar.provider, conversationId, userId]);
 
   // ============================================================================
   // Server Message Handler
   // ============================================================================
 
-  const handleServerMessage = useCallback(async (message: any) => {
+  const handleServerMessage = useCallback(async (message: LiveCallServerMessage) => {
     switch (message.type) {
       case "ready":
         console.log("[LiveCall] Session ready");
@@ -181,12 +211,21 @@ export function LiveCall({ agentId, conversationId, userId, onClose }: LiveCallP
         break;
 
       case "audio_chunk":
-        await playAudioChunk(message.audio, message.format);
+        if (isRemoteAvatar && !remoteAvatarError && remoteAvatarRef.current) {
+          try {
+            await remoteAvatarRef.current.speakAudio(message.audio, message.format);
+          } catch (error) {
+            console.error("[LiveCall] Error sending audio to remote avatar:", error);
+            await playAudioChunk(message.audio, message.format);
+          }
+        } else {
+          await playAudioChunk(message.audio, message.format);
+        }
         break;
 
       case "error":
         // Ignore expected cancellation errors (they're handled gracefully)
-        if (message.error?.includes("Cancellation failed")) {
+        if (message.error.includes("Cancellation failed")) {
           console.log("[LiveCall] Note: Cancellation attempted when no active response");
           break;
         }
@@ -215,9 +254,9 @@ export function LiveCall({ agentId, conversationId, userId, onClose }: LiveCallP
         break;
 
       default:
-        console.warn("[LiveCall] Unknown message type:", message.type);
+        console.warn("[LiveCall] Unknown message type:", (message as { type?: string }).type);
     }
-  }, []);
+  }, [isRemoteAvatar]);
 
   // ============================================================================
   // Audio Recording (PCM16 at 24kHz for Realtime API)
@@ -453,6 +492,7 @@ export function LiveCall({ agentId, conversationId, userId, onClose }: LiveCallP
     clearAudioQueue();
 
     // Send interrupt to server (will also cancel Realtime response)
+    remoteAvatarRef.current?.interrupt().catch(() => undefined);
     wsRef.current?.send(
       JSON.stringify({
         type: "interrupt",
@@ -466,11 +506,22 @@ export function LiveCall({ agentId, conversationId, userId, onClose }: LiveCallP
 
   const handleEndCall = useCallback(() => {
     stopRecording();
+    remoteAvatarRef.current?.stop().catch(() => undefined);
     wsRef.current?.close();
     callStartTimeRef.current = null;
     setCallDuration(0);
     onClose?.();
   }, [stopRecording, onClose]);
+
+  const handleRemoteAvatarError = useCallback((message: string) => {
+    setRemoteAvatarError(message);
+    setError(`Avatar remoto: ${message}`);
+  }, []);
+
+  const handleRemoteAvatarReady = useCallback(() => {
+    setRemoteAvatarError(null);
+    setError((current) => (current?.startsWith("Avatar remoto:") ? null : current));
+  }, []);
 
   // Helper to format call duration
   const formatDuration = (seconds: number): string => {
@@ -484,14 +535,18 @@ export function LiveCall({ agentId, conversationId, userId, onClose }: LiveCallP
   // ============================================================================
 
   useEffect(() => {
-    async function loadHistory() {
+    async function loadCallData() {
       try {
         setLoadingHistory(true);
-        const res = await fetchWithAuth(`/api/conversations/${conversationId}`);
-        if (res.ok) {
-          const data = await res.json();
+        const [conversationRes, agentRes] = await Promise.all([
+          fetchWithAuth(`/api/conversations/${conversationId}`),
+          fetchWithAuth(`/api/agents/${agentId}`),
+        ]);
+
+        if (conversationRes.ok) {
+          const data = (await conversationRes.json()) as ConversationPayload;
           // Load existing messages from the conversation
-          const historyMessages: Message[] = data.messages.map((msg: any) => ({
+          const historyMessages: Message[] = data.messages.map((msg) => ({
             role: msg.role,
             content: msg.content,
             timestamp: new Date(msg.createdAt),
@@ -499,15 +554,24 @@ export function LiveCall({ agentId, conversationId, userId, onClose }: LiveCallP
           setMessages(historyMessages);
           console.log(`[LiveCall] Loaded ${historyMessages.length} messages from history`);
         }
+
+        if (agentRes.ok) {
+          const agent = await agentRes.json();
+          setAgentAvatar(agent.avatar || DEFAULT_LOCAL_AVATAR);
+        } else {
+          setAgentAvatar(DEFAULT_LOCAL_AVATAR);
+        }
       } catch (err) {
-        console.error("[LiveCall] Failed to load conversation history:", err);
+        console.error("[LiveCall] Failed to load call data:", err);
+        setAgentAvatar(DEFAULT_LOCAL_AVATAR);
       } finally {
         setLoadingHistory(false);
+        setAvatarLoaded(true);
       }
     }
 
-    loadHistory();
-  }, [conversationId]);
+    loadCallData();
+  }, [agentId, conversationId]);
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -519,6 +583,8 @@ export function LiveCall({ agentId, conversationId, userId, onClose }: LiveCallP
   // ============================================================================
 
   useEffect(() => {
+    if (!avatarLoaded) return;
+
     connectWebSocket();
     
     // Set timeout to detect if server never responds
@@ -555,7 +621,7 @@ export function LiveCall({ agentId, conversationId, userId, onClose }: LiveCallP
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Only run once on mount
+  }, [avatarLoaded, connectWebSocket]); // Connect after avatar config is known
 
   // Call duration timer
   useEffect(() => {
@@ -633,14 +699,21 @@ export function LiveCall({ agentId, conversationId, userId, onClose }: LiveCallP
       <div className="flex-1 flex items-center justify-center min-h-0 p-8">
         <div className="w-full h-full max-w-5xl flex items-center justify-center">
           <div className="w-full h-full min-h-[500px] rounded-2xl overflow-hidden shadow-2xl">
-            <DynamicAvatarRenderer
-              modelPath="/assets/pennywise-rigged.glb"
-              style={{ width: "100%", height: "100%" }}
-              className="rounded-2xl overflow-hidden"
-              cameraControls={false}
-              playbackAnalyser={playbackAnalyser}
-              lipsyncAnimation={true}
-            />
+            {isRemoteAvatar ? (
+              <RemoteRealtimeAvatarRenderer
+                ref={remoteAvatarRef}
+                agentId={agentId}
+                conversationId={conversationId}
+                onReady={handleRemoteAvatarReady}
+                onError={handleRemoteAvatarError}
+              />
+            ) : (
+              <Local3DAvatarRenderer
+                modelPath={agentAvatar.fallbackModelPath || DEFAULT_LOCAL_AVATAR.fallbackModelPath}
+                playbackAnalyser={playbackAnalyser}
+                lipsyncAnimation={true}
+              />
+            )}
           </div>
         </div>
       </div>

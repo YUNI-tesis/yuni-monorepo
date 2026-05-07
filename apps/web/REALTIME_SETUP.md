@@ -37,6 +37,15 @@ OPENAI_API_KEY=sk-...
 # ElevenLabs (opcional, solo si usas ElevenLabs como TTS)
 ELEVENLABS_API_KEY=...
 
+# Avatar provider (opcional)
+AVATAR_PROVIDER_DEFAULT=local3d
+
+# LiveAvatar (opcional, solo si usas provider liveavatar)
+LIVEAVATAR_API_KEY=lv_...
+LIVEAVATAR_BASE_URL=https://api.liveavatar.com
+LIVEAVATAR_SANDBOX=true
+LIVEAVATAR_SANDBOX_AVATAR_IDS=dd73ea75-1218-4ef3-92ce-606d5f7fbc0a
+
 # Puerto del servidor WebSocket (opcional, default: 3001)
 WS_PORT=3001
 
@@ -123,6 +132,8 @@ Desde la página del agente, haz clic en el botón de llamada. Esto abrirá el c
 
 ### ✅ Implementadas
 
+- ✅ Capa agnóstica de proveedores de avatar (`local3d` + `liveavatar`)
+- ✅ Selección de avatar por agente con fallback local
 - ✅ OpenAI Realtime API para ASR y generación de texto
 - ✅ Detección automática de turnos (turn-taking)
 - ✅ Transcripción incremental y final
@@ -154,9 +165,18 @@ apps/web/
 │   ├── tts-providers.ts      # Abstracción de TTS (OpenAI, ElevenLabs)
 │   └── ws-server.ts          # Servidor WebSocket principal
 └── src/
+    ├── lib/avatar-providers/ # Adapters agnósticos de avatar realtime
     └── components/
-        └── LiveCall.tsx      # Componente de cliente React
+        ├── LiveCall.tsx      # Componente de cliente React
+        ├── Local3DAvatarRenderer.tsx
+        └── RemoteRealtimeAvatarRenderer.tsx
 ```
+
+## LiveAvatar
+
+LiveAvatar se integra como provider remoto, no como dependencia del modelo público del agente. El agente guarda una configuración genérica (`provider`, `externalAvatarId`, `displayName`, `thumbnailUrl`, `quality`, `fallbackModelPath`) y el adapter `liveavatar` traduce eso a la API de LiveAvatar.
+
+En llamadas, Yuni conserva la conversación: micrófono, STT, agente, historial, costos e interrupciones siguen pasando por nuestro WebSocket y OpenAI Realtime. Cuando el agente usa `provider: "liveavatar"`, el servidor fuerza salida PCM16 24 kHz desde OpenAI Realtime para enviarla al SDK de LiveAvatar en modo LITE y que el avatar remoto renderice video/audio sincronizado. Sandbox queda activo por defecto salvo que `LIVEAVATAR_SANDBOX=false`.
 
 ## Solución de problemas
 

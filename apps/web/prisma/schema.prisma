@@ -33,6 +33,7 @@ model Agent {
   context       String    @db.Text
   toolsAllowed  String[]  @default([])
   voice         Json?
+  avatar        Json?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   

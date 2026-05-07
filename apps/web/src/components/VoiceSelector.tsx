@@ -85,9 +85,9 @@ export function VoiceSelector({ value, onChange }: VoiceSelectorProps) {
       if (data.voices.length > 0 && !selectedVoiceId) {
         setSelectedVoiceId(data.voices[0].voice_id);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("[VoiceSelector] Error fetching ElevenLabs voices:", err);
-      setError(err.message);
+      setError(err instanceof Error ? err.message : "Failed to fetch ElevenLabs voices");
       // Fallback to OpenAI if ElevenLabs fails
       setProvider("openai");
       setSelectedVoiceId("alloy");

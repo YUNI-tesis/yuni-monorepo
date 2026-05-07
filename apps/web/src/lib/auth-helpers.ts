@@ -1,21 +1,42 @@
 import { auth } from "./auth";
+import { prisma } from "./prisma";
+
+export class AuthRequiredError extends Error {
+  status = 401;
+
+  constructor() {
+    super("Unauthorized");
+    this.name = "AuthRequiredError";
+  }
+}
 
 export async function getCurrentUser() {
   const session = await auth();
-  if (!session?.user?.id) {
+  if (!session?.user?.id && !session?.user?.email) {
     return null;
   }
-  return session.user;
+
+  const user = await prisma.user.findFirst({
+    where: {
+      OR: [
+        ...(session.user.id ? [{ id: session.user.id }] : []),
+        ...(session.user.email ? [{ email: session.user.email }] : []),
+      ],
+    },
+    select: {
+      id: true,
+      email: true,
+      name: true,
+    },
+  });
+
+  return user;
 }
 
 export async function requireAuth() {
   const user = await getCurrentUser();
   if (!user) {
-    // Throw an error that can be caught in API routes
-    const error: any = new Error("Unauthorized");
-    error.status = 401;
-    error.message = "Unauthorized";
-    throw error;
+    throw new AuthRequiredError();
   }
   return user;
 }

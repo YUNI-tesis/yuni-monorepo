@@ -1,12 +1,19 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Agent, CreateAgentSchema } from "@/lib/schemas";
+import { useState, useEffect, useCallback } from "react";
+import { Agent, AgentAvatar, DEFAULT_LOCAL_AVATAR } from "@/lib/schemas";
 import { useRouter } from "next/navigation";
 import { fetchWithAuth } from "@/lib/fetch-client";
 import { Button } from "@/components/common";
 import DynamicAvatarRenderer from "@/components/DynamicAvatarRenderer";
 import { VoiceSelector } from "@/components/VoiceSelector";
+import { AvatarSelector } from "@/components/common/AvatarSelector";
+
+type VoiceConfig = {
+  provider: "openai" | "elevenlabs";
+  voiceId: string;
+  speakingRate: number;
+};
 
 interface AgentEditorProps {
   agentId?: string;
@@ -29,6 +36,7 @@ export function AgentEditor({ agentId, onEditSuccess }: AgentEditorProps) {
       voiceId: "alloy",
       speakingRate: 1.0,
     },
+    avatar: DEFAULT_LOCAL_AVATAR,
   });
 
   useEffect(() => {
@@ -58,9 +66,10 @@ export function AgentEditor({ agentId, onEditSuccess }: AgentEditorProps) {
           voiceId: "alloy",
           speakingRate: 1.0,
         },
+        avatar: agent.avatar || DEFAULT_LOCAL_AVATAR,
       });
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to fetch agent");
     } finally {
       setLoading(false);
     }
@@ -88,12 +97,41 @@ export function AgentEditor({ agentId, onEditSuccess }: AgentEditorProps) {
       const agent: Agent = await res.json();
       onEditSuccess?.();
       router.push(`/agents/${agent.id}`);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to save agent");
     } finally {
       setSaving(false);
     }
   }
+
+  const handleVoiceChange = useCallback((voice: VoiceConfig) => {
+    setFormData((current) => {
+      if (
+        current.voice.provider === voice.provider &&
+        current.voice.voiceId === voice.voiceId &&
+        current.voice.speakingRate === voice.speakingRate
+      ) {
+        return current;
+      }
+
+      return { ...current, voice };
+    });
+  }, []);
+
+  const handleAvatarChange = useCallback((avatar: AgentAvatar) => {
+    setFormData((current) => {
+      if (
+        current.avatar.provider === avatar.provider &&
+        current.avatar.externalAvatarId === avatar.externalAvatarId &&
+        current.avatar.fallbackModelPath === avatar.fallbackModelPath &&
+        current.avatar.quality === avatar.quality
+      ) {
+        return current;
+      }
+
+      return { ...current, avatar };
+    });
+  }, []);
 
   if (loading) {
     return (
@@ -118,13 +156,28 @@ export function AgentEditor({ agentId, onEditSuccess }: AgentEditorProps) {
         {/* Avatar Preview Section */}
         <div className="flex flex-col items-center pb-6 border-b border-white/10">
           <div className="relative mb-4 w-full max-w-md aspect-square">
-            <DynamicAvatarRenderer
-              modelPath="/assets/pennywise-rigged.glb"
-              style={{ width: "100%", height: "100%" }}
-              className="rounded-xl overflow-hidden"
-              cameraControls={true}
-            />
+            {formData.avatar.provider === "liveavatar" && formData.avatar.thumbnailUrl ? (
+              <img
+                src={formData.avatar.thumbnailUrl}
+                alt={formData.avatar.displayName || "Avatar"}
+                className="h-full w-full rounded-xl object-cover"
+              />
+            ) : (
+              <DynamicAvatarRenderer
+                modelPath={formData.avatar.fallbackModelPath || DEFAULT_LOCAL_AVATAR.fallbackModelPath!}
+                style={{ width: "100%", height: "100%" }}
+                className="rounded-xl overflow-hidden"
+                cameraControls={true}
+              />
+            )}
           </div>
+        </div>
+
+        <div className="pt-2 pb-6 border-b border-white/10">
+          <AvatarSelector
+            value={formData.avatar}
+            onChange={handleAvatarChange}
+          />
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -213,7 +266,7 @@ export function AgentEditor({ agentId, onEditSuccess }: AgentEditorProps) {
           </p>
           <VoiceSelector
             value={formData.voice}
-            onChange={(voice) => setFormData({ ...formData, voice })}
+            onChange={handleVoiceChange}
           />
         </div>
 
@@ -247,4 +300,3 @@ export function AgentEditor({ agentId, onEditSuccess }: AgentEditorProps) {
     </div>
   );
 }
-

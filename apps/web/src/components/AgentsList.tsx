@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Agent } from "@/lib/schemas";
+import { Agent, DEFAULT_LOCAL_AVATAR } from "@/lib/schemas";
 import { fetchWithAuth } from "@/lib/fetch-client";
 import DynamicAvatarRenderer from "@/components/DynamicAvatarRenderer";
 
@@ -20,10 +20,10 @@ export function AgentsList() {
       setLoading(true);
       const res = await fetchWithAuth("/api/agents");
       if (!res.ok) throw new Error("Failed to fetch agents");
-      const data = await res.json();
+      const data = (await res.json()) as Agent[];
       setAgents(data);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to fetch agents");
     } finally {
       setLoading(false);
     }
@@ -103,13 +103,21 @@ export function AgentsList() {
               {/* Gradient border on hover */}
               <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-purple-500/0 via-purple-500/10 to-cyan-500/0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"></div>
               
-              {/* Avatar 3D Model */}
+              {/* Avatar Preview */}
               <div className="relative mb-4 aspect-square rounded-xl overflow-hidden bg-gradient-to-br from-purple-500/10 via-blue-500/10 to-cyan-500/10">
-                <DynamicAvatarRenderer
-                  modelPath="/assets/pennywise-rigged.glb"
-                  style={{ width: "100%", height: "100%", minHeight: "150px" }}
-                  className="rounded-xl"
-                />
+                {agent.avatar?.provider === "liveavatar" && agent.avatar.thumbnailUrl ? (
+                  <img
+                    src={agent.avatar.thumbnailUrl}
+                    alt={agent.avatar.displayName || agent.name}
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <DynamicAvatarRenderer
+                    modelPath={agent.avatar?.fallbackModelPath || DEFAULT_LOCAL_AVATAR.fallbackModelPath!}
+                    style={{ width: "100%", height: "100%", minHeight: "150px" }}
+                    className="rounded-xl"
+                  />
+                )}
               </div>
               
               <h3 className="text-xl font-bold text-white mb-2 group-hover:text-transparent group-hover:bg-clip-text group-hover:bg-gradient-to-r group-hover:from-purple-400 group-hover:to-cyan-400 transition-all duration-300">
@@ -122,7 +130,7 @@ export function AgentsList() {
               
               <div className="flex items-center justify-between pt-4 border-t border-white/10">
                 <span className="px-2.5 py-1 text-xs font-medium rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30">
-                  Activo
+                  {agent.avatar?.provider === "liveavatar" ? "LiveAvatar" : "Local 3D"}
                 </span>
                 <div className="text-xs text-gray-500">
                   {new Date(agent.createdAt).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })}
@@ -135,4 +143,3 @@ export function AgentsList() {
     </div>
   );
 }
-

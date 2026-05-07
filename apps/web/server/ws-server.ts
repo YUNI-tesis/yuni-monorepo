@@ -18,6 +18,7 @@ import type {
   VoiceMode,
   OpenAIRealtimeVoice,
 } from "./types";
+import type { Agent as AppAgent } from "../src/lib/schemas";
 
 const prisma = new PrismaClient();
 
@@ -34,6 +35,16 @@ const OPENAI_REALTIME_VOICES: OpenAIRealtimeVoice[] = [
   "alloy", "ash", "ballad", "coral", "echo", 
   "sage", "shimmer", "verse", "marin", "cedar"
 ];
+
+type AgentVoiceConfig = AppAgent["voice"];
+
+function getErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message ? error.message : fallback;
+}
+
+function getRealtimeClient(connection: CallConnection): RealtimeClient | null {
+  return connection.realtimeWs ?? null;
+}
 
 // ============================================================================
 // WebSocket Server Setup
@@ -89,13 +100,13 @@ async function handleClientMessage(ws: WebSocket, message: ClientMessage): Promi
       await handleAudioChunk(ws, message);
       break;
     case "audio_end":
-      await handleAudioEnd(ws, message);
+      await handleAudioEnd(ws);
       break;
     case "interrupt":
-      await handleInterrupt(ws, message);
+      await handleInterrupt(ws);
       break;
     default:
-      console.warn(`[WebSocket] Unknown message type: ${(message as any).type}`);
+      console.warn(`[WebSocket] Unknown message type: ${(message as { type?: string }).type}`);
   }
 }
 
@@ -103,15 +114,30 @@ async function handleClientMessage(ws: WebSocket, message: ClientMessage): Promi
 // Voice Mode Detection
 // ============================================================================
 
-function determineVoiceMode(agentVoice: any): {
+function determineVoiceMode(agentVoice: unknown, avatarProvider?: "local3d" | "liveavatar"): {
   mode: VoiceMode;
   config: Partial<RealtimeSessionConfig>;
 } {
-  const voiceConfig = agentVoice as {
-    provider?: "openai" | "elevenlabs";
-    voiceId?: string;
-    speakingRate?: number;
-  };
+  const voiceConfig = agentVoice as AgentVoiceConfig | null | undefined;
+
+  if (avatarProvider && avatarProvider !== "local3d") {
+    const realtimeVoice =
+      voiceConfig?.provider === "openai" &&
+      voiceConfig?.voiceId &&
+      OPENAI_REALTIME_VOICES.includes(voiceConfig.voiceId as OpenAIRealtimeVoice)
+        ? (voiceConfig.voiceId as OpenAIRealtimeVoice)
+        : "alloy";
+
+    console.log(`[Voice Mode] Using Realtime PCM audio for remote avatar video with voice: ${realtimeVoice}`);
+    return {
+      mode: "realtime_audio",
+      config: {
+        modalities: ["text", "audio"],
+        voice: realtimeVoice,
+        output_audio_format: "pcm16",
+      },
+    };
+  }
 
   // Check if using OpenAI Realtime voice (low latency)
   if (
@@ -146,7 +172,7 @@ function determineVoiceMode(agentVoice: any): {
 
 async function handleInit(ws: WebSocket, message: ClientMessage & { type: "init" }): Promise<void> {
   try {
-    const { sessionId, userId, agentId, conversationId } = message;
+    const { sessionId, userId, agentId, conversationId, avatarProvider } = message;
 
     // Fetch agent from database
     const agent = await prisma.agent.findUnique({
@@ -162,7 +188,7 @@ async function handleInit(ws: WebSocket, message: ClientMessage & { type: "init"
     }
 
     // Determine voice mode
-    const { mode, config: voiceModeConfig } = determineVoiceMode(agent.voice);
+    const { mode, config: voiceModeConfig } = determineVoiceMode(agent.voice, avatarProvider);
 
     // Build system prompt
     const systemPrompt = buildSystemPrompt({
@@ -171,8 +197,8 @@ async function handleInit(ws: WebSocket, message: ClientMessage & { type: "init"
       description: agent.description,
       systemPrompt: agent.systemPrompt,
       context: agent.context,
-      toolsAllowed: agent.toolsAllowed as any,
-      voice: agent.voice as any,
+      toolsAllowed: agent.toolsAllowed as AppAgent["toolsAllowed"],
+      voice: agent.voice as AgentVoiceConfig,
       createdAt: agent.createdAt.toISOString(),
       updatedAt: agent.updatedAt.toISOString(),
     });
@@ -236,7 +262,7 @@ async function handleInit(ws: WebSocket, message: ClientMessage & { type: "init"
 
     // Connect to Realtime
     await realtimeClient.connect();
-    connection.realtimeWs = realtimeClient as any;
+    connection.realtimeWs = realtimeClient;
     connection.isRealtimeConnected = true;
 
     // Store cleanup function
@@ -254,7 +280,7 @@ async function handleInit(ws: WebSocket, message: ClientMessage & { type: "init"
     console.error("[WebSocket] Init error:", error);
     sendToClient(ws, {
       type: "error",
-      error: "Failed to initialize session",
+      error: getErrorMessage(error, "Failed to initialize session"),
     });
   }
 }
@@ -278,7 +304,8 @@ async function handleAudioChunk(
     return;
   }
 
-  const realtimeClient = connection.realtimeWs as any as RealtimeClient;
+  const realtimeClient = getRealtimeClient(connection);
+  if (!realtimeClient) return;
 
   try {
     // Update state if not listening
@@ -300,15 +327,15 @@ async function handleAudioChunk(
 // ============================================================================
 
 async function handleAudioEnd(
-  ws: WebSocket,
-  message: ClientMessage & { type: "audio_end" }
+  ws: WebSocket
 ): Promise<void> {
   const connection = findConnectionByWs(ws);
   if (!connection) return;
 
   if (!connection.isRealtimeConnected) return;
 
-  const realtimeClient = connection.realtimeWs as any as RealtimeClient;
+  const realtimeClient = getRealtimeClient(connection);
+  if (!realtimeClient) return;
 
   try {
     // Commit audio buffer
@@ -324,8 +351,7 @@ async function handleAudioEnd(
 // ============================================================================
 
 async function handleInterrupt(
-  ws: WebSocket,
-  message: ClientMessage & { type: "interrupt" }
+  ws: WebSocket
 ): Promise<void> {
   const connection = findConnectionByWs(ws);
   if (!connection) return;
@@ -335,9 +361,11 @@ async function handleInterrupt(
   try {
     // Cancel Realtime response if there's an active response
     if (connection.isRealtimeConnected && connection.hasActiveResponse) {
-      const realtimeClient = connection.realtimeWs as any as RealtimeClient;
-      realtimeClient.cancelResponse();
-      connection.hasActiveResponse = false;
+      const realtimeClient = getRealtimeClient(connection);
+      if (realtimeClient) {
+        realtimeClient.cancelResponse();
+        connection.hasActiveResponse = false;
+      }
     }
 
     // Stop TTS playback
@@ -377,10 +405,10 @@ async function handleRealtimeEvent(
       // If currently speaking or has active response, this is a barge-in
       if (connection.isSpeaking || connection.hasActiveResponse) {
         console.log("[Realtime] Barge-in detected");
-        const realtimeClient = connection.realtimeWs as any as RealtimeClient;
+        const realtimeClient = getRealtimeClient(connection);
         
         // Only cancel if there's an active response
-        if (connection.hasActiveResponse) {
+        if (connection.hasActiveResponse && realtimeClient) {
           realtimeClient.cancelResponse();
           connection.hasActiveResponse = false;
         }
@@ -588,7 +616,7 @@ async function synthesizeAndStreamAudio(connection: CallConnection, text: string
       throw new Error("Agent not found");
     }
 
-    const voiceConfig = agent.voice as any;
+    const voiceConfig = agent.voice as AgentVoiceConfig;
 
     // Generate and stream audio
     const audioGenerator = synthesizeWithAgentVoice(
@@ -633,7 +661,7 @@ async function synthesizeAndStreamAudio(connection: CallConnection, text: string
     console.error("[TTS] Error:", error);
     sendToClient(connection.ws, {
       type: "error",
-      error: "TTS synthesis failed",
+      error: getErrorMessage(error, "TTS synthesis failed"),
     });
     updateConnectionState(connection, "error");
   }

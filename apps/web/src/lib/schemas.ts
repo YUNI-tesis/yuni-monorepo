@@ -1,5 +1,25 @@
 import { z } from "zod";
 
+export const AvatarProviderSchema = z.enum(["local3d", "liveavatar"]);
+export const AvatarQualitySchema = z.enum(["low", "medium", "high", "very_high"]);
+
+export const AgentAvatarSchema = z.object({
+  provider: AvatarProviderSchema,
+  externalAvatarId: z.string().optional(),
+  displayName: z.string().optional(),
+  thumbnailUrl: z.string().optional(),
+  quality: AvatarQualitySchema.optional(),
+  fallbackModelPath: z.string().optional(),
+});
+
+export type AgentAvatar = z.infer<typeof AgentAvatarSchema>;
+
+export const DEFAULT_LOCAL_AVATAR: AgentAvatar = {
+  provider: "local3d",
+  displayName: "Avatar local",
+  fallbackModelPath: "/assets/pennywise-rigged.glb",
+};
+
 // Agent schema
 export const AgentSchema = z.object({
   id: z.string(),
@@ -15,6 +35,7 @@ export const AgentSchema = z.object({
       speakingRate: z.number().optional(),
     })
     .optional(),
+  avatar: AgentAvatarSchema.optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -72,6 +93,7 @@ export const CreateAgentSchema = z.object({
       speakingRate: z.number().optional(),
     })
     .optional(),
+  avatar: AgentAvatarSchema.optional(),
 });
 
 export const UpdateAgentSchema = CreateAgentSchema.partial();
@@ -96,4 +118,3 @@ export const TTSRequestSchema = z.object({
   text: z.string().min(1),
   voice: z.string().optional(),
 });
-
