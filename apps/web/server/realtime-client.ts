@@ -39,7 +39,7 @@ export class RealtimeClient {
    */
   async connect(): Promise<void> {
     return new Promise((resolve, reject) => {
-      const model = this.config.model || "gpt-4o-realtime-preview-2024-12-17";
+      const model = this.config.model || "gpt-realtime";
       const url = `wss://api.openai.com/v1/realtime?model=${model}`;
 
       this.ws = new WebSocket(url, {
@@ -228,6 +228,18 @@ export class RealtimeClient {
   cancelResponse(): void {
     this.sendEvent({
       type: "response.cancel",
+    });
+  }
+
+  /**
+   * Truncate assistant audio that was generated but not heard by the user.
+   */
+  truncateAssistantAudio(itemId: string, contentIndex: number, audioEndMs: number): void {
+    this.sendEvent({
+      type: "conversation.item.truncate",
+      item_id: itemId,
+      content_index: contentIndex,
+      audio_end_ms: Math.max(0, Math.floor(audioEndMs)),
     });
   }
 

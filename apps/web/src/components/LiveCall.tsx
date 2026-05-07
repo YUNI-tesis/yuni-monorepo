@@ -34,6 +34,7 @@ interface Message {
   role: "user" | "assistant";
   content: string;
   timestamp: Date;
+  interrupted?: boolean;
 }
 
 type LiveCallServerMessage =
@@ -41,10 +42,44 @@ type LiveCallServerMessage =
   | { type: "state"; state: CallState }
   | { type: "transcript"; text: string; isFinal: boolean }
   | { type: "response_chunk"; text: string }
-  | { type: "audio_chunk"; audio: string; format?: string }
+  | { type: "audio_chunk"; audio: string; format?: string; itemId?: string; contentIndex?: number; generationId?: string }
   | { type: "error"; error: string; code?: string }
   | { type: "metrics"; latency?: Record<string, number>; usage?: Record<string, number> }
-  | { type: "audio_interrupted"; reason: "barge_in" | "manual" };
+  | { type: "audio_interrupted"; reason: "barge_in" | "manual"; itemId?: string; contentIndex?: number; generationId?: string };
+
+interface QueuedAudioChunk {
+  buffer: AudioBuffer;
+  itemId?: string;
+  contentIndex?: number;
+  generationId?: string;
+  durationMs: number;
+}
+
+interface CurrentPlayback {
+  source: AudioBufferSourceNode;
+  gain: GainNode;
+  itemId?: string;
+  contentIndex?: number;
+  generationId?: string;
+  startedAt: number;
+  durationMs: number;
+  stopped: boolean;
+}
+
+interface PlaybackTruncation {
+  itemId: string;
+  contentIndex: number;
+  audioEndMs: number;
+  generationId?: string;
+}
+
+interface RemotePlaybackEstimate {
+  itemId?: string;
+  contentIndex?: number;
+  generationId?: string;
+  startedAt: number;
+  sentDurationMs: number;
+}
 
 interface ConversationPayload {
   messages: Array<{
@@ -91,13 +126,25 @@ export function LiveCall({ agentId, conversationId, userId, onClose }: LiveCallP
   const processorNodeRef = useRef<ScriptProcessorNode | null>(null);
   const playbackContextRef = useRef<AudioContext | null>(null);
   const playbackAnalyserRef = useRef<AnalyserNode | null>(null);
-  const audioQueueRef = useRef<AudioBuffer[]>([]);
+  const audioQueueRef = useRef<QueuedAudioChunk[]>([]);
+  const currentPlaybackRef = useRef<CurrentPlayback | null>(null);
+  const playedAudioByItemRef = useRef<Map<string, number>>(new Map());
+  const remotePlaybackEstimateRef = useRef<RemotePlaybackEstimate | null>(null);
+  const interruptedGenerationRef = useRef<string | null>(null);
+  const isMutedRef = useRef(isMuted);
+  const micSpeechFrameCountRef = useRef(0);
+  const lastLocalBargeInAtRef = useRef(0);
+  const localBargeInRef = useRef<() => void>(() => undefined);
   const isPlayingRef = useRef(false);
   const sessionIdRef = useRef<string>(`session_${Date.now()}`);
   const connectionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const remoteAvatarRef = useRef<RemoteRealtimeAvatarHandle | null>(null);
 
   const isRemoteAvatar = agentAvatar.provider !== "local3d";
+
+  useEffect(() => {
+    isMutedRef.current = isMuted;
+  }, [isMuted]);
 
   // ============================================================================
   // WebSocket Connection
@@ -211,15 +258,21 @@ export function LiveCall({ agentId, conversationId, userId, onClose }: LiveCallP
         break;
 
       case "audio_chunk":
+        if (message.generationId && interruptedGenerationRef.current === message.generationId) {
+          console.log(`[LiveCall] Discarding stale audio chunk for ${message.generationId}`);
+          break;
+        }
+
         if (isRemoteAvatar && !remoteAvatarError && remoteAvatarRef.current) {
           try {
-            await remoteAvatarRef.current.speakAudio(message.audio, message.format);
+            trackRemoteAudioChunk(message);
+            await remoteAvatarRef.current.speakAudio(message.audio, message.format, message.generationId);
           } catch (error) {
             console.error("[LiveCall] Error sending audio to remote avatar:", error);
-            await playAudioChunk(message.audio, message.format);
+            await playAudioChunk(message.audio, message.format, message.itemId, message.contentIndex, message.generationId);
           }
         } else {
-          await playAudioChunk(message.audio, message.format);
+          await playAudioChunk(message.audio, message.format, message.itemId, message.contentIndex, message.generationId);
         }
         break;
 
@@ -242,12 +295,22 @@ export function LiveCall({ agentId, conversationId, userId, onClose }: LiveCallP
       case "audio_interrupted":
         // Server detected barge-in or confirmed manual interrupt
         console.log(`[LiveCall] Audio interrupted: ${message.reason}`);
-        clearAudioQueue();
+        if (message.generationId) {
+          interruptedGenerationRef.current = message.generationId;
+        }
+        remoteAvatarRef.current?.interrupt(message.generationId).catch(() => undefined);
+        sendPlaybackTruncation(clearAudioQueue(message));
         
-        // Remove last assistant message if it was incomplete
+        // Mark the visible assistant turn as interrupted without deleting the transcript blindly.
         setMessages((prev) => {
           if (prev.length > 0 && prev[prev.length - 1].role === "assistant") {
-            return prev.slice(0, -1);
+            return [
+              ...prev.slice(0, -1),
+              {
+                ...prev[prev.length - 1],
+                interrupted: true,
+              },
+            ];
           }
           return prev;
         });
@@ -285,16 +348,43 @@ export function LiveCall({ agentId, conversationId, userId, onClose }: LiveCallP
       // Use ScriptProcessorNode for audio processing
       // Note: ScriptProcessorNode is deprecated but widely supported
       // For production, consider using AudioWorklet
-      const processor = audioContext.createScriptProcessor(4096, 1, 1);
+      const processor = audioContext.createScriptProcessor(2048, 1, 1);
       processorNodeRef.current = processor;
 
       processor.onaudioprocess = (event) => {
-        if (isMuted || wsRef.current?.readyState !== WebSocket.OPEN) {
+        if (isMutedRef.current || wsRef.current?.readyState !== WebSocket.OPEN) {
           return;
         }
 
         // Get audio data
         const inputData = event.inputBuffer.getChannelData(0);
+        let sumSquares = 0;
+        let peak = 0;
+        for (let i = 0; i < inputData.length; i++) {
+          const abs = Math.abs(inputData[i]);
+          sumSquares += inputData[i] * inputData[i];
+          if (abs > peak) peak = abs;
+        }
+
+        const rms = Math.sqrt(sumSquares / inputData.length);
+        const remoteEstimate = remotePlaybackEstimateRef.current;
+        const remoteLikelySpeaking = Boolean(
+          remoteEstimate && Date.now() - remoteEstimate.startedAt < remoteEstimate.sentDurationMs + 1500
+        );
+        const outputLikelySpeaking =
+          Boolean(currentPlaybackRef.current) || audioQueueRef.current.length > 0 || remoteLikelySpeaking;
+
+        if (outputLikelySpeaking && (rms > 0.035 || peak > 0.12)) {
+          micSpeechFrameCountRef.current += 1;
+        } else {
+          micSpeechFrameCountRef.current = 0;
+        }
+
+        if (micSpeechFrameCountRef.current >= 1 && Date.now() - lastLocalBargeInAtRef.current > 900) {
+          lastLocalBargeInAtRef.current = Date.now();
+          console.log(`[LiveCall] Local mic barge-in detected rms=${rms.toFixed(3)} peak=${peak.toFixed(3)}`);
+          localBargeInRef.current();
+        }
         
         // Convert Float32Array to Int16Array (PCM16)
         const pcm16 = new Int16Array(inputData.length);
@@ -325,7 +415,7 @@ export function LiveCall({ agentId, conversationId, userId, onClose }: LiveCallP
       console.error("[LiveCall] Error starting recording:", error);
       setError("Failed to access microphone");
     }
-  }, [isMuted]);
+  }, []);
 
   const stopRecording = useCallback(() => {
     // Stop audio processing
@@ -392,8 +482,97 @@ export function LiveCall({ agentId, conversationId, userId, onClose }: LiveCallP
     return audioBuffer;
   }, []);
 
-  const playAudioChunk = useCallback(async (base64Audio: string, format?: string) => {
+  const getPcm16DurationMs = useCallback((base64Audio: string, sampleRate: number): number => {
+    const byteLength = atob(base64Audio).length;
+    return (byteLength / 2 / sampleRate) * 1000;
+  }, []);
+
+  const getPlayedMsForItem = useCallback((itemId?: string): number => {
+    if (!itemId) return 0;
+    const completedMs = playedAudioByItemRef.current.get(itemId) || 0;
+    const current = currentPlaybackRef.current;
+    if (current?.itemId !== itemId || !playbackContextRef.current) return completedMs;
+
+    const elapsedMs = Math.max(0, (playbackContextRef.current.currentTime - current.startedAt) * 1000);
+    return completedMs + Math.min(elapsedMs, current.durationMs);
+  }, []);
+
+  const buildLocalPlaybackTruncation = useCallback((
+    fallback?: { itemId?: string; contentIndex?: number; generationId?: string }
+  ): PlaybackTruncation | null => {
+    const current = currentPlaybackRef.current;
+    const itemId = current?.itemId || fallback?.itemId;
+    if (!itemId) return null;
+
+    return {
+      itemId,
+      contentIndex: current?.contentIndex ?? fallback?.contentIndex ?? 0,
+      audioEndMs: getPlayedMsForItem(itemId),
+      generationId: current?.generationId || fallback?.generationId,
+    };
+  }, [getPlayedMsForItem]);
+
+  const buildRemotePlaybackTruncation = useCallback((
+    fallback?: { itemId?: string; contentIndex?: number; generationId?: string }
+  ): PlaybackTruncation | null => {
+    const estimate = remotePlaybackEstimateRef.current;
+    const itemId = estimate?.itemId || fallback?.itemId;
+    if (!itemId) return null;
+
+    const elapsedMs = estimate ? Date.now() - estimate.startedAt : 0;
+    return {
+      itemId,
+      contentIndex: estimate?.contentIndex ?? fallback?.contentIndex ?? 0,
+      audioEndMs: Math.max(0, Math.min(estimate?.sentDurationMs || 0, elapsedMs)),
+      generationId: estimate?.generationId || fallback?.generationId,
+    };
+  }, []);
+
+  const sendPlaybackTruncation = useCallback((truncation: PlaybackTruncation | null) => {
+    if (!truncation || wsRef.current?.readyState !== WebSocket.OPEN) return;
+
+    wsRef.current.send(
+      JSON.stringify({
+        type: "playback_truncated",
+        itemId: truncation.itemId,
+        contentIndex: truncation.contentIndex,
+        audioEndMs: Math.max(0, Math.floor(truncation.audioEndMs)),
+        generationId: truncation.generationId,
+      })
+    );
+  }, []);
+
+  const trackRemoteAudioChunk = useCallback((message: Extract<LiveCallServerMessage, { type: "audio_chunk" }>) => {
+    if (!message.itemId) return;
+
+    const durationMs = message.format === "pcm16" ? getPcm16DurationMs(message.audio, 24000) : 0;
+    const current = remotePlaybackEstimateRef.current;
+    if (!current || current.itemId !== message.itemId || current.generationId !== message.generationId) {
+      remotePlaybackEstimateRef.current = {
+        itemId: message.itemId,
+        contentIndex: message.contentIndex ?? 0,
+        generationId: message.generationId,
+        startedAt: Date.now(),
+        sentDurationMs: durationMs,
+      };
+      return;
+    }
+
+    current.sentDurationMs += durationMs;
+  }, [getPcm16DurationMs]);
+
+  const playAudioChunk = useCallback(async (
+    base64Audio: string,
+    format?: string,
+    itemId?: string,
+    contentIndex?: number,
+    generationId?: string
+  ) => {
     try {
+      if (generationId && interruptedGenerationRef.current === generationId) {
+        return;
+      }
+
       // Initialize playback AudioContext and analyser for lip sync if needed
       if (!playbackContextRef.current) {
         const ctx = new AudioContext();
@@ -420,7 +599,13 @@ export function LiveCall({ agentId, conversationId, userId, onClose }: LiveCallP
       }
       
       // Add to queue
-      audioQueueRef.current.push(audioBuffer);
+      audioQueueRef.current.push({
+        buffer: audioBuffer,
+        itemId,
+        contentIndex,
+        generationId,
+        durationMs: audioBuffer.duration * 1000,
+      });
 
       // Start playing if not already playing
       if (!isPlayingRef.current) {
@@ -438,21 +623,46 @@ export function LiveCall({ agentId, conversationId, userId, onClose }: LiveCallP
     }
 
     isPlayingRef.current = true;
-    const audioBuffer = audioQueueRef.current.shift()!;
+    const chunk = audioQueueRef.current.shift()!;
     const audioContext = playbackContextRef.current!;
 
     const source = audioContext.createBufferSource();
-    source.buffer = audioBuffer;
+    source.buffer = chunk.buffer;
+    const gain = audioContext.createGain();
+    gain.gain.value = 1;
     
     // Route through analyser for avatar lip sync when available
     const analyser = playbackAnalyserRef.current;
     if (analyser) {
-      source.connect(analyser);
+      source.connect(gain);
+      gain.connect(analyser);
     } else {
-      source.connect(audioContext.destination);
+      source.connect(gain);
+      gain.connect(audioContext.destination);
     }
 
+    currentPlaybackRef.current = {
+      source,
+      gain,
+      itemId: chunk.itemId,
+      contentIndex: chunk.contentIndex,
+      generationId: chunk.generationId,
+      startedAt: audioContext.currentTime,
+      durationMs: chunk.durationMs,
+      stopped: false,
+    };
+
     source.onended = () => {
+      const current = currentPlaybackRef.current;
+      if (current?.source !== source) {
+        return;
+      }
+
+      if (!current.stopped && current.itemId) {
+        const completedMs = playedAudioByItemRef.current.get(current.itemId) || 0;
+        playedAudioByItemRef.current.set(current.itemId, completedMs + current.durationMs);
+      }
+      currentPlaybackRef.current = null;
       playNextInQueue();
     };
 
@@ -460,26 +670,56 @@ export function LiveCall({ agentId, conversationId, userId, onClose }: LiveCallP
   }, []);
 
   // Helper to clear audio queue and stop current playback
-  const clearAudioQueue = useCallback(() => {
+  const clearAudioQueue = useCallback((
+    fallback?: { itemId?: string; contentIndex?: number; generationId?: string }
+  ): PlaybackTruncation | null => {
     console.log("[LiveCall] Clearing audio queue");
+    const truncation = isRemoteAvatar
+      ? buildRemotePlaybackTruncation(fallback)
+      : buildLocalPlaybackTruncation(fallback);
+    const interruptedGenerationId =
+      currentPlaybackRef.current?.generationId ||
+      remotePlaybackEstimateRef.current?.generationId ||
+      fallback?.generationId;
+    if (interruptedGenerationId) {
+      interruptedGenerationRef.current = interruptedGenerationId;
+    }
     
     // Clear queue
     audioQueueRef.current = [];
     isPlayingRef.current = false;
+    remotePlaybackEstimateRef.current = null;
 
-    // Stop current audio playback and clear lip-sync analyser
-    if (playbackContextRef.current) {
-      playbackContextRef.current.close().then(() => {
-        playbackContextRef.current = null;
-        playbackAnalyserRef.current = null;
-        setPlaybackAnalyser(null);
-      }).catch(() => {
-        playbackContextRef.current = null;
-        playbackAnalyserRef.current = null;
-        setPlaybackAnalyser(null);
-      });
+    const current = currentPlaybackRef.current;
+    if (current && playbackContextRef.current) {
+      current.stopped = true;
+      const now = playbackContextRef.current.currentTime;
+      try {
+        current.gain.gain.cancelScheduledValues(now);
+        current.gain.gain.setValueAtTime(current.gain.gain.value, now);
+        current.gain.gain.linearRampToValueAtTime(0, now + 0.08);
+        current.source.stop(now + 0.09);
+      } catch {
+        try {
+          current.source.stop();
+        } catch {
+          // Already stopped.
+        }
+      }
+      currentPlaybackRef.current = null;
     }
-  }, []);
+
+    setTimeout(() => {
+      if (!currentPlaybackRef.current && audioQueueRef.current.length === 0 && playbackContextRef.current) {
+        playbackContextRef.current.close().catch(() => undefined);
+        playbackContextRef.current = null;
+        playbackAnalyserRef.current = null;
+        setPlaybackAnalyser(null);
+      }
+    }, 120);
+
+    return truncation;
+  }, [buildLocalPlaybackTruncation, buildRemotePlaybackTruncation, isRemoteAvatar]);
 
   // ============================================================================
   // User Actions
@@ -489,16 +729,27 @@ export function LiveCall({ agentId, conversationId, userId, onClose }: LiveCallP
     console.log("[LiveCall] Interrupt requested");
     
     // Clear audio queue locally first (immediate feedback)
-    clearAudioQueue();
+    const truncation = clearAudioQueue();
+    if (truncation?.generationId) {
+      interruptedGenerationRef.current = truncation.generationId;
+    }
 
     // Send interrupt to server (will also cancel Realtime response)
-    remoteAvatarRef.current?.interrupt().catch(() => undefined);
+    remoteAvatarRef.current?.interrupt(truncation?.generationId).catch(() => undefined);
     wsRef.current?.send(
       JSON.stringify({
         type: "interrupt",
+        itemId: truncation?.itemId,
+        contentIndex: truncation?.contentIndex,
+        audioEndMs: truncation?.audioEndMs,
+        generationId: truncation?.generationId,
       })
     );
   }, [clearAudioQueue]);
+
+  useEffect(() => {
+    localBargeInRef.current = handleInterrupt;
+  }, [handleInterrupt]);
 
   const handleToggleMute = useCallback(() => {
     setIsMuted((prev) => !prev);

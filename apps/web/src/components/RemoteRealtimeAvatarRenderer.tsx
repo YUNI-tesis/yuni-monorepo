@@ -12,8 +12,8 @@ import { fetchWithAuth } from "@/lib/fetch-client";
 import type { AgentAvatar } from "@/lib/schemas";
 
 export interface RemoteRealtimeAvatarHandle {
-  speakAudio: (audioBase64: string, format?: string) => Promise<void>;
-  interrupt: () => Promise<void>;
+  speakAudio: (audioBase64: string, format?: string, generationId?: string) => Promise<void>;
+  interrupt: (generationId?: string) => Promise<void>;
   stop: () => Promise<void>;
 }
 
@@ -54,7 +54,8 @@ export const RemoteRealtimeAvatarRenderer = forwardRef<
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const sdkSessionRef = useRef<LiveAvatarSessionInstance | null>(null);
   const avatarSessionRef = useRef<RemoteAvatarSession | null>(null);
-  const audioQueueRef = useRef<string[]>([]);
+  const audioQueueRef = useRef<Array<{ audio: string; generationId?: string }>>([]);
+  const interruptedGenerationIdRef = useRef<string | null>(null);
   const readyRef = useRef(false);
   const onReadyRef = useRef(onReady);
   const onErrorRef = useRef(onError);
@@ -81,29 +82,39 @@ export const RemoteRealtimeAvatarRenderer = forwardRef<
     if (!readyRef.current || !sdkSessionRef.current) return;
 
     while (audioQueueRef.current.length > 0) {
-      const audio = audioQueueRef.current.shift();
-      if (!audio) continue;
-      await sdkSessionRef.current.repeatAudio(audio);
+      const queued = audioQueueRef.current.shift();
+      if (!queued) continue;
+      if (queued.generationId && interruptedGenerationIdRef.current === queued.generationId) continue;
+      await sdkSessionRef.current.repeatAudio(queued.audio);
     }
   }, []);
 
   useImperativeHandle(
     ref,
     () => ({
-      async speakAudio(audioBase64: string, format?: string) {
+      async speakAudio(audioBase64: string, format?: string, generationId?: string) {
         if (format !== "pcm16") {
           console.warn(`[RemoteRealtimeAvatar] Ignoring unsupported audio format: ${format || "unknown"}`);
           return;
         }
 
+        if (generationId && interruptedGenerationIdRef.current === generationId) {
+          return;
+        }
+
         if (!readyRef.current || !sdkSessionRef.current) {
-          audioQueueRef.current.push(audioBase64);
+          audioQueueRef.current.push({ audio: audioBase64, generationId });
           return;
         }
         await sdkSessionRef.current.repeatAudio(audioBase64);
       },
-      async interrupt() {
-        audioQueueRef.current = [];
+      async interrupt(generationId?: string) {
+        if (generationId) {
+          interruptedGenerationIdRef.current = generationId;
+        }
+        audioQueueRef.current = generationId
+          ? audioQueueRef.current.filter((queued) => queued.generationId && queued.generationId !== generationId)
+          : [];
         try {
           await sdkSessionRef.current?.interrupt?.();
         } catch (error) {
@@ -112,6 +123,7 @@ export const RemoteRealtimeAvatarRenderer = forwardRef<
       },
       async stop() {
         audioQueueRef.current = [];
+        interruptedGenerationIdRef.current = null;
         const session = sdkSessionRef.current;
         const avatarSession = avatarSessionRef.current;
         sdkSessionRef.current = null;
@@ -143,6 +155,7 @@ export const RemoteRealtimeAvatarRenderer = forwardRef<
         setError(null);
         readyRef.current = false;
         audioQueueRef.current = [];
+        interruptedGenerationIdRef.current = null;
 
         const sessionRes = await fetchWithAuth("/api/avatar-sessions", {
           method: "POST",
@@ -242,6 +255,7 @@ export const RemoteRealtimeAvatarRenderer = forwardRef<
       if (keepAliveTimer) clearInterval(keepAliveTimer);
       readyRef.current = false;
       audioQueueRef.current = [];
+      interruptedGenerationIdRef.current = null;
 
       const session = sdkSessionRef.current;
       const avatarSession = avatarSessionRef.current;

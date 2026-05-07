@@ -9,7 +9,10 @@ import type { RealtimeClient } from "./realtime-client";
 // OpenAI Realtime API Types
 // ============================================================================
 
-export type RealtimeModel = "gpt-4o-realtime-preview-2024-12-17";
+export type RealtimeModel =
+  | "gpt-realtime"
+  | "gpt-realtime-mini"
+  | "gpt-4o-realtime-preview-2024-12-17";
 
 // OpenAI Realtime voices (updated list)
 export type OpenAIRealtimeVoice = 
@@ -30,14 +33,23 @@ export interface RealtimeSessionConfig {
   voice?: OpenAIRealtimeVoice;
   input_audio_format?: "pcm16" | "g711_ulaw" | "g711_alaw";
   output_audio_format?: "pcm16" | "g711_ulaw" | "g711_alaw";
+  input_audio_noise_reduction?: {
+    type: "near_field" | "far_field";
+  } | null;
   input_audio_transcription?: {
-    model?: "whisper-1";
+    model?: "whisper-1" | "gpt-4o-transcribe" | "gpt-4o-transcribe-latest" | "gpt-4o-mini-transcribe";
+    language?: string;
+    prompt?: string;
   };
   turn_detection?: {
-    type: "server_vad";
+    type: "server_vad" | "semantic_vad";
     threshold?: number;
     prefix_padding_ms?: number;
     silence_duration_ms?: number;
+    eagerness?: "low" | "medium" | "high" | "auto";
+    create_response?: boolean;
+    interrupt_response?: boolean;
+    idle_timeout_ms?: number;
   } | null;
   tools?: Array<{
     type: "function";
@@ -207,6 +219,59 @@ export interface ResponseAudioDoneEvent extends RealtimeEventBase {
   content_index: number;
 }
 
+export interface ResponseOutputAudioDeltaEvent extends RealtimeEventBase {
+  type: "response.output_audio.delta";
+  response_id: string;
+  item_id: string;
+  output_index: number;
+  content_index: number;
+  delta: string;
+}
+
+export interface ResponseOutputAudioDoneEvent extends RealtimeEventBase {
+  type: "response.output_audio.done";
+  response_id: string;
+  item_id: string;
+  output_index: number;
+  content_index: number;
+}
+
+export interface ResponseOutputAudioTranscriptDeltaEvent extends RealtimeEventBase {
+  type: "response.output_audio_transcript.delta";
+  response_id: string;
+  item_id: string;
+  output_index: number;
+  content_index: number;
+  delta: string;
+}
+
+export interface ResponseOutputAudioTranscriptDoneEvent extends RealtimeEventBase {
+  type: "response.output_audio_transcript.done";
+  response_id: string;
+  item_id: string;
+  output_index: number;
+  content_index: number;
+  transcript: string;
+}
+
+export interface ResponseOutputTextDeltaEvent extends RealtimeEventBase {
+  type: "response.output_text.delta";
+  response_id: string;
+  item_id: string;
+  output_index: number;
+  content_index: number;
+  delta: string;
+}
+
+export interface ResponseOutputTextDoneEvent extends RealtimeEventBase {
+  type: "response.output_text.done";
+  response_id: string;
+  item_id: string;
+  output_index: number;
+  content_index: number;
+  text: string;
+}
+
 export interface ResponseFunctionCallArgumentsDeltaEvent extends RealtimeEventBase {
   type: "response.function_call_arguments.delta";
   response_id: string;
@@ -264,6 +329,12 @@ export type RealtimeServerEvent =
   | ResponseAudioDoneEvent
   | ResponseAudioTranscriptDeltaEvent
   | ResponseAudioTranscriptDoneEvent
+  | ResponseOutputAudioDeltaEvent
+  | ResponseOutputAudioDoneEvent
+  | ResponseOutputAudioTranscriptDeltaEvent
+  | ResponseOutputAudioTranscriptDoneEvent
+  | ResponseOutputTextDeltaEvent
+  | ResponseOutputTextDoneEvent
   | ResponseFunctionCallArgumentsDeltaEvent
   | ResponseFunctionCallArgumentsDoneEvent
   | RateLimitsUpdatedEvent
@@ -297,6 +368,14 @@ export interface ConversationItemCreateClientEvent {
   item: ConversationItem;
 }
 
+export interface ConversationItemTruncateClientEvent {
+  type: "conversation.item.truncate";
+  item_id: string;
+  content_index: number;
+  audio_end_ms: number;
+  event_id?: string;
+}
+
 export interface ResponseCreateClientEvent {
   type: "response.create";
   response?: {
@@ -321,6 +400,7 @@ export type RealtimeClientEvent =
   | InputAudioBufferCommitClientEvent
   | InputAudioBufferClearClientEvent
   | ConversationItemCreateClientEvent
+  | ConversationItemTruncateClientEvent
   | ResponseCreateClientEvent
   | ResponseCancelClientEvent;
 
@@ -383,13 +463,26 @@ export interface AudioEndMessage {
 
 export interface InterruptMessage {
   type: "interrupt";
+  itemId?: string;
+  contentIndex?: number;
+  audioEndMs?: number;
+  generationId?: string;
+}
+
+export interface PlaybackTruncatedMessage {
+  type: "playback_truncated";
+  itemId: string;
+  contentIndex?: number;
+  audioEndMs: number;
+  generationId?: string;
 }
 
 export type ClientMessage =
   | InitMessage
   | AudioChunkMessage
   | AudioEndMessage
-  | InterruptMessage;
+  | InterruptMessage
+  | PlaybackTruncatedMessage;
 
 // Server to Client Messages
 export interface ReadyMessage {
@@ -418,6 +511,9 @@ export interface AudioChunkResponseMessage {
   type: "audio_chunk";
   audio: string; // base64-encoded audio
   format?: string;
+  itemId?: string;
+  contentIndex?: number;
+  generationId?: string;
 }
 
 export interface ErrorMessage {
@@ -444,6 +540,9 @@ export interface MetricsMessage {
 export interface AudioInterruptedMessage {
   type: "audio_interrupted";
   reason: "barge_in" | "manual";
+  itemId?: string;
+  contentIndex?: number;
+  generationId?: string;
 }
 
 export type ServerMessage =
@@ -489,6 +588,13 @@ export interface CallConnection {
   isProcessing: boolean;
   isSpeaking: boolean;
   hasActiveResponse: boolean; // Track if Realtime has an active response
+  activeResponseId?: string;
+  activeGenerationId?: string;
+  lastAssistantAudioItemId?: string;
+  lastAssistantAudioContentIndex?: number;
+  lastInterruptAt?: number;
+  clientPlaybackActiveUntil?: number;
+  pendingFalseInterruptionTimer?: ReturnType<typeof setTimeout>;
   
   // Metrics
   metrics: {

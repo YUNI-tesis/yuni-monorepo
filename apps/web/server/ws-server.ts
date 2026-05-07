@@ -26,6 +26,15 @@ const prisma = new PrismaClient();
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY!;
 const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
 const PORT = parseInt(process.env.WS_PORT || "3001");
+const REALTIME_MODEL = (process.env.OPENAI_REALTIME_MODEL || "gpt-realtime") as
+  | "gpt-realtime"
+  | "gpt-realtime-mini"
+  | "gpt-4o-realtime-preview-2024-12-17";
+const INPUT_NOISE_REDUCTION = (process.env.REALTIME_INPUT_NOISE_REDUCTION || "near_field") as
+  | "near_field"
+  | "far_field"
+  | "off";
+const FALSE_INTERRUPTION_TIMEOUT_MS = 2000;
 
 // Active connections
 const connections = new Map<string, CallConnection>();
@@ -44,6 +53,116 @@ function getErrorMessage(error: unknown, fallback: string): string {
 
 function getRealtimeClient(connection: CallConnection): RealtimeClient | null {
   return connection.realtimeWs ?? null;
+}
+
+function getGenerationId(responseId?: string): string | undefined {
+  return responseId ? `response:${responseId}` : undefined;
+}
+
+function isBackchannelTranscript(transcript: string): boolean {
+  const normalized = transcript
+    .trim()
+    .toLowerCase()
+    .replace(/[.,!?¡¿]/g, "")
+    .replace(/\s+/g, " ");
+
+  return [
+    "si",
+    "sí",
+    "ok",
+    "okay",
+    "dale",
+    "aja",
+    "ajá",
+    "mmm",
+    "mm",
+    "uh huh",
+    "uh-huh",
+    "claro",
+    "bien",
+  ].includes(normalized);
+}
+
+function looksLikeBadTranscript(transcript: string): boolean {
+  const trimmed = transcript.trim();
+  if (!trimmed) return true;
+  if (/[\u3040-\u30ff\u3400-\u9fff]/.test(trimmed)) return true;
+  if (/^(thank you|thanks for watching|subtitles|caption|foreign language)/i.test(trimmed)) return true;
+  return false;
+}
+
+function clearFalseInterruptionTimer(connection: CallConnection): void {
+  if (connection.pendingFalseInterruptionTimer) {
+    clearTimeout(connection.pendingFalseInterruptionTimer);
+    connection.pendingFalseInterruptionTimer = undefined;
+  }
+}
+
+function scheduleFalseInterruptionTimeout(connection: CallConnection): void {
+  clearFalseInterruptionTimer(connection);
+  connection.pendingFalseInterruptionTimer = setTimeout(() => {
+    connection.pendingFalseInterruptionTimer = undefined;
+    if (!connection.lastInterruptAt) return;
+
+    const elapsed = Date.now() - connection.lastInterruptAt;
+    if (elapsed >= FALSE_INTERRUPTION_TIMEOUT_MS && !connection.currentTranscript) {
+      console.log("[Realtime] False interruption timeout: no useful transcript received");
+      connection.isSpeaking = false;
+      updateConnectionState(connection, "ready");
+    }
+  }, FALSE_INTERRUPTION_TIMEOUT_MS);
+}
+
+function cancelActiveResponse(connection: CallConnection): void {
+  const realtimeClient = getRealtimeClient(connection);
+  if (connection.isRealtimeConnected && connection.hasActiveResponse && realtimeClient) {
+    realtimeClient.cancelResponse();
+  }
+
+  connection.hasActiveResponse = false;
+  connection.activeResponseId = undefined;
+}
+
+function maybeTruncateAssistantAudio(
+  connection: CallConnection,
+  itemId?: string,
+  contentIndex?: number,
+  audioEndMs?: number,
+  generationId?: string
+): void {
+  if (!itemId || typeof audioEndMs !== "number" || Number.isNaN(audioEndMs)) return;
+  if (
+    generationId &&
+    connection.activeGenerationId &&
+    generationId !== connection.activeGenerationId &&
+    itemId !== connection.lastAssistantAudioItemId
+  ) {
+    return;
+  }
+
+  const realtimeClient = getRealtimeClient(connection);
+  if (!realtimeClient) return;
+
+  try {
+    realtimeClient.truncateAssistantAudio(itemId, contentIndex ?? 0, Math.max(0, audioEndMs));
+    console.log(`[Realtime] Truncated assistant audio item=${itemId} at ${Math.max(0, audioEndMs)}ms`);
+  } catch (error) {
+    console.warn("[Realtime] Failed to truncate assistant audio:", error);
+  }
+}
+
+function extendClientPlaybackWindow(connection: CallConnection, durationMs: number): void {
+  const now = Date.now();
+  const startsAt = Math.max(now, connection.clientPlaybackActiveUntil || 0);
+  connection.clientPlaybackActiveUntil = startsAt + Math.max(0, durationMs);
+}
+
+function getPcm16Base64DurationMs(audioBase64: string, sampleRate = 24000): number {
+  return (Buffer.from(audioBase64, "base64").byteLength / 2 / sampleRate) * 1000;
+}
+
+function isClientPlaybackLikelyActive(connection: CallConnection): boolean {
+  return Boolean(connection.clientPlaybackActiveUntil && connection.clientPlaybackActiveUntil > Date.now());
 }
 
 // ============================================================================
@@ -103,7 +222,10 @@ async function handleClientMessage(ws: WebSocket, message: ClientMessage): Promi
       await handleAudioEnd(ws);
       break;
     case "interrupt":
-      await handleInterrupt(ws);
+      await handleInterrupt(ws, message);
+      break;
+    case "playback_truncated":
+      await handlePlaybackTruncated(ws, message);
       break;
     default:
       console.warn(`[WebSocket] Unknown message type: ${(message as { type?: string }).type}`);
@@ -218,6 +340,13 @@ async function handleInit(ws: WebSocket, message: ClientMessage & { type: "init"
       isProcessing: false,
       isSpeaking: false,
       hasActiveResponse: false,
+      activeResponseId: undefined,
+      activeGenerationId: undefined,
+      lastAssistantAudioItemId: undefined,
+      lastAssistantAudioContentIndex: undefined,
+      lastInterruptAt: undefined,
+      clientPlaybackActiveUntil: undefined,
+      pendingFalseInterruptionTimer: undefined,
       metrics: {
         firstAudioChunk: false,
       },
@@ -229,18 +358,26 @@ async function handleInit(ws: WebSocket, message: ClientMessage & { type: "init"
     // Create Realtime client with appropriate config
     const realtimeClient = new RealtimeClient({
       apiKey: OPENAI_API_KEY,
+      model: REALTIME_MODEL,
       sessionConfig: {
         ...voiceModeConfig,
         instructions: systemPrompt,
         input_audio_format: "pcm16",
+        input_audio_noise_reduction:
+          INPUT_NOISE_REDUCTION === "off" ? null : { type: INPUT_NOISE_REDUCTION },
         input_audio_transcription: {
-          model: "whisper-1",
+          model: "gpt-4o-transcribe",
+          language: "es",
+          prompt:
+            "Transcribir en español rioplatense si es inteligible. Si el audio es ruido, silencio o está incompleto, no inventar palabras ni cambiar a inglés u otros idiomas.",
         },
         turn_detection: {
           type: "server_vad",
           threshold: 0.5,
           prefix_padding_ms: 300,
           silence_duration_ms: 500,
+          create_response: true,
+          interrupt_response: true,
         },
         temperature: 0.8,
         max_response_output_tokens: "inf",
@@ -351,7 +488,8 @@ async function handleAudioEnd(
 // ============================================================================
 
 async function handleInterrupt(
-  ws: WebSocket
+  ws: WebSocket,
+  message: ClientMessage & { type: "interrupt" }
 ): Promise<void> {
   const connection = findConnectionByWs(ws);
   if (!connection) return;
@@ -359,23 +497,27 @@ async function handleInterrupt(
   console.log(`[WebSocket] Interrupt requested: ${connection.sessionId}`);
 
   try {
-    // Cancel Realtime response if there's an active response
-    if (connection.isRealtimeConnected && connection.hasActiveResponse) {
-      const realtimeClient = getRealtimeClient(connection);
-      if (realtimeClient) {
-        realtimeClient.cancelResponse();
-        connection.hasActiveResponse = false;
-      }
-    }
+    cancelActiveResponse(connection);
+    maybeTruncateAssistantAudio(
+      connection,
+      message.itemId,
+      message.contentIndex,
+      message.audioEndMs,
+      message.generationId
+    );
 
     // Stop TTS playback
     connection.isSpeaking = false;
+    connection.clientPlaybackActiveUntil = undefined;
     connection.currentResponse = "";
 
     // Notify client that audio was interrupted (confirmation)
     sendToClient(connection.ws, {
       type: "audio_interrupted",
       reason: "manual",
+      itemId: connection.lastAssistantAudioItemId,
+      contentIndex: connection.lastAssistantAudioContentIndex,
+      generationId: connection.activeGenerationId,
     });
 
     // Update state back to listening
@@ -383,6 +525,22 @@ async function handleInterrupt(
   } catch (error) {
     console.error("[WebSocket] Error handling interrupt:", error);
   }
+}
+
+async function handlePlaybackTruncated(
+  ws: WebSocket,
+  message: ClientMessage & { type: "playback_truncated" }
+): Promise<void> {
+  const connection = findConnectionByWs(ws);
+  if (!connection) return;
+
+  maybeTruncateAssistantAudio(
+    connection,
+    message.itemId,
+    message.contentIndex,
+    message.audioEndMs,
+    message.generationId
+  );
 }
 
 // ============================================================================
@@ -398,27 +556,35 @@ async function handleRealtimeEvent(
       connection.realtimeSessionId = event.session.id;
       break;
 
+    case "response.created":
+      connection.hasActiveResponse = true;
+      connection.activeResponseId = event.response.id;
+      connection.activeGenerationId = getGenerationId(event.response.id);
+      connection.metrics.firstAudioChunk = false;
+      break;
+
     case "input_audio_buffer.speech_started":
       console.log("[Realtime] Speech started");
       updateConnectionState(connection, "listening");
       
       // If currently speaking or has active response, this is a barge-in
-      if (connection.isSpeaking || connection.hasActiveResponse) {
+      if (connection.isSpeaking || connection.hasActiveResponse || isClientPlaybackLikelyActive(connection)) {
         console.log("[Realtime] Barge-in detected");
-        const realtimeClient = getRealtimeClient(connection);
-        
-        // Only cancel if there's an active response
-        if (connection.hasActiveResponse && realtimeClient) {
-          realtimeClient.cancelResponse();
-          connection.hasActiveResponse = false;
-        }
+        connection.lastInterruptAt = Date.now();
+        connection.currentTranscript = "";
+        cancelActiveResponse(connection);
         
         connection.isSpeaking = false;
+        connection.clientPlaybackActiveUntil = undefined;
+        scheduleFalseInterruptionTimeout(connection);
         
         // Notify client to clear audio queue
         sendToClient(connection.ws, {
           type: "audio_interrupted",
           reason: "barge_in",
+          itemId: connection.lastAssistantAudioItemId,
+          contentIndex: connection.lastAssistantAudioContentIndex,
+          generationId: connection.activeGenerationId,
         });
       }
       break;
@@ -439,6 +605,26 @@ async function handleRealtimeEvent(
 
     case "conversation.item.input_audio_transcription.completed":
       // Final transcription
+      clearFalseInterruptionTimer(connection);
+      if (looksLikeBadTranscript(event.transcript)) {
+        console.log(`[Realtime] Ignoring unusable transcript: "${event.transcript}"`);
+        cancelActiveResponse(connection);
+        updateConnectionState(connection, "listening");
+        break;
+      }
+
+      if (
+        connection.lastInterruptAt &&
+        Date.now() - connection.lastInterruptAt <= FALSE_INTERRUPTION_TIMEOUT_MS &&
+        isBackchannelTranscript(event.transcript)
+      ) {
+        console.log(`[Realtime] Treating backchannel as non-turn: "${event.transcript}"`);
+        cancelActiveResponse(connection);
+        updateConnectionState(connection, "ready");
+        connection.lastInterruptAt = undefined;
+        break;
+      }
+
       connection.currentTranscript = event.transcript;
       sendToClient(connection.ws, {
         type: "transcript",
@@ -457,11 +643,15 @@ async function handleRealtimeEvent(
 
       updateConnectionState(connection, "generating");
       connection.metrics.llmStartTime = Date.now();
+      connection.lastInterruptAt = undefined;
       break;
 
     case "response.text.delta":
+    case "response.output_text.delta":
       // Streaming text response
       connection.hasActiveResponse = true; // Mark response as active
+      connection.activeResponseId = event.response_id;
+      connection.activeGenerationId = getGenerationId(event.response_id);
       sendToClient(connection.ws, {
         type: "response_chunk",
         text: event.delta,
@@ -470,6 +660,7 @@ async function handleRealtimeEvent(
       break;
 
     case "response.text.done":
+    case "response.output_text.done":
       // Complete text response
       connection.currentResponse = event.text;
       console.log(`[Realtime] Text response complete: "${event.text}"`);
@@ -487,9 +678,15 @@ async function handleRealtimeEvent(
       break;
 
     case "response.audio.delta":
+    case "response.output_audio.delta":
       // Audio chunk from Realtime (only in realtime_audio mode)
       if (connection.voiceMode === "realtime_audio") {
         connection.hasActiveResponse = true; // Mark response as active
+        connection.activeResponseId = event.response_id;
+        connection.activeGenerationId = getGenerationId(event.response_id);
+        connection.lastAssistantAudioItemId = event.item_id;
+        connection.lastAssistantAudioContentIndex = event.content_index;
+        extendClientPlaybackWindow(connection, getPcm16Base64DurationMs(event.delta));
         
         if (!connection.metrics.firstAudioChunk) {
           const totalLatency = Date.now() - (connection.metrics.asrStartTime || Date.now());
@@ -503,6 +700,9 @@ async function handleRealtimeEvent(
           type: "audio_chunk",
           audio: event.delta, // Already base64-encoded PCM16
           format: "pcm16",
+          itemId: event.item_id,
+          contentIndex: event.content_index,
+          generationId: connection.activeGenerationId,
         });
         
         connection.isSpeaking = true;
@@ -513,6 +713,7 @@ async function handleRealtimeEvent(
       break;
 
     case "response.audio.done":
+    case "response.output_audio.done":
       // Audio complete from Realtime (only in realtime_audio mode)
       if (connection.voiceMode === "realtime_audio") {
         console.log("[Realtime] Audio response complete");
@@ -522,15 +723,13 @@ async function handleRealtimeEvent(
           await saveMessage(connection, "assistant", connection.currentResponse);
         }
         
-        // Update state back to ready
-        if (connection.isSpeaking) {
-          connection.isSpeaking = false;
-          updateConnectionState(connection, "ready");
-        }
+        connection.isSpeaking = false;
+        updateConnectionState(connection, "ready");
       }
       break;
 
     case "response.audio_transcript.done":
+    case "response.output_audio_transcript.done":
       // Transcript of audio generated by Realtime (useful for displaying text)
       if (connection.voiceMode === "realtime_audio") {
         connection.currentResponse = event.transcript;
@@ -550,6 +749,8 @@ async function handleRealtimeEvent(
         console.log("[Realtime] Response completed");
       } else if (event.response.status === "cancelled") {
         console.log("[Realtime] Response cancelled");
+        connection.isSpeaking = false;
+        connection.clientPlaybackActiveUntil = undefined;
       } else if (event.response.status === "failed") {
         console.error("[Realtime] Response failed:", event.response.status_details);
         sendToClient(connection.ws, {
@@ -605,6 +806,7 @@ async function synthesizeAndStreamAudio(connection: CallConnection, text: string
   try {
     updateConnectionState(connection, "speaking");
     connection.isSpeaking = true;
+    connection.activeGenerationId = `tts:${Date.now()}`;
     connection.metrics.ttsStartTime = Date.now();
 
     // Fetch agent for voice config
@@ -646,11 +848,15 @@ async function synthesizeAndStreamAudio(connection: CallConnection, text: string
         type: "audio_chunk",
         audio: audioChunk.toString("base64"),
         format: "mp3",
+        generationId: connection.activeGenerationId,
       });
+      extendClientPlaybackWindow(connection, 1000);
     }
 
-    // Save assistant message to database
-    await saveMessage(connection, "assistant", text);
+    // Save assistant message to database only when the user heard the full TTS turn.
+    if (connection.isSpeaking) {
+      await saveMessage(connection, "assistant", text);
+    }
 
     // Update state back to ready
     if (connection.isSpeaking) {
@@ -767,6 +973,7 @@ function sendToClient(ws: WebSocket, message: ServerMessage): void {
 
 function cleanupConnection(connection: CallConnection): void {
   console.log(`[WebSocket] Cleaning up connection: ${connection.sessionId}`);
+  clearFalseInterruptionTimer(connection);
   
   // Run all cleanup functions
   connection.cleanupFunctions.forEach((cleanup) => {
