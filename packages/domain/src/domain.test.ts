@@ -4,7 +4,9 @@ import {
   CreateAvatarAgentInputSchema,
   CreateShareLinkInputSchema,
   LiveAvatarConfigSchema,
+  LoginInputSchema,
   MessageRoleSchema,
+  RegisterInputSchema,
   VoiceConfigSchema,
 } from "./index";
 
@@ -82,5 +84,46 @@ describe("@yuni/domain", () => {
     });
 
     expect(parsed.role).toBe("user");
+  });
+
+  it("validates register input and normalizes email", () => {
+    const parsed = RegisterInputSchema.parse({
+      email: "DEMO@YUNI.LOCAL ",
+      password: "demo-password",
+      name: "Demo",
+    });
+
+    expect(parsed.email).toBe("demo@yuni.local");
+  });
+
+  it("validates login input", () => {
+    const parsed = LoginInputSchema.parse({
+      email: "demo@yuni.local",
+      password: "demo-password",
+    });
+
+    expect(parsed.email).toBe("demo@yuni.local");
+  });
+
+  it("rejects invalid auth input", () => {
+    expect(() => RegisterInputSchema.parse({ email: "invalid", password: "demo-password" })).toThrow();
+    expect(() => LoginInputSchema.parse({ email: "demo@yuni.local", password: "short" })).toThrow();
+  });
+
+  it("rejects auth input that attempts to send ownerId or userId", () => {
+    expect(() =>
+      RegisterInputSchema.parse({
+        email: "demo@yuni.local",
+        password: "demo-password",
+        ownerId: "owner-1",
+      })
+    ).toThrow();
+    expect(() =>
+      LoginInputSchema.parse({
+        email: "demo@yuni.local",
+        password: "demo-password",
+        userId: "user-1",
+      })
+    ).toThrow();
   });
 });

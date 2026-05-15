@@ -8,6 +8,7 @@ export interface Logger {
 
 function writeLog(scope: string, level: LogLevel, message: string, metadata?: Record<string, unknown>) {
   const payload = {
+    timestamp: new Date().toISOString(),
     level,
     scope,
     message,
@@ -25,7 +26,7 @@ function writeLog(scope: string, level: LogLevel, message: string, metadata?: Re
     return;
   }
 
-  console.info(line);
+  console.log(line);
 }
 
 export function createLogger(scope: string): Logger {

@@ -2,6 +2,7 @@ export * from "./ids";
 export * from "./enums";
 export * from "./errors";
 export * from "./schemas/avatar-agent";
+export * from "./schemas/auth";
 export * from "./schemas/share-link";
 export * from "./schemas/conversation";
 export * from "./schemas/message";

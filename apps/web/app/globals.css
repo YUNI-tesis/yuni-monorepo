@@ -39,6 +39,84 @@ body {
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.35);
 }
 
+.auth-panel {
+  width: min(460px, 100%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 16px;
+  padding: 32px;
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.35);
+}
+
+.auth-panel h1 {
+  font-size: 2.25rem;
+}
+
+.auth-form {
+  display: grid;
+  gap: 16px;
+  margin-top: 24px;
+}
+
+.auth-form label {
+  display: grid;
+  gap: 8px;
+  color: rgba(255, 255, 255, 0.76);
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.auth-form input {
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+  font: inherit;
+}
+
+.auth-form input:focus {
+  outline: 2px solid rgba(100, 195, 215, 0.55);
+  outline-offset: 2px;
+}
+
+.form-error {
+  margin: 0;
+  color: #ffb4b4;
+}
+
+.muted-link {
+  margin: 20px 0 0;
+}
+
+.muted-link a {
+  color: #64c3d7;
+  font-weight: 700;
+}
+
+.dashboard-panel {
+  display: grid;
+  gap: 24px;
+}
+
+.session-card {
+  display: grid;
+  gap: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  padding: 18px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.session-card strong {
+  font-size: 1.15rem;
+}
+
+.session-card span {
+  color: rgba(255, 255, 255, 0.68);
+}
+
 .eyebrow {
   color: #64c3d7;
   font-size: 0.85rem;

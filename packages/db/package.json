@@ -13,11 +13,11 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test": "vitest run --passWithNoTests",
-    "db:generate": "tsx scripts/with-root-env.ts prisma generate --schema prisma/schema.prisma",
-    "db:migrate:dev": "tsx scripts/with-root-env.ts prisma migrate dev --schema prisma/schema.prisma",
-    "db:migrate:deploy": "tsx scripts/with-root-env.ts prisma migrate deploy --schema prisma/schema.prisma",
-    "db:seed": "tsx scripts/with-root-env.ts tsx prisma/seed.ts",
-    "db:studio": "tsx scripts/with-root-env.ts prisma studio --schema prisma/schema.prisma"
+    "db:generate": "tsx ../config/scripts/run-with-env.ts prisma generate --schema prisma/schema.prisma",
+    "db:migrate:dev": "tsx ../config/scripts/run-with-env.ts prisma migrate dev --schema prisma/schema.prisma",
+    "db:migrate:deploy": "tsx ../config/scripts/run-with-env.ts prisma migrate deploy --schema prisma/schema.prisma",
+    "db:seed": "tsx ../config/scripts/run-with-env.ts tsx prisma/seed.ts",
+    "db:studio": "tsx ../config/scripts/run-with-env.ts prisma studio --schema prisma/schema.prisma"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",

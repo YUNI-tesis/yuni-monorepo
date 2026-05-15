@@ -13,6 +13,8 @@
   "include": [
     "next-env.d.ts",
     "next.config.ts",
+    "proxy.ts",
+    "proxy.test.ts",
     "app/**/*.ts",
     "app/**/*.tsx",
     "src/**/*.ts",

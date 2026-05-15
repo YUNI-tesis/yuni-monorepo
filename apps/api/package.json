@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/index.ts",
+    "dev": "tsx ../../packages/config/scripts/run-with-env.ts tsx watch src/index.ts",
     "build": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
@@ -12,8 +12,13 @@
   },
   "dependencies": {
     "@hono/node-server": "^1.19.6",
+    "@hono/zod-validator": "^0.8.0",
     "@yuni/config": "workspace:*",
+    "@yuni/db": "workspace:*",
+    "@yuni/domain": "workspace:*",
     "@yuni/observability": "workspace:*",
-    "hono": "^4.10.7"
+    "bcryptjs": "^3.0.3",
+    "hono": "^4.10.7",
+    "jose": "^6.2.3"
   }
 }

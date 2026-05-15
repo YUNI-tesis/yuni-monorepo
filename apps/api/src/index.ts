@@ -1,8 +1,13 @@
-import { serve } from "@hono/node-server";
-import { serverConfig } from "@yuni/config";
-import { createLogger } from "@yuni/observability";
-import { app } from "./app.js";
+import { loadLocalEnv } from "@yuni/config/load-env";
 
+loadLocalEnv();
+
+const [{ serve }, { serverConfig }, { createLogger }, { app }] = await Promise.all([
+  import("@hono/node-server"),
+  import("@yuni/config"),
+  import("@yuni/observability"),
+  import("./app.js"),
+]);
 const logger = createLogger("@yuni/api");
 
 serve(

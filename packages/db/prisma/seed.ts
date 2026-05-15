@@ -2,12 +2,15 @@ import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
+const demoPasswordHash = "$2b$10$Gp7Lpf7jYhtgKnocU9Zs2eLyiLxzG1ydQ0gFj0YMLyIslW95AD3ay";
+
 async function main() {
   const user = await prisma.user.upsert({
     where: { email: "demo@yuni.local" },
-    update: { name: "Demo Creator" },
+    update: { name: "Demo Creator", passwordHash: demoPasswordHash },
     create: {
       email: "demo@yuni.local",
+      passwordHash: demoPasswordHash,
       name: "Demo Creator",
     },
   });
