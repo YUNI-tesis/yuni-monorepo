@@ -1,0 +1,325 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String         @id @default(cuid())
+  email         String         @unique
+  name          String?
+  imageUrl      String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  avatarAgents  AvatarAgent[]
+  shareLinks    ShareLink[]
+  conversations Conversation[]
+  documents     Document[]
+  usageEvents   UsageEvent[]
+  jobs          Job[]
+
+  @@index([email])
+}
+
+model AvatarAgent {
+  id               String            @id @default(cuid())
+  ownerId          String
+  name             String
+  description      String
+  instructions     String
+  context          String
+  voiceConfig      Json
+  liveAvatarConfig Json
+  status           AvatarStatus      @default(draft)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  owner            User              @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  shareLinks       ShareLink[]
+  conversations    Conversation[]
+  publicSessions   PublicSession[]
+  realtimeSessions RealtimeSession[]
+  documents        Document[]
+  documentChunks   DocumentChunk[]
+  usageEvents      UsageEvent[]
+  jobs             Job[]
+
+  @@index([ownerId])
+  @@index([ownerId, status])
+  @@index([updatedAt])
+}
+
+model ShareLink {
+  id             String          @id @default(cuid())
+  avatarAgentId  String
+  ownerId        String
+  slug           String          @unique
+  name           String
+  isEnabled      Boolean         @default(true)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  lastUsedAt     DateTime?
+
+  avatarAgent    AvatarAgent     @relation(fields: [avatarAgentId], references: [id], onDelete: Cascade)
+  owner          User            @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  conversations  Conversation[]
+  publicSessions PublicSession[]
+  usageEvents    UsageEvent[]
+
+  @@index([avatarAgentId])
+  @@index([ownerId])
+  @@index([ownerId, avatarAgentId])
+  @@index([slug])
+  @@index([isEnabled])
+}
+
+model Conversation {
+  id               String                 @id @default(cuid())
+  ownerId          String?
+  avatarAgentId    String
+  publicSessionId  String?                @unique
+  shareLinkId      String?
+  visibility       ConversationVisibility
+  mode             ConversationMode
+  status           ConversationStatus     @default(active)
+  lastMessageAt    DateTime?
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+
+  owner            User?                  @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  avatarAgent      AvatarAgent            @relation(fields: [avatarAgentId], references: [id], onDelete: Cascade)
+  publicSession    PublicSession?         @relation(fields: [publicSessionId], references: [id], onDelete: SetNull)
+  shareLink        ShareLink?             @relation(fields: [shareLinkId], references: [id], onDelete: SetNull)
+  messages         Message[]
+  realtimeSessions RealtimeSession[]
+  usageEvents      UsageEvent[]
+
+  @@index([ownerId, avatarAgentId, lastMessageAt])
+  @@index([avatarAgentId])
+  @@index([publicSessionId])
+  @@index([shareLinkId])
+  @@index([visibility])
+}
+
+model Message {
+  id             String       @id @default(cuid())
+  conversationId String
+  role           MessageRole
+  content        String
+  metadata       Json?
+  createdAt      DateTime     @default(now())
+
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+}
+
+model PublicSession {
+  id               String              @id @default(cuid())
+  shareLinkId      String
+  avatarAgentId    String
+  anonymousId      String
+  status           PublicSessionStatus @default(active)
+  startedAt        DateTime            @default(now())
+  endedAt          DateTime?
+
+  shareLink        ShareLink           @relation(fields: [shareLinkId], references: [id], onDelete: Cascade)
+  avatarAgent      AvatarAgent         @relation(fields: [avatarAgentId], references: [id], onDelete: Cascade)
+  conversation     Conversation?
+  realtimeSessions RealtimeSession[]
+  usageEvents      UsageEvent[]
+
+  @@index([shareLinkId])
+  @@index([avatarAgentId])
+  @@index([anonymousId])
+  @@index([status])
+}
+
+model RealtimeSession {
+  id                String                @id @default(cuid())
+  conversationId    String?
+  publicSessionId   String?
+  avatarAgentId     String
+  status            RealtimeSessionStatus @default(connecting)
+  providerSessionId String?
+  startedAt         DateTime              @default(now())
+  endedAt           DateTime?
+  errorMessage      String?
+
+  conversation      Conversation?         @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  publicSession     PublicSession?        @relation(fields: [publicSessionId], references: [id], onDelete: SetNull)
+  avatarAgent       AvatarAgent           @relation(fields: [avatarAgentId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
+  @@index([publicSessionId])
+  @@index([avatarAgentId])
+  @@index([status])
+}
+
+model Document {
+  id            String         @id @default(cuid())
+  ownerId       String
+  avatarAgentId String
+  fileName      String
+  mimeType      String
+  sizeBytes     Int
+  storageKey    String
+  status        DocumentStatus @default(uploaded)
+  errorMessage  String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  owner         User           @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  avatarAgent   AvatarAgent    @relation(fields: [avatarAgentId], references: [id], onDelete: Cascade)
+  chunks        DocumentChunk[]
+
+  @@index([ownerId])
+  @@index([avatarAgentId])
+  @@index([status])
+  @@index([storageKey])
+}
+
+model DocumentChunk {
+  id            String      @id @default(cuid())
+  documentId    String
+  avatarAgentId String
+  content       String
+  embedding     Json?
+  chunkIndex    Int
+  tokenCount    Int?
+  createdAt     DateTime    @default(now())
+
+  document      Document    @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  avatarAgent   AvatarAgent @relation(fields: [avatarAgentId], references: [id], onDelete: Cascade)
+
+  @@unique([documentId, chunkIndex])
+  @@index([documentId])
+  @@index([avatarAgentId])
+}
+
+model UsageEvent {
+  id              String         @id @default(cuid())
+  ownerId         String?
+  avatarAgentId   String
+  conversationId  String?
+  publicSessionId String?
+  shareLinkId     String?
+  provider        String
+  model           String?
+  operation       UsageOperation
+  tokensIn        Int            @default(0)
+  tokensOut       Int            @default(0)
+  audioSeconds    Int            @default(0)
+  costUsd         Decimal        @default(0) @db.Decimal(12, 6)
+  createdAt       DateTime       @default(now())
+
+  owner           User?          @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  avatarAgent     AvatarAgent    @relation(fields: [avatarAgentId], references: [id], onDelete: Cascade)
+  conversation    Conversation?  @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  publicSession   PublicSession? @relation(fields: [publicSessionId], references: [id], onDelete: SetNull)
+  shareLink       ShareLink?     @relation(fields: [shareLinkId], references: [id], onDelete: SetNull)
+
+  @@index([ownerId])
+  @@index([avatarAgentId])
+  @@index([shareLinkId])
+  @@index([publicSessionId])
+  @@index([conversationId])
+  @@index([createdAt])
+}
+
+model Job {
+  id            String       @id @default(cuid())
+  ownerId       String?
+  avatarAgentId String?
+  type          JobType
+  status        JobStatus    @default(queued)
+  payload       Json
+  attempts      Int          @default(0)
+  maxAttempts   Int          @default(3)
+  errorMessage  String?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  runAfter      DateTime?
+  startedAt     DateTime?
+  finishedAt    DateTime?
+
+  owner         User?        @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  avatarAgent   AvatarAgent? @relation(fields: [avatarAgentId], references: [id], onDelete: Cascade)
+
+  @@index([status, runAfter])
+  @@index([type])
+  @@index([ownerId])
+  @@index([avatarAgentId])
+}
+
+enum AvatarStatus {
+  draft
+  active
+  disabled
+}
+
+enum ConversationVisibility {
+  private
+  public
+}
+
+enum ConversationMode {
+  text
+  voice
+}
+
+enum ConversationStatus {
+  active
+  ended
+}
+
+enum MessageRole {
+  user
+  assistant
+  system
+}
+
+enum PublicSessionStatus {
+  active
+  ended
+  blocked
+  errored
+}
+
+enum RealtimeSessionStatus {
+  connecting
+  active
+  ended
+  errored
+}
+
+enum DocumentStatus {
+  uploaded
+  ingesting
+  ready
+  failed
+}
+
+enum UsageOperation {
+  chat_completion
+  embedding
+  stt
+  tts
+  live_avatar
+}
+
+enum JobType {
+  document_ingest
+  session_cleanup
+}
+
+enum JobStatus {
+  queued
+  running
+  done
+  failed
+}

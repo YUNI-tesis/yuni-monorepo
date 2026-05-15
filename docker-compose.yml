@@ -1,23 +1,41 @@
-version: '3.8'
+name: yuni
 
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: yuni-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: yuni
+      POSTGRES_USER: yuni
+      POSTGRES_PASSWORD: yuni
+      POSTGRES_DB: yuni_dev
     ports:
       - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - yuni_postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 10s
+      test: ["CMD-SHELL", "pg_isready -U yuni -d yuni_dev"]
+      interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
+      start_period: 5s
+
+  postgres-test:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: yuni
+      POSTGRES_PASSWORD: yuni
+      POSTGRES_DB: yuni_test
+    ports:
+      - "5433:5432"
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U yuni -d yuni_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
 
 volumes:
-  postgres_data:
+  yuni_postgres_data:

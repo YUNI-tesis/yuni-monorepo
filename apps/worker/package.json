@@ -1,0 +1,17 @@
+{
+  "name": "@yuni/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@yuni/config": "workspace:*",
+    "@yuni/observability": "workspace:*"
+  }
+}
