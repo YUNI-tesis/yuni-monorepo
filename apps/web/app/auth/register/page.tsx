@@ -2,16 +2,21 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FormEvent, useState } from "react";
-import { Button } from "@yuni/ui";
+import { useState } from "react";
+import { Button, Card, FormField, Input, PageHeader, PageShell } from "@yuni/ui";
 import { register } from "../../../lib/api-client";
+
+type FormSubmitEvent = {
+  preventDefault: () => void;
+  currentTarget: HTMLFormElement;
+};
 
 export default function RegisterPage() {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  async function onSubmit(event: FormEvent<HTMLFormElement>) {
+  async function onSubmit(event: FormSubmitEvent) {
     event.preventDefault();
     setError(null);
     setIsSubmitting(true);
@@ -35,32 +40,28 @@ export default function RegisterPage() {
   }
 
   return (
-    <main className="shell">
-      <section className="auth-panel">
-        <p className="eyebrow">YUNI</p>
-        <h1>Crear cuenta</h1>
-        <form className="auth-form" onSubmit={onSubmit}>
-          <label>
-            Nombre
-            <input name="name" type="text" autoComplete="name" />
-          </label>
-          <label>
-            Email
-            <input name="email" type="email" autoComplete="email" required />
-          </label>
-          <label>
-            Password
-            <input name="password" type="password" autoComplete="new-password" required minLength={8} />
-          </label>
-          {error ? <p className="form-error">{error}</p> : null}
-          <Button type="submit" disabled={isSubmitting}>
-            {isSubmitting ? "Creando..." : "Crear cuenta"}
+    <PageShell centered maxWidth="460px">
+      <Card padding="lg">
+        <PageHeader eyebrow="YUNI" title="Crear cuenta" />
+        <form className="yuni-stack" onSubmit={onSubmit}>
+          <FormField label="Nombre" htmlFor="name" hint="Opcional. Lo usamos para personalizar tu espacio.">
+            <Input id="name" name="name" type="text" autoComplete="name" />
+          </FormField>
+          <FormField label="Email" htmlFor="email">
+            <Input id="email" name="email" type="email" autoComplete="email" required />
+          </FormField>
+          <FormField label="Password" htmlFor="password" hint="Minimo 8 caracteres.">
+            <Input id="password" name="password" type="password" autoComplete="new-password" required minLength={8} />
+          </FormField>
+          {error ? <p className="yuni-form-field__error">{error}</p> : null}
+          <Button type="submit" loading={isSubmitting}>
+            Crear cuenta
           </Button>
         </form>
-        <p className="muted-link">
+        <p className="app-link-row">
           Ya tenes cuenta? <Link href="/auth/login">Iniciar sesion</Link>
         </p>
-      </section>
-    </main>
+      </Card>
+    </PageShell>
   );
 }

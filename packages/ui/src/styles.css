@@ -1,0 +1,953 @@
+:root {
+  color-scheme: dark;
+  --yuni-color-bg: #08030f;
+  --yuni-color-bg-elevated: #10081b;
+  --yuni-color-surface: #171021;
+  --yuni-color-surface-muted: #21172e;
+  --yuni-color-surface-soft: rgba(255, 255, 255, 0.055);
+  --yuni-color-border: rgba(255, 255, 255, 0.12);
+  --yuni-color-border-strong: rgba(255, 255, 255, 0.2);
+  --yuni-color-text: #f7f2ff;
+  --yuni-color-text-muted: #b9aec8;
+  --yuni-color-primary: #be6adc;
+  --yuni-color-primary-hover: #d583ef;
+  --yuni-color-primary-soft: #a977d8;
+  --yuni-color-primary-deep: #8c5fd0;
+  --yuni-color-accent: #64c3d7;
+  --yuni-color-accent-hover: #8ad9e8;
+  --yuni-color-accent-soft: #7dc9dc;
+  --yuni-color-danger: #ff7272;
+  --yuni-color-danger-soft: rgba(255, 114, 114, 0.12);
+  --yuni-color-success: #65d6a2;
+  --yuni-color-success-soft: rgba(101, 214, 162, 0.12);
+  --yuni-color-warning: #ffc15a;
+  --yuni-color-warning-soft: rgba(255, 193, 90, 0.14);
+  --yuni-radius-xs: 4px;
+  --yuni-radius-sm: 6px;
+  --yuni-radius-md: 8px;
+  --yuni-space-1: 4px;
+  --yuni-space-2: 8px;
+  --yuni-space-3: 12px;
+  --yuni-space-4: 16px;
+  --yuni-space-5: 20px;
+  --yuni-space-6: 24px;
+  --yuni-space-8: 32px;
+  --yuni-space-10: 40px;
+  --yuni-space-12: 48px;
+  --yuni-font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+  --yuni-font-xs: 0.75rem;
+  --yuni-font-sm: 0.875rem;
+  --yuni-font-md: 1rem;
+  --yuni-font-lg: 1.125rem;
+  --yuni-font-xl: 1.5rem;
+  --yuni-font-2xl: 2rem;
+  --yuni-font-3xl: 3rem;
+  --yuni-shadow-sm: 0 8px 24px rgba(0, 0, 0, 0.24);
+  --yuni-shadow-md: 0 18px 60px rgba(0, 0, 0, 0.32);
+  --yuni-shadow-primary: 0 10px 28px rgba(129, 95, 208, 0.18);
+  --yuni-focus-ring: 0 0 0 3px rgba(100, 195, 215, 0.32);
+  --yuni-z-dropdown: 20;
+  --yuni-z-dialog: 50;
+}
+
+.yuni-page-shell {
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 16% 12%, rgba(190, 106, 220, 0.2), transparent 30%),
+    radial-gradient(circle at 82% 0%, rgba(100, 195, 215, 0.16), transparent 28%),
+    var(--yuni-color-bg);
+  color: var(--yuni-color-text);
+}
+
+.yuni-page-shell__inner {
+  width: min(var(--yuni-page-width, 1120px), calc(100% - 32px));
+  margin: 0 auto;
+  padding: var(--yuni-space-8) 0;
+}
+
+.yuni-page-shell--center .yuni-page-shell__inner {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+}
+
+.yuni-stack {
+  display: grid;
+  gap: var(--yuni-space-4);
+}
+
+.yuni-cluster {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--yuni-space-3);
+}
+
+.yuni-page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--yuni-space-6);
+  margin-bottom: var(--yuni-space-6);
+}
+
+.yuni-page-header__content {
+  display: grid;
+  gap: var(--yuni-space-2);
+}
+
+.yuni-page-header__eyebrow,
+.yuni-eyebrow {
+  margin: 0;
+  color: var(--yuni-color-accent);
+  font-size: var(--yuni-font-xs);
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.yuni-page-header__title {
+  margin: 0;
+  font-size: clamp(2rem, 5vw, var(--yuni-font-3xl));
+  line-height: 1.02;
+  letter-spacing: 0;
+}
+
+.yuni-page-header__description,
+.yuni-text-muted {
+  margin: 0;
+  color: var(--yuni-color-text-muted);
+  line-height: 1.6;
+}
+
+.yuni-sidebar-layout {
+  display: grid;
+  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+  gap: var(--yuni-space-5);
+}
+
+.yuni-sidebar-layout__sidebar,
+.yuni-sidebar-layout__content {
+  min-width: 0;
+}
+
+.yuni-card {
+  border: 1px solid var(--yuni-color-border);
+  border-radius: var(--yuni-radius-md);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.075), rgba(255, 255, 255, 0.045));
+  box-shadow: var(--yuni-shadow-sm);
+}
+
+.yuni-card--padding-sm {
+  padding: var(--yuni-space-4);
+}
+
+.yuni-card--padding-md {
+  padding: var(--yuni-space-6);
+}
+
+.yuni-card--padding-lg {
+  padding: var(--yuni-space-8);
+}
+
+.yuni-card--muted {
+  background: var(--yuni-color-surface-soft);
+}
+
+.yuni-button,
+.yuni-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--yuni-space-2);
+  border: 1px solid transparent;
+  border-radius: var(--yuni-radius-md);
+  font: inherit;
+  font-weight: 800;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    border-color 160ms ease,
+    background-color 160ms ease,
+    box-shadow 160ms ease,
+    color 160ms ease,
+    opacity 160ms ease,
+    transform 160ms ease;
+}
+
+.yuni-button:focus-visible,
+.yuni-icon-button:focus-visible,
+.yuni-input:focus-visible,
+.yuni-textarea:focus-visible,
+.yuni-select:focus-visible,
+.yuni-password-input:focus-within,
+.yuni-checkbox:focus-visible,
+.yuni-switch:focus-visible,
+.yuni-tabs__trigger:focus-visible,
+.yuni-dropdown__summary:focus-visible,
+.yuni-file-drop:focus-within {
+  outline: none;
+  box-shadow: var(--yuni-focus-ring);
+}
+
+.yuni-button:hover:not(:disabled),
+.yuni-icon-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.yuni-button:disabled,
+.yuni-icon-button:disabled,
+.yuni-input:disabled,
+.yuni-textarea:disabled,
+.yuni-select:disabled,
+.yuni-checkbox:disabled,
+.yuni-switch:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
+.yuni-button--primary {
+  border-color: transparent;
+  border-style: hidden;
+  background: linear-gradient(135deg, var(--yuni-color-primary), var(--yuni-color-accent));
+  box-shadow: var(--yuni-shadow-primary);
+  color: #ffffff;
+}
+
+.yuni-button--primary:hover:not(:disabled) {
+  background: linear-gradient(135deg, var(--yuni-color-primary-hover), var(--yuni-color-accent-hover));
+  box-shadow: 0 12px 32px rgba(129, 95, 208, 0.24);
+}
+
+.yuni-button--secondary {
+  border-color: var(--yuni-color-border);
+  background: var(--yuni-color-surface-muted);
+  color: var(--yuni-color-text);
+}
+
+.yuni-button--ghost {
+  background: transparent;
+  color: var(--yuni-color-text);
+}
+
+.yuni-button--danger {
+  background: var(--yuni-color-danger-soft);
+  border-color: rgba(255, 114, 114, 0.32);
+  color: #ffdada;
+}
+
+.yuni-button--sm {
+  min-height: 34px;
+  padding: 7px 11px;
+  font-size: var(--yuni-font-sm);
+}
+
+.yuni-button--md {
+  min-height: 42px;
+  padding: 10px 16px;
+}
+
+.yuni-button--lg {
+  min-height: 50px;
+  padding: 13px 20px;
+  font-size: var(--yuni-font-lg);
+}
+
+.yuni-icon-button {
+  width: 42px;
+  height: 42px;
+  padding: 0;
+}
+
+.yuni-icon-button--sm {
+  width: 34px;
+  height: 34px;
+}
+
+.yuni-icon-button--lg {
+  width: 50px;
+  height: 50px;
+}
+
+.yuni-badge {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  border-radius: 999px;
+  border: 1px solid var(--yuni-color-border);
+  padding: 4px 9px;
+  font-size: var(--yuni-font-xs);
+  font-weight: 800;
+}
+
+.yuni-badge--neutral {
+  background: var(--yuni-color-surface-muted);
+  color: var(--yuni-color-text);
+}
+
+.yuni-badge--success {
+  background: var(--yuni-color-success-soft);
+  border-color: rgba(101, 214, 162, 0.3);
+  color: #b9f2d7;
+}
+
+.yuni-badge--warning {
+  background: var(--yuni-color-warning-soft);
+  border-color: rgba(255, 193, 90, 0.36);
+  color: #ffe2a6;
+}
+
+.yuni-badge--danger {
+  background: var(--yuni-color-danger-soft);
+  border-color: rgba(255, 114, 114, 0.32);
+  color: #ffdada;
+}
+
+.yuni-form-field {
+  display: grid;
+  gap: var(--yuni-space-2);
+}
+
+.yuni-form-field__label {
+  color: var(--yuni-color-text);
+  font-size: var(--yuni-font-sm);
+  font-weight: 800;
+}
+
+.yuni-form-field__hint {
+  margin: 0;
+  color: var(--yuni-color-text-muted);
+  font-size: var(--yuni-font-sm);
+  line-height: 1.45;
+}
+
+.yuni-form-field__error {
+  margin: 0;
+  color: #ffb4b4;
+  font-size: var(--yuni-font-sm);
+  line-height: 1.45;
+}
+
+.yuni-input,
+.yuni-textarea,
+.yuni-select {
+  width: 100%;
+  border: 1px solid var(--yuni-color-border);
+  border-radius: var(--yuni-radius-md);
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--yuni-color-text);
+  font: inherit;
+}
+
+.yuni-input,
+.yuni-select {
+  min-height: 42px;
+  padding: 10px 12px;
+}
+
+.yuni-password-input {
+  position: relative;
+  display: block;
+  width: 100%;
+  border-radius: var(--yuni-radius-md);
+}
+
+.yuni-input--password {
+  padding-right: 48px;
+}
+
+.yuni-password-input__toggle {
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: var(--yuni-radius-sm);
+  background: transparent;
+  color: var(--yuni-color-text-muted);
+  cursor: pointer;
+  transform: translateY(-50%);
+}
+
+.yuni-password-input__toggle:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--yuni-color-text);
+}
+
+.yuni-password-input__toggle:focus-visible {
+  outline: none;
+  box-shadow: var(--yuni-focus-ring);
+}
+
+.yuni-password-input__toggle svg {
+  width: 20px;
+  height: 20px;
+}
+
+.yuni-select-root {
+  position: relative;
+  width: 100%;
+}
+
+.yuni-select {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--yuni-space-3);
+  appearance: none;
+  cursor: pointer;
+  padding-right: 46px;
+  text-align: left;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.075), rgba(255, 255, 255, 0.045));
+}
+
+.yuni-select span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.yuni-select__chevron {
+  position: absolute;
+  right: 15px;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  color: var(--yuni-color-text-muted);
+  pointer-events: none;
+}
+
+.yuni-select__chevron svg {
+  width: 16px;
+  height: 16px;
+}
+
+.yuni-select__menu {
+  position: absolute;
+  z-index: var(--yuni-z-dropdown);
+  top: calc(100% + var(--yuni-space-2));
+  left: 0;
+  right: 0;
+  display: grid;
+  gap: var(--yuni-space-1);
+  max-height: 240px;
+  overflow-y: auto;
+  border: 1px solid var(--yuni-color-border);
+  border-radius: var(--yuni-radius-md);
+  padding: var(--yuni-space-2);
+  background: var(--yuni-color-surface);
+  box-shadow: var(--yuni-shadow-sm);
+}
+
+.yuni-select__option {
+  width: 100%;
+  border: 0;
+  border-radius: var(--yuni-radius-sm);
+  padding: 10px 12px;
+  background: transparent;
+  color: var(--yuni-color-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.yuni-select__option:hover,
+.yuni-select__option[aria-selected="true"] {
+  background: var(--yuni-color-surface-muted);
+}
+
+.yuni-select__option:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.yuni-textarea {
+  min-height: 112px;
+  resize: vertical;
+  padding: 12px;
+}
+
+.yuni-input::placeholder,
+.yuni-textarea::placeholder {
+  color: rgba(247, 242, 255, 0.44);
+}
+
+.yuni-input--invalid,
+.yuni-textarea--invalid,
+.yuni-select--invalid {
+  border-color: rgba(255, 114, 114, 0.72);
+  background: var(--yuni-color-danger-soft);
+}
+
+.yuni-checkbox-field,
+.yuni-switch-field {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--yuni-space-2);
+  color: var(--yuni-color-text);
+  font-size: var(--yuni-font-sm);
+  font-weight: 700;
+}
+
+.yuni-checkbox {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--yuni-color-accent);
+}
+
+.yuni-switch {
+  width: 42px;
+  height: 22px;
+  accent-color: var(--yuni-color-accent);
+}
+
+.yuni-tabs {
+  display: grid;
+  gap: var(--yuni-space-4);
+}
+
+.yuni-tabs__list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--yuni-space-2);
+}
+
+.yuni-tabs__trigger {
+  border: 1px solid var(--yuni-color-border);
+  border-radius: var(--yuni-radius-md);
+  background: var(--yuni-color-surface-soft);
+  color: var(--yuni-color-text-muted);
+  font: inherit;
+  font-weight: 800;
+  padding: 9px 13px;
+  cursor: pointer;
+}
+
+.yuni-tabs__trigger[aria-selected="true"] {
+  border-color: rgba(100, 195, 215, 0.5);
+  background: rgba(100, 195, 215, 0.12);
+  color: var(--yuni-color-text);
+}
+
+.yuni-tabs__panel {
+  min-width: 0;
+}
+
+.yuni-dialog {
+  width: min(520px, calc(100% - 32px));
+  border: 1px solid var(--yuni-color-border);
+  border-radius: var(--yuni-radius-md);
+  padding: 0;
+  background: var(--yuni-color-surface);
+  color: var(--yuni-color-text);
+  box-shadow: var(--yuni-shadow-md);
+}
+
+.yuni-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.62);
+}
+
+.yuni-dialog__body {
+  position: relative;
+  display: grid;
+  gap: var(--yuni-space-4);
+  padding: var(--yuni-space-6);
+}
+
+.yuni-dialog__close-form {
+  position: absolute;
+  top: var(--yuni-space-3);
+  right: var(--yuni-space-3);
+}
+
+.yuni-dialog__close {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--yuni-color-border);
+  border-radius: var(--yuni-radius-md);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--yuni-color-text-muted);
+  font: inherit;
+  font-size: var(--yuni-font-lg);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.yuni-dialog__close:hover {
+  border-color: var(--yuni-color-border-strong);
+  background: var(--yuni-color-surface-muted);
+  color: var(--yuni-color-text);
+}
+
+.yuni-dialog__close:focus-visible {
+  outline: none;
+  box-shadow: var(--yuni-focus-ring);
+}
+
+.yuni-dropdown {
+  position: relative;
+  width: fit-content;
+}
+
+.yuni-dropdown__summary {
+  list-style: none;
+  user-select: none;
+}
+
+.yuni-dropdown__menu {
+  position: absolute;
+  z-index: var(--yuni-z-dropdown);
+  top: calc(100% + var(--yuni-space-2));
+  min-width: max(180px, 100%);
+  max-width: calc(100vw - 24px);
+  border: 1px solid var(--yuni-color-border);
+  border-radius: var(--yuni-radius-md);
+  padding: var(--yuni-space-2);
+  background: var(--yuni-color-surface);
+  box-shadow: var(--yuni-shadow-sm);
+}
+
+.yuni-dropdown__menu--start {
+  left: 0;
+}
+
+.yuni-dropdown__menu--end {
+  right: 0;
+}
+
+.yuni-dropdown__item {
+  display: block;
+  width: 100%;
+  border: 0;
+  border-radius: var(--yuni-radius-sm);
+  padding: 9px 10px;
+  background: transparent;
+  color: var(--yuni-color-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.yuni-dropdown__item:hover {
+  background: var(--yuni-color-surface-muted);
+}
+
+.yuni-tooltip {
+  position: relative;
+  display: inline-flex;
+}
+
+.yuni-tooltip__content {
+  position: absolute;
+  z-index: var(--yuni-z-dropdown);
+  bottom: calc(100% + 8px);
+  left: 50%;
+  width: max-content;
+  max-width: 220px;
+  transform: translateX(-50%);
+  border: 1px solid var(--yuni-color-border);
+  border-radius: var(--yuni-radius-sm);
+  padding: 6px 8px;
+  background: var(--yuni-color-surface);
+  color: var(--yuni-color-text);
+  font-size: var(--yuni-font-xs);
+  line-height: 1.35;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.yuni-tooltip:hover .yuni-tooltip__content,
+.yuni-tooltip:focus-within .yuni-tooltip__content {
+  opacity: 1;
+}
+
+.yuni-state {
+  display: grid;
+  justify-items: center;
+  gap: var(--yuni-space-3);
+  padding: var(--yuni-space-8);
+  text-align: center;
+}
+
+.yuni-state__title {
+  margin: 0;
+  font-size: var(--yuni-font-lg);
+}
+
+.yuni-state__description {
+  max-width: 520px;
+  margin: 0;
+  color: var(--yuni-color-text-muted);
+  line-height: 1.55;
+}
+
+.yuni-loading-dots {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--yuni-space-2);
+  min-height: 18px;
+}
+
+.yuni-loading-dots span {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--yuni-color-accent);
+  animation: yuni-loading-bounce 900ms ease-in-out infinite;
+}
+
+.yuni-loading-dots span:nth-child(2) {
+  animation-delay: 120ms;
+  background: var(--yuni-color-primary-hover);
+}
+
+.yuni-loading-dots span:nth-child(3) {
+  animation-delay: 240ms;
+  background: var(--yuni-color-accent-hover);
+}
+
+@keyframes yuni-loading-bounce {
+  0%,
+  80%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.48;
+  }
+
+  40% {
+    transform: translateY(-6px);
+    opacity: 1;
+  }
+}
+
+.yuni-file-drop {
+  position: relative;
+  display: grid;
+  gap: var(--yuni-space-4);
+  min-height: 260px;
+  border: 1px dashed rgba(100, 195, 215, 0.34);
+  border-radius: var(--yuni-radius-md);
+  padding: var(--yuni-space-6);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.025)),
+    rgba(100, 195, 215, 0.035);
+  text-align: center;
+  transition:
+    border-color 160ms ease,
+    background-color 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease;
+}
+
+.yuni-file-drop:hover,
+.yuni-file-drop--dragging {
+  border-color: rgba(100, 195, 215, 0.72);
+  background:
+    linear-gradient(180deg, rgba(100, 195, 215, 0.09), rgba(190, 106, 220, 0.045)),
+    rgba(255, 255, 255, 0.03);
+  box-shadow: inset 0 0 0 1px rgba(100, 195, 215, 0.16);
+}
+
+.yuni-file-drop__target {
+  display: grid;
+  justify-items: center;
+  gap: var(--yuni-space-3);
+  min-height: 180px;
+  align-content: center;
+  cursor: pointer;
+}
+
+.yuni-file-drop__icon {
+  display: grid;
+  place-items: center;
+  width: 54px;
+  height: 54px;
+  border-radius: var(--yuni-radius-md);
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--yuni-color-accent);
+}
+
+.yuni-file-drop__icon svg {
+  width: 28px;
+  height: 28px;
+}
+
+.yuni-file-drop__title {
+  color: var(--yuni-color-text);
+  font-size: var(--yuni-font-lg);
+  font-weight: 900;
+}
+
+.yuni-file-drop__description {
+  max-width: 520px;
+  color: var(--yuni-color-text-muted);
+  line-height: 1.55;
+}
+
+.yuni-file-drop__action {
+  display: inline-flex;
+  align-items: center;
+  min-height: 38px;
+  border: 1px solid rgba(100, 195, 215, 0.32);
+  border-radius: var(--yuni-radius-md);
+  padding: 8px 14px;
+  background: rgba(100, 195, 215, 0.11);
+  color: var(--yuni-color-text);
+  font-weight: 800;
+}
+
+.yuni-file-drop__files {
+  display: grid;
+  width: 100%;
+  gap: var(--yuni-space-2);
+  margin: var(--yuni-space-2) 0 0;
+  padding: 0;
+  list-style: none;
+  text-align: left;
+}
+
+.yuni-file-drop__file {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--yuni-space-3);
+  border: 1px solid var(--yuni-color-border);
+  border-radius: var(--yuni-radius-md);
+  padding: var(--yuni-space-3);
+  background: rgba(255, 255, 255, 0.055);
+}
+
+.yuni-file-drop__file-icon {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: var(--yuni-radius-sm);
+  background: rgba(100, 195, 215, 0.12);
+  color: var(--yuni-color-accent-hover);
+  font-size: 0.66rem;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+}
+
+.yuni-file-drop__file-info {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.yuni-file-drop__file-info strong {
+  overflow: hidden;
+  color: var(--yuni-color-text);
+  font-size: var(--yuni-font-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.yuni-file-drop__file-info span {
+  color: var(--yuni-color-text-muted);
+  font-size: var(--yuni-font-xs);
+}
+
+.yuni-file-drop__remove {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--yuni-color-border);
+  border-radius: var(--yuni-radius-sm);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--yuni-color-text-muted);
+  font: inherit;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.yuni-file-drop__remove:hover {
+  border-color: rgba(255, 114, 114, 0.42);
+  background: var(--yuni-color-danger-soft);
+  color: #ffdada;
+}
+
+.yuni-file-drop__remove:focus-visible {
+  outline: none;
+  box-shadow: var(--yuni-focus-ring);
+}
+
+.yuni-file-drop__input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.yuni-metric-card {
+  display: grid;
+  gap: var(--yuni-space-2);
+}
+
+.yuni-metric-card__value {
+  margin: 0;
+  font-size: var(--yuni-font-2xl);
+  font-weight: 900;
+}
+
+.yuni-metric-card__label,
+.yuni-metric-card__delta {
+  margin: 0;
+  color: var(--yuni-color-text-muted);
+}
+
+.yuni-data-list {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.yuni-data-list table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 560px;
+}
+
+.yuni-data-list th,
+.yuni-data-list td {
+  border-bottom: 1px solid var(--yuni-color-border);
+  padding: 12px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.yuni-data-list th {
+  color: var(--yuni-color-text-muted);
+  font-size: var(--yuni-font-xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+@media (max-width: 760px) {
+  .yuni-page-header,
+  .yuni-sidebar-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .yuni-page-header {
+    display: grid;
+  }
+
+  .yuni-card--padding-lg {
+    padding: var(--yuni-space-5);
+  }
+}

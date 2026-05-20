@@ -16,6 +16,7 @@ Debe incluir:
 - estados visuales
 - accesibilidad básica
 - documentación de uso
+- pantalla interna de visualización/showcase de componentes
 - estrategia para evitar duplicación de CSS/componentes
 
 Tokens mínimos:
@@ -88,6 +89,33 @@ Debe definir:
 - si se usa CSS modules, CSS variables, clases globales o una combinación
 - cómo convivir con `apps/web/app/globals.css`
 - ejemplos de uso para formularios y layouts
+- una ruta interna en `apps/web` para visualizar todos los componentes del design system cuando se levanta el front
+
+Showcase visual:
+
+- Crear una pantalla interna para revisar componentes, tokens y estados visuales.
+- Ruta sugerida: `/ui` o `/design-system`.
+- Debe estar disponible en desarrollo para iterar visualmente el design system.
+- Debe mostrar:
+  - paleta de colores
+  - superficies
+  - typography scale
+  - spacing/radius/shadows
+  - botones por variant/size/state
+  - inputs y formularios con estados normal/error/disabled
+  - tabs
+  - cards
+  - modal/dialog
+  - dropdown/menu
+  - badges
+  - tooltips
+  - empty/loading/error states
+  - file drop
+  - metric cards
+  - data list/table
+- No debe tener lógica de producto real.
+- No debe depender de datos externos.
+- Debe servir como referencia visual para iterar estilos antes de construir módulos grandes.
 
 No incluir:
 
@@ -105,6 +133,7 @@ Checklist:
 - `packages/ui` exporta componentes base
 - `apps/web` usa el design system en páginas existentes de auth/dashboard si corresponde
 - no queda CSS duplicado innecesario
+- existe una pantalla interna para visualizar e iterar todos los componentes del design system
 - componentes son accesibles por teclado cuando aplica
 - componentes tienen estados disabled/loading/error cuando aplica
 - `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build` pasan

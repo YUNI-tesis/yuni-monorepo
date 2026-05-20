@@ -1,0 +1,135 @@
+"use client";
+
+import { useId, useState, type ChangeEvent, type DragEvent, type InputHTMLAttributes } from "react";
+import { cn } from "../utils";
+
+export type FileDropProps = Omit<InputHTMLAttributes<HTMLInputElement>, "type" | "onChange"> & {
+  title?: string;
+  description?: string;
+  onFilesSelected?: (files: File[]) => void;
+};
+
+export function FileDrop({
+  title = "Arrastra archivos aca",
+  description = "Tambien podes seleccionarlos desde tu dispositivo.",
+  onFilesSelected,
+  id,
+  className,
+  ...props
+}: FileDropProps) {
+  const generatedId = useId();
+  const inputId = id ?? generatedId;
+  const [isDragging, setIsDragging] = useState(false);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+
+  function applyFiles(files: File[]) {
+    setSelectedFiles((currentFiles) => {
+      const nextFiles = [...currentFiles, ...files];
+      onFilesSelected?.(nextFiles);
+      return nextFiles;
+    });
+  }
+
+  function onChange(event: ChangeEvent<HTMLInputElement>) {
+    applyFiles(Array.from(event.currentTarget.files ?? []));
+    event.currentTarget.value = "";
+  }
+
+  function onDragOver(event: DragEvent<HTMLDivElement>) {
+    event.preventDefault();
+    setIsDragging(true);
+  }
+
+  function onDragLeave() {
+    setIsDragging(false);
+  }
+
+  function onDrop(event: DragEvent<HTMLDivElement>) {
+    event.preventDefault();
+    setIsDragging(false);
+    applyFiles(Array.from(event.dataTransfer.files));
+  }
+
+  function removeFile(indexToRemove: number) {
+    setSelectedFiles((currentFiles) => {
+      const nextFiles = currentFiles.filter((_, index) => index !== indexToRemove);
+      onFilesSelected?.(nextFiles);
+      return nextFiles;
+    });
+  }
+
+  return (
+    <div
+      className={cn("yuni-file-drop", isDragging && "yuni-file-drop--dragging", className)}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+    >
+      <label className="yuni-file-drop__target" htmlFor={inputId}>
+        <span className="yuni-file-drop__icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none">
+            <path
+              d="M12 15V4m0 0 4 4m-4-4L8 8"
+              stroke="currentColor"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth="1.8"
+            />
+            <path
+              d="M5 15v3a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3"
+              stroke="currentColor"
+              strokeLinecap="round"
+              strokeWidth="1.8"
+            />
+          </svg>
+        </span>
+        <span className="yuni-file-drop__title">{title}</span>
+        <span className="yuni-file-drop__description">{description}</span>
+        <span className="yuni-file-drop__action">Seleccionar archivos</span>
+      </label>
+      {selectedFiles.length > 0 ? (
+        <ul className="yuni-file-drop__files" aria-label="Archivos seleccionados">
+          {selectedFiles.map((file, index) => (
+            <li className="yuni-file-drop__file" key={`${file.name}-${file.size}-${file.lastModified}-${index}`}>
+              <span className="yuni-file-drop__file-icon" aria-hidden="true">
+                DOC
+              </span>
+              <span className="yuni-file-drop__file-info">
+                <strong>{file.name}</strong>
+                <span>{formatFileSize(file.size)}</span>
+              </span>
+              <button
+                className="yuni-file-drop__remove"
+                type="button"
+                aria-label={`Eliminar ${file.name}`}
+                onClick={() => removeFile(index)}
+              >
+                x
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      <input
+        id={inputId}
+        className="yuni-file-drop__input"
+        type="file"
+        multiple
+        onChange={onChange}
+        {...props}
+      />
+    </div>
+  );
+}
+
+function formatFileSize(size: number): string {
+  if (size < 1024) {
+    return `${size} B`;
+  }
+
+  if (size < 1024 * 1024) {
+    return `${(size / 1024).toFixed(1)} KB`;
+  }
+
+  return `${(size / 1024 / 1024).toFixed(1)} MB`;
+}

@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Button } from "@yuni/ui";
+import { Button, Card, ErrorState, LoadingState, PageHeader, PageShell } from "@yuni/ui";
 import { ApiClientError, ApiUser, getMe, logout } from "../../lib/api-client";
 
 export default function DashboardPage() {
@@ -42,25 +42,25 @@ export default function DashboardPage() {
   }
 
   return (
-    <main className="shell">
-      <section className="panel dashboard-panel">
-        <div>
-          <p className="eyebrow">Dashboard</p>
-          <h1>YUNI</h1>
-          <p>Base privada lista para administrar avatares.</p>
-        </div>
-        {error ? <p className="form-error">{error}</p> : null}
+    <PageShell maxWidth="900px">
+      <PageHeader
+        eyebrow="Dashboard"
+        title="YUNI"
+        description="Base privada lista para administrar avatares."
+        actions={<Button onClick={onLogout}>Cerrar sesion</Button>}
+      />
+      <div className="yuni-stack">
+        {error ? <ErrorState description={error} /> : null}
         {user ? (
-          <div className="session-card">
-            <p className="eyebrow">Sesion actual</p>
+          <Card className="yuni-stack" padding="md">
+            <p className="yuni-eyebrow">Sesion actual</p>
             <strong>{user.name ?? user.email}</strong>
-            <span>{user.email}</span>
-          </div>
+            <span className="yuni-text-muted">{user.email}</span>
+          </Card>
         ) : (
-          <p>Cargando sesion...</p>
+          <LoadingState title="Cargando sesion" description="Estamos verificando tus datos." />
         )}
-        <Button onClick={onLogout}>Cerrar sesion</Button>
-      </section>
-    </main>
+      </div>
+    </PageShell>
   );
 }
