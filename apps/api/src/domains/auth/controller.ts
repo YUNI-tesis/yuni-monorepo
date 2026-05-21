@@ -1,37 +1,10 @@
 import { Hono } from "hono";
 import { LoginInputSchema, RegisterInputSchema } from "@yuni/domain";
+import { conflictError, unauthorizedError, validationError } from "../../utils/errors";
 import { createSessionToken, clearSessionCookie, getSessionToken, setSessionCookie } from "./session";
 import { createAuthService, type AuthServiceDependencies } from "./service";
 
 export type AuthControllerDependencies = AuthServiceDependencies;
-
-function authError(message = "Unauthorized") {
-  return {
-    error: {
-      code: "UNAUTHORIZED",
-      message,
-    },
-  };
-}
-
-function validationError(issues: unknown) {
-  return {
-    error: {
-      code: "BAD_REQUEST",
-      message: "Invalid request body",
-      issues,
-    },
-  };
-}
-
-function conflictError(message: string) {
-  return {
-    error: {
-      code: "CONFLICT",
-      message,
-    },
-  };
-}
 
 export function createAuthController(dependencies: AuthControllerDependencies) {
   const auth = new Hono();
@@ -69,7 +42,7 @@ export function createAuthController(dependencies: AuthControllerDependencies) {
     const result = await service.login(parsed.data);
 
     if (!result.ok) {
-      return context.json(authError("Invalid email or password"), 401);
+      return context.json(unauthorizedError("Invalid email or password"), 401);
     }
 
     const token = await createSessionToken(result.user);
@@ -89,7 +62,7 @@ export function createAuthController(dependencies: AuthControllerDependencies) {
     const user = await service.getCurrentUserByToken(getSessionToken(context));
 
     if (!user) {
-      return context.json(authError(), 401);
+      return context.json(unauthorizedError(), 401);
     }
 
     return context.json({ user });

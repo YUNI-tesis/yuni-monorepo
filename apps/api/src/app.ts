@@ -6,16 +6,23 @@ import { createLogger } from "@yuni/observability";
 import { createAuthController, type AuthControllerDependencies } from "./domains/auth/controller.js";
 import { passwordService } from "./domains/auth/password.js";
 import { createAuthRepository } from "./domains/auth/repository.js";
+import { createAvatarsController, type AvatarsControllerDependencies } from "./domains/avatars/controller.js";
+import { createAvatarsRepository } from "./domains/avatars/repository.js";
 import { requestLogger } from "./middleware/request-logger.js";
+import { internalServerError } from "./utils/errors.js";
 
 export type AppDependencies = {
   auth: AuthControllerDependencies;
+  avatars: AvatarsControllerDependencies;
 };
 
 const defaultDependencies: AppDependencies = {
   auth: {
     repository: createAuthRepository(prisma),
     passwords: passwordService,
+  },
+  avatars: {
+    repository: createAvatarsRepository(prisma),
   },
 };
 
@@ -35,15 +42,7 @@ export function createApp(dependencies: AppDependencies = defaultDependencies) {
       path: context.req.path,
     });
 
-    return context.json(
-      {
-        error: {
-          code: "INTERNAL_SERVER_ERROR",
-          message: "Internal server error",
-        },
-      },
-      500
-    );
+    return context.json(internalServerError(), 500);
   });
 
   app.use("*", requestLogger());
@@ -69,6 +68,7 @@ export function createApp(dependencies: AppDependencies = defaultDependencies) {
   );
 
   app.route("/", createAuthController(dependencies.auth));
+  app.route("/", createAvatarsController(dependencies.avatars));
 
   return app;
 }

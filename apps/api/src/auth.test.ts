@@ -67,6 +67,25 @@ function createTestDependencies(initialUsers: UserWithPassword[] = []): AppDepen
         },
       },
     },
+    avatars: {
+      repository: {
+        async create() {
+          throw new Error("Avatar repository is not used in auth tests");
+        },
+        async listByOwner() {
+          return [];
+        },
+        async findByIdForOwner() {
+          return null;
+        },
+        async updateForOwner() {
+          throw new Error("Avatar repository is not used in auth tests");
+        },
+        async deleteForOwner() {
+          throw new Error("Avatar repository is not used in auth tests");
+        },
+      },
+    },
   };
 }
 
