@@ -42,8 +42,10 @@ export type CreateAvatarRequest = {
     mode: "lite";
     sandbox: true;
   };
-  status: "draft" | "active";
+  status: ApiAvatarStatus;
 };
+
+export type UpdateAvatarRequest = Partial<CreateAvatarRequest>;
 
 export class ApiClientError extends Error {
   constructor(
@@ -117,4 +119,11 @@ export function createAvatar(input: CreateAvatarRequest) {
 
 export function getAvatar(avatarId: string) {
   return apiRequest<{ avatar: ApiAvatar }>(`/avatars/${avatarId}`);
+}
+
+export function updateAvatar(avatarId: string, input: UpdateAvatarRequest) {
+  return apiRequest<{ avatar: ApiAvatar }>(`/avatars/${avatarId}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
 }

@@ -10,11 +10,11 @@ Prompts base para pedir planes modulares de YUNI y seguir implementando por part
 - `03-dev-infra-env-runtime.md`: implementado dentro de config/env y DB local.
 - `04-auth.md`: implementado.
 - `05-api-structure-observability.md`: implementado como refactor posterior.
-- `06-ui-design-system.md`: pendiente.
-- `07-avatar-domain-api.md`: pendiente.
-- `08-avatar-builder-ui.md`: pendiente.
-- `09-avatar-profile-info-ui.md`: pendiente.
-- `10-avatar-edit-ui.md`: pendiente.
+- `06-ui-design-system.md`: implementado.
+- `07-avatar-domain-api.md`: implementado.
+- `08-avatar-builder-ui.md`: implementado.
+- `09-avatar-profile-info-ui.md`: implementado.
+- `10-avatar-edit-ui.md`: implementado.
 - `11-live-avatar-adapter.md`: pendiente.
 - `12-live-avatar-selector-stage.md`: pendiente.
 - `13-voice-selector-config.md`: pendiente.

@@ -268,6 +268,27 @@ describe("@yuni/api avatars", () => {
     expect(deletedGetResponse.status).toBe(404);
   });
 
+  it("preserves avatar status when patch payload does not include status", async () => {
+    const app = createApp(createTestDependencies([createUser()]));
+    const cookie = await login(app);
+    const createResponse = await app.request("/avatars", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify(avatarInput({ status: "active" })),
+    });
+    const createBody = (await json(createResponse)) as { avatar: { id: string } };
+
+    const updateResponse = await app.request(`/avatars/${createBody.avatar.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify({ name: "Avatar actualizado" }),
+    });
+    const updateBody = (await json(updateResponse)) as { avatar: { status: string } };
+
+    expect(updateResponse.status).toBe(200);
+    expect(updateBody.avatar.status).toBe("active");
+  });
+
   it("returns 404 when accessing another creator avatar", async () => {
     const app = createApp(
       createTestDependencies([

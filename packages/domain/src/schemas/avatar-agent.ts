@@ -18,19 +18,30 @@ export const LiveAvatarConfigSchema = z.strictObject({
 
 export type LiveAvatarConfig = z.infer<typeof LiveAvatarConfigSchema>;
 
-export const CreateAvatarAgentInputSchema = z.strictObject({
+const AvatarAgentEditableFieldsSchema = z.strictObject({
   name: z.string().trim().min(1),
   description: z.string().trim().default(""),
   instructions: z.string().trim().min(1),
   context: z.string().trim().default(""),
   voiceConfig: VoiceConfigSchema,
   liveAvatarConfig: LiveAvatarConfigSchema,
+});
+
+export const CreateAvatarAgentInputSchema = AvatarAgentEditableFieldsSchema.extend({
   status: AvatarStatusSchema.default("draft"),
 });
 
 export type CreateAvatarAgentInput = z.infer<typeof CreateAvatarAgentInputSchema>;
 
-export const UpdateAvatarAgentInputSchema = CreateAvatarAgentInputSchema.partial().refine(
+export const UpdateAvatarAgentInputSchema = z.strictObject({
+  name: z.string().trim().min(1).optional(),
+  description: z.string().trim().optional(),
+  instructions: z.string().trim().min(1).optional(),
+  context: z.string().trim().optional(),
+  voiceConfig: VoiceConfigSchema.optional(),
+  liveAvatarConfig: LiveAvatarConfigSchema.optional(),
+  status: AvatarStatusSchema.optional(),
+}).refine(
   (value) => Object.keys(value).length > 0,
   "At least one avatar field must be provided"
 );

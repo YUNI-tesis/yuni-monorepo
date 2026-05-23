@@ -7,6 +7,7 @@ import {
   LoginInputSchema,
   MessageRoleSchema,
   RegisterInputSchema,
+  UpdateAvatarAgentInputSchema,
   VoiceConfigSchema,
 } from "./index";
 
@@ -38,6 +39,13 @@ describe("@yuni/domain", () => {
 
   it("rejects an avatar without a name", () => {
     expect(() => CreateAvatarAgentInputSchema.parse({ ...validAvatarInput, name: "" })).toThrow();
+  });
+
+  it("does not default avatar status on update input", () => {
+    const parsed = UpdateAvatarAgentInputSchema.parse({ name: "YUNI actualizado" });
+
+    expect(parsed).toEqual({ name: "YUNI actualizado" });
+    expect("status" in parsed).toBe(false);
   });
 
   it("validates Live Avatar lite sandbox config", () => {

@@ -16,7 +16,7 @@ export function formatAvatarStatus(status: ApiAvatarStatus): string {
   const labels: Record<ApiAvatarStatus, string> = {
     active: "Activo",
     draft: "Borrador",
-    disabled: "Desactivado",
+    disabled: "Inactivo",
   };
 
   return labels[status];
