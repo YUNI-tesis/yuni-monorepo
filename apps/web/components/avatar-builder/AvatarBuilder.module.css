@@ -178,7 +178,3 @@
   border-top: 1px solid var(--yuni-color-border);
   padding-top: var(--yuni-space-5);
 }
-
-.handoffId {
-  overflow-wrap: anywhere;
-}

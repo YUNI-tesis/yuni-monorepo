@@ -1,0 +1,81 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { getAvatar, type ApiAvatar } from "./lib/api-client";
+import {
+  formatAvatarStatus,
+  formatDateTime,
+  getLiveAvatarSummary,
+  getVoiceSummary,
+} from "./components/avatar-profile/formatters";
+
+const avatar: ApiAvatar = {
+  id: "avatar-1",
+  name: "YUNI Demo",
+  description: "Avatar de prueba",
+  instructions: "Responde claro.",
+  context: "Contexto base",
+  voiceConfig: {
+    provider: "openai",
+    voiceId: "alloy",
+    speakingRate: 1,
+  },
+  liveAvatarConfig: {
+    provider: "liveavatar",
+    avatarId: "demo-guide",
+    mode: "lite",
+    sandbox: true,
+  },
+  status: "active",
+  createdAt: "2026-05-21T13:30:00.000Z",
+  updatedAt: "2026-05-21T14:45:00.000Z",
+};
+
+describe("avatar profile", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("fetches avatar details with credentials included", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ avatar }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(getAvatar("avatar-1")).resolves.toEqual({ avatar });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:4000/avatars/avatar-1",
+      expect.objectContaining({
+        credentials: "include",
+      })
+    );
+  });
+
+  it("formats profile metadata", () => {
+    expect(formatAvatarStatus("active")).toBe("Activo");
+    expect(getLiveAvatarSummary(avatar)).toEqual({
+      selectedAvatar: "demo-guide",
+      mode: "lite",
+      sandbox: "Activo",
+    });
+    expect(getVoiceSummary(avatar)).toEqual({
+      selectedVoice: "alloy",
+      providerLabel: "OpenAI",
+      speakingRate: "1",
+    });
+    expect(formatDateTime(avatar.createdAt)).not.toBe("Fecha no disponible");
+  });
+
+  it("falls back when provider JSON is incomplete", () => {
+    const incompleteAvatar = {
+      ...avatar,
+      voiceConfig: {},
+      liveAvatarConfig: {},
+    };
+
+    expect(getLiveAvatarSummary(incompleteAvatar).selectedAvatar).toBe("Sin avatar seleccionado");
+    expect(getVoiceSummary(incompleteAvatar).selectedVoice).toBe("No definido");
+  });
+});

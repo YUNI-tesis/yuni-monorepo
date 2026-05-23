@@ -114,3 +114,7 @@ export function createAvatar(input: CreateAvatarRequest) {
     body: JSON.stringify(input),
   });
 }
+
+export function getAvatar(avatarId: string) {
+  return apiRequest<{ avatar: ApiAvatar }>(`/avatars/${avatarId}`);
+}
