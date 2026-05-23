@@ -6,12 +6,14 @@ import { cn } from "../utils";
 export type FileDropProps = Omit<InputHTMLAttributes<HTMLInputElement>, "type" | "onChange"> & {
   title?: string;
   description?: string;
+  files?: File[];
   onFilesSelected?: (files: File[]) => void;
 };
 
 export function FileDrop({
   title = "Arrastra archivos aca",
   description = "Tambien podes seleccionarlos desde tu dispositivo.",
+  files,
   onFilesSelected,
   id,
   className,
@@ -20,14 +22,13 @@ export function FileDrop({
   const generatedId = useId();
   const inputId = id ?? generatedId;
   const [isDragging, setIsDragging] = useState(false);
-  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [internalFiles, setInternalFiles] = useState<File[]>([]);
+  const selectedFiles = files ?? internalFiles;
 
   function applyFiles(files: File[]) {
-    setSelectedFiles((currentFiles) => {
-      const nextFiles = [...currentFiles, ...files];
-      onFilesSelected?.(nextFiles);
-      return nextFiles;
-    });
+    const nextFiles = [...selectedFiles, ...files];
+    setInternalFiles(nextFiles);
+    onFilesSelected?.(nextFiles);
   }
 
   function onChange(event: ChangeEvent<HTMLInputElement>) {
@@ -51,11 +52,9 @@ export function FileDrop({
   }
 
   function removeFile(indexToRemove: number) {
-    setSelectedFiles((currentFiles) => {
-      const nextFiles = currentFiles.filter((_, index) => index !== indexToRemove);
-      onFilesSelected?.(nextFiles);
-      return nextFiles;
-    });
+    const nextFiles = selectedFiles.filter((_, index) => index !== indexToRemove);
+    setInternalFiles(nextFiles);
+    onFilesSelected?.(nextFiles);
   }
 
   return (

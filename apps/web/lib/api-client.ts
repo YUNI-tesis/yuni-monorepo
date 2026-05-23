@@ -11,6 +11,40 @@ export type ApiUser = {
   updatedAt: string;
 };
 
+export type ApiAvatarStatus = "draft" | "active" | "disabled";
+
+export type ApiAvatar = {
+  id: string;
+  name: string;
+  description: string;
+  instructions: string;
+  context: string;
+  voiceConfig: unknown;
+  liveAvatarConfig: unknown;
+  status: ApiAvatarStatus;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type CreateAvatarRequest = {
+  name: string;
+  description: string;
+  instructions: string;
+  context: string;
+  voiceConfig: {
+    provider: "openai";
+    voiceId: string;
+    speakingRate: number;
+  };
+  liveAvatarConfig: {
+    provider: "liveavatar";
+    avatarId: string;
+    mode: "lite";
+    sandbox: true;
+  };
+  status: "draft" | "active";
+};
+
 export class ApiClientError extends Error {
   constructor(
     message: string,
@@ -72,4 +106,11 @@ export function logout() {
 
 export function getMe() {
   return apiRequest<{ user: ApiUser }>("/me");
+}
+
+export function createAvatar(input: CreateAvatarRequest) {
+  return apiRequest<{ avatar: ApiAvatar }>("/avatars", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
 }
