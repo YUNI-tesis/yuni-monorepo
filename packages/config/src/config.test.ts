@@ -18,6 +18,7 @@ const productionEnv = {
   LIVEAVATAR_BASE_URL: "https://api.liveavatar.example",
   LIVEAVATAR_SANDBOX: "true",
   LIVEAVATAR_MODE: "lite",
+  LIVEAVATAR_REQUEST_TIMEOUT_MS: "10000",
   S3_BUCKET: "yuni",
   S3_ACCESS_KEY_ID: "access-key",
   S3_SECRET_ACCESS_KEY: "secret-key",
@@ -65,12 +66,17 @@ describe("@yuni/config", () => {
     expect(() => requireOpenAiConfig(config)).toThrow(ConfigError);
   });
 
-  it("fails if Live Avatar mode is not lite", () => {
-    expect(() => parseRawEnv({ LIVEAVATAR_MODE: "full" })).toThrow(ConfigError);
-  });
+  it("accepts configured Live Avatar mode, sandbox and timeout", () => {
+    const env = parseRawEnv({
+      LIVEAVATAR_MODE: "provider-specific-mode",
+      LIVEAVATAR_SANDBOX: "false",
+      LIVEAVATAR_REQUEST_TIMEOUT_MS: "15000",
+    });
+    const config = createLiveAvatarConfig(env);
 
-  it("fails if Live Avatar sandbox is disabled", () => {
-    expect(() => parseRawEnv({ LIVEAVATAR_SANDBOX: "false" })).toThrow(ConfigError);
+    expect(config.mode).toBe("provider-specific-mode");
+    expect(config.sandbox).toBe(false);
+    expect(config.requestTimeoutMs).toBe(15000);
   });
 
   it("does not expose secrets in client env", () => {

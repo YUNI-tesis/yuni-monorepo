@@ -1,8 +1,10 @@
 export type ApiErrorCode =
   | "BAD_REQUEST"
+  | "BAD_GATEWAY"
   | "CONFLICT"
   | "INTERNAL_SERVER_ERROR"
   | "NOT_FOUND"
+  | "SERVICE_UNAVAILABLE"
   | "UNAUTHORIZED";
 
 export type ApiErrorBody = {
@@ -41,4 +43,12 @@ export function notFoundError(message = "Resource not found") {
 
 export function internalServerError(message = "Internal server error") {
   return apiError("INTERNAL_SERVER_ERROR", message);
+}
+
+export function badGatewayError(message = "Bad gateway") {
+  return apiError("BAD_GATEWAY", message);
+}
+
+export function serviceUnavailableError(message = "Service unavailable") {
+  return apiError("SERVICE_UNAVAILABLE", message);
 }

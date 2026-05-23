@@ -41,6 +41,9 @@ importers:
       '@hono/zod-validator':
         specifier: ^0.8.0
         version: 0.8.0(hono@4.12.18)(zod@4.4.3)
+      '@yuni/avatars':
+        specifier: workspace:*
+        version: link:../../packages/avatars
       '@yuni/config':
         specifier: workspace:*
         version: link:../../packages/config

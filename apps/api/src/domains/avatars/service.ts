@@ -1,16 +1,18 @@
 import type { CreateAvatarAgentInput, UpdateAvatarAgentInput } from "@yuni/domain";
 import { NotFoundError, OwnershipError } from "@yuni/domain";
+import type { LiveAvatarConfig } from "@yuni/config";
 import type { AvatarAgentDto, AvatarsRepository } from "./repository";
 import { toAvatarAgentDto } from "./repository";
 
 export type AvatarsServiceDependencies = {
   repository: AvatarsRepository;
+  liveAvatarConfig: Pick<LiveAvatarConfig, "mode" | "sandbox">;
 };
 
-export function createAvatarsService({ repository }: AvatarsServiceDependencies) {
+export function createAvatarsService({ repository, liveAvatarConfig }: AvatarsServiceDependencies) {
   return {
     async createAvatar(ownerId: string, input: CreateAvatarAgentInput): Promise<AvatarAgentDto> {
-      return toAvatarAgentDto(await repository.create(ownerId, input));
+      return toAvatarAgentDto(await repository.create(ownerId, withEffectiveLiveAvatarConfig(input, liveAvatarConfig)));
     },
 
     async listAvatars(ownerId: string): Promise<AvatarAgentDto[]> {
@@ -35,7 +37,9 @@ export function createAvatarsService({ repository }: AvatarsServiceDependencies)
       input: UpdateAvatarAgentInput
     ): Promise<AvatarAgentDto> {
       try {
-        return toAvatarAgentDto(await repository.updateForOwner(ownerId, avatarId, input));
+        return toAvatarAgentDto(
+          await repository.updateForOwner(ownerId, avatarId, withEffectiveLiveAvatarConfig(input, liveAvatarConfig))
+        );
       } catch (error) {
         if (error instanceof OwnershipError) {
           throw new NotFoundError("Avatar not found");
@@ -60,3 +64,21 @@ export function createAvatarsService({ repository }: AvatarsServiceDependencies)
 }
 
 export type AvatarsService = ReturnType<typeof createAvatarsService>;
+
+function withEffectiveLiveAvatarConfig<Input extends CreateAvatarAgentInput | UpdateAvatarAgentInput>(
+  input: Input,
+  config: Pick<LiveAvatarConfig, "mode" | "sandbox">
+): Input {
+  if (!input.liveAvatarConfig) {
+    return input;
+  }
+
+  return {
+    ...input,
+    liveAvatarConfig: {
+      ...input.liveAvatarConfig,
+      mode: config.mode,
+      sandbox: config.sandbox,
+    },
+  };
+}

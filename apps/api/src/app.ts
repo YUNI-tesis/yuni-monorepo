@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import { clientEnv, appConfig } from "@yuni/config";
+import { clientEnv, appConfig, liveAvatarConfig } from "@yuni/config";
+import { LiveAvatarProvider } from "@yuni/avatars";
 import { prisma } from "@yuni/db";
 import { createLogger } from "@yuni/observability";
 import { createAuthController, type AuthControllerDependencies } from "./domains/auth/controller.js";
@@ -8,12 +9,17 @@ import { passwordService } from "./domains/auth/password.js";
 import { createAuthRepository } from "./domains/auth/repository.js";
 import { createAvatarsController, type AvatarsControllerDependencies } from "./domains/avatars/controller.js";
 import { createAvatarsRepository } from "./domains/avatars/repository.js";
+import {
+  createLiveAvatarController,
+  type LiveAvatarControllerDependencies,
+} from "./domains/live-avatar/controller.js";
 import { requestLogger } from "./middleware/request-logger.js";
 import { internalServerError } from "./utils/errors.js";
 
 export type AppDependencies = {
   auth: AuthControllerDependencies;
   avatars: AvatarsControllerDependencies;
+  liveAvatar: LiveAvatarControllerDependencies;
 };
 
 const defaultDependencies: AppDependencies = {
@@ -23,6 +29,10 @@ const defaultDependencies: AppDependencies = {
   },
   avatars: {
     repository: createAvatarsRepository(prisma),
+    liveAvatarConfig,
+  },
+  liveAvatar: {
+    provider: new LiveAvatarProvider(),
   },
 };
 
@@ -69,6 +79,7 @@ export function createApp(dependencies: AppDependencies = defaultDependencies) {
 
   app.route("/", createAuthController(dependencies.auth));
   app.route("/", createAvatarsController(dependencies.avatars));
+  app.route("/", createLiveAvatarController(dependencies.liveAvatar));
 
   return app;
 }

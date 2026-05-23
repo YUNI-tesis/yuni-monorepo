@@ -33,9 +33,10 @@ const RawEnvSchema = z.object({
   OPENAI_EMBEDDINGS_MODEL: z.string().min(1).default("text-embedding-3-small"),
 
   LIVEAVATAR_API_KEY: z.string().optional(),
-  LIVEAVATAR_BASE_URL: z.url().default("https://api.liveavatar.example"),
+  LIVEAVATAR_BASE_URL: z.url().default("https://api.liveavatar.com"),
   LIVEAVATAR_SANDBOX: BooleanStringSchema.default(true),
-  LIVEAVATAR_MODE: z.enum(["lite"]).default("lite"),
+  LIVEAVATAR_MODE: z.string().trim().min(1).default("lite"),
+  LIVEAVATAR_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().default(10000),
 
   S3_REGION: z.string().min(1).default("us-east-1"),
   S3_BUCKET: z.string().optional(),
@@ -84,10 +85,6 @@ export function parseRawEnv(input: NodeJS.ProcessEnv | Record<string, string | u
   requireWhenProduction(rawEnv, "S3_BUCKET", issues);
   requireWhenProduction(rawEnv, "S3_ACCESS_KEY_ID", issues);
   requireWhenProduction(rawEnv, "S3_SECRET_ACCESS_KEY", issues);
-
-  if (rawEnv.LIVEAVATAR_SANDBOX !== true) {
-    issues.push("LIVEAVATAR_SANDBOX must be true");
-  }
 
   if (issues.length > 0) {
     throw new ConfigError("Invalid environment configuration", issues);

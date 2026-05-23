@@ -12,8 +12,8 @@ export type VoiceConfig = z.infer<typeof VoiceConfigSchema>;
 export const LiveAvatarConfigSchema = z.strictObject({
   provider: z.literal("liveavatar"),
   avatarId: z.string().min(1),
-  mode: z.literal("lite"),
-  sandbox: z.literal(true),
+  mode: z.string().trim().min(1),
+  sandbox: z.boolean(),
 });
 
 export type LiveAvatarConfig = z.infer<typeof LiveAvatarConfigSchema>;

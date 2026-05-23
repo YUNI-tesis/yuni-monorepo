@@ -15,7 +15,7 @@ Prompts base para pedir planes modulares de YUNI y seguir implementando por part
 - `08-avatar-builder-ui.md`: implementado.
 - `09-avatar-profile-info-ui.md`: implementado.
 - `10-avatar-edit-ui.md`: implementado.
-- `11-live-avatar-adapter.md`: pendiente.
+- `11-live-avatar-adapter.md`: implementado.
 - `12-live-avatar-selector-stage.md`: pendiente.
 - `13-voice-selector-config.md`: pendiente.
 - `14-documents-filedrop-shell.md`: pendiente.

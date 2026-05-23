@@ -17,6 +17,7 @@
     "@yuni/db": "workspace:*",
     "@yuni/domain": "workspace:*",
     "@yuni/observability": "workspace:*",
+    "@yuni/avatars": "workspace:*",
     "bcryptjs": "^3.0.3",
     "hono": "^4.10.7",
     "jose": "^6.2.3"

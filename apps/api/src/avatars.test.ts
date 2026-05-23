@@ -66,7 +66,10 @@ function createAvatarRecord(
   };
 }
 
-function createTestDependencies(initialUsers: UserWithPassword[] = []): AppDependencies {
+function createTestDependencies(
+  initialUsers: UserWithPassword[] = [],
+  runtimeLiveAvatarConfig = { mode: "lite", sandbox: true }
+): AppDependencies {
   const users = new Map(initialUsers.map((user) => [user.email, user]));
   const avatars = new Map<string, AvatarAgentRecord>();
 
@@ -107,6 +110,10 @@ function createTestDependencies(initialUsers: UserWithPassword[] = []): AppDepen
       },
     },
     avatars: {
+      liveAvatarConfig: {
+        mode: runtimeLiveAvatarConfig.mode,
+        sandbox: runtimeLiveAvatarConfig.sandbox,
+      },
       repository: {
         async create(ownerId, input) {
           const avatar = createAvatarRecord(ownerId, input, { id: `avatar-${avatars.size + 1}` });
@@ -153,6 +160,14 @@ function createTestDependencies(initialUsers: UserWithPassword[] = []): AppDepen
           avatars.delete(avatarId);
 
           return avatar;
+        },
+      },
+    },
+    liveAvatar: {
+      provider: {
+        name: "liveavatar",
+        async listAvatars() {
+          return [];
         },
       },
     },
@@ -289,6 +304,22 @@ describe("@yuni/api avatars", () => {
     expect(updateBody.avatar.status).toBe("active");
   });
 
+  it("stores Live Avatar runtime mode and sandbox from server dependencies", async () => {
+    const app = createApp(createTestDependencies([createUser()], { mode: "provider-mode", sandbox: false }));
+    const cookie = await login(app);
+    const response = await app.request("/avatars", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify(avatarInput()),
+    });
+    const body = (await json(response)) as {
+      avatar: { liveAvatarConfig: { mode: string; sandbox: boolean } };
+    };
+
+    expect(response.status).toBe(201);
+    expect(body.avatar.liveAvatarConfig).toMatchObject({ mode: "provider-mode", sandbox: false });
+  });
+
   it("returns 404 when accessing another creator avatar", async () => {
     const app = createApp(
       createTestDependencies([
@@ -335,7 +366,7 @@ describe("@yuni/api avatars", () => {
       headers: { "Content-Type": "application/json", Cookie: cookie },
       body: JSON.stringify({}),
     });
-    const invalidModeResponse = await app.request("/avatars", {
+    const overriddenRuntimeConfigResponse = await app.request("/avatars", {
       method: "POST",
       headers: { "Content-Type": "application/json", Cookie: cookie },
       body: JSON.stringify({
@@ -343,7 +374,10 @@ describe("@yuni/api avatars", () => {
         liveAvatarConfig: { provider: "liveavatar", avatarId: "demo", mode: "full", sandbox: true },
       }),
     });
-    const invalidSandboxResponse = await app.request("/avatars", {
+    const overriddenRuntimeConfigBody = (await json(overriddenRuntimeConfigResponse)) as {
+      avatar: { liveAvatarConfig: { mode: string; sandbox: boolean } };
+    };
+    const overriddenSandboxResponse = await app.request("/avatars", {
       method: "POST",
       headers: { "Content-Type": "application/json", Cookie: cookie },
       body: JSON.stringify({
@@ -351,10 +385,15 @@ describe("@yuni/api avatars", () => {
         liveAvatarConfig: { provider: "liveavatar", avatarId: "demo", mode: "lite", sandbox: false },
       }),
     });
+    const overriddenSandboxBody = (await json(overriddenSandboxResponse)) as {
+      avatar: { liveAvatarConfig: { mode: string; sandbox: boolean } };
+    };
 
     expect(invalidCreateResponse.status).toBe(400);
     expect(invalidPatchResponse.status).toBe(400);
-    expect(invalidModeResponse.status).toBe(400);
-    expect(invalidSandboxResponse.status).toBe(400);
+    expect(overriddenRuntimeConfigResponse.status).toBe(201);
+    expect(overriddenRuntimeConfigBody.avatar.liveAvatarConfig).toMatchObject({ mode: "lite", sandbox: true });
+    expect(overriddenSandboxResponse.status).toBe(201);
+    expect(overriddenSandboxBody.avatar.liveAvatarConfig).toMatchObject({ mode: "lite", sandbox: true });
   });
 });

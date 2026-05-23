@@ -48,11 +48,15 @@ describe("@yuni/domain", () => {
     expect("status" in parsed).toBe(false);
   });
 
-  it("validates Live Avatar lite sandbox config", () => {
-    const parsed = LiveAvatarConfigSchema.parse(validAvatarInput.liveAvatarConfig);
+  it("validates Live Avatar provider config", () => {
+    const parsed = LiveAvatarConfigSchema.parse({
+      ...validAvatarInput.liveAvatarConfig,
+      mode: "provider-specific-mode",
+      sandbox: false,
+    });
 
-    expect(parsed.mode).toBe("lite");
-    expect(parsed.sandbox).toBe(true);
+    expect(parsed.mode).toBe("provider-specific-mode");
+    expect(parsed.sandbox).toBe(false);
   });
 
   it("validates voice config", () => {

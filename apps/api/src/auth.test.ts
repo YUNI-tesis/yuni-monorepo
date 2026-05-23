@@ -68,6 +68,10 @@ function createTestDependencies(initialUsers: UserWithPassword[] = []): AppDepen
       },
     },
     avatars: {
+      liveAvatarConfig: {
+        mode: "lite",
+        sandbox: true,
+      },
       repository: {
         async create() {
           throw new Error("Avatar repository is not used in auth tests");
@@ -83,6 +87,14 @@ function createTestDependencies(initialUsers: UserWithPassword[] = []): AppDepen
         },
         async deleteForOwner() {
           throw new Error("Avatar repository is not used in auth tests");
+        },
+      },
+    },
+    liveAvatar: {
+      provider: {
+        name: "liveavatar",
+        async listAvatars() {
+          return [];
         },
       },
     },
