@@ -1,8 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import type { CreateAvatarRequest } from "../lib/api-client";
-import { liveAvatarOptions, voiceOptions } from "../components/avatar-builder/options";
+import { useEffect, useMemo, useState } from "react";
+import type { CreateAvatarRequest } from "../lib/api/avatar-api";
+import type { ApiLiveAvatarOption } from "../lib/api/live-avatar-api";
+import { createLiveAvatarConfig, createVoiceConfig } from "../lib/avatar-config";
+import { voiceOptions } from "../components/avatar-builder/options";
 
 export const avatarBuilderSteps = ["Identidad", "Avatar", "Voz", "Persona", "Contexto", "Review"] as const;
 
@@ -26,7 +28,7 @@ export function createInitialAvatarBuilderState(): AvatarBuilderState {
   return {
     name: "",
     description: "",
-    liveAvatarId: liveAvatarOptions[0]?.id ?? "",
+    liveAvatarId: "",
     voiceId: voiceOptions[0]?.id ?? "",
     instructions: "",
     context: "",
@@ -82,28 +84,25 @@ export function validateAvatarBuilderStep(
   return {};
 }
 
-export function buildCreateAvatarRequest(state: AvatarBuilderState): CreateAvatarRequest {
+export function buildCreateAvatarRequest(
+  state: AvatarBuilderState,
+  selectedLiveAvatar?: ApiLiveAvatarOption | null
+): CreateAvatarRequest {
   return {
     name: state.name.trim(),
     description: state.description.trim(),
     instructions: state.instructions.trim(),
     context: state.context.trim(),
-    voiceConfig: {
-      provider: "openai",
-      voiceId: state.voiceId,
-      speakingRate: 1,
-    },
-    liveAvatarConfig: {
-      provider: "liveavatar",
+    voiceConfig: createVoiceConfig(state.voiceId),
+    liveAvatarConfig: createLiveAvatarConfig({
       avatarId: state.liveAvatarId,
-      mode: "lite",
-      sandbox: true,
-    },
+      selectedAvatar: selectedLiveAvatar,
+    }),
     status: "active",
   };
 }
 
-export function useAvatarBuilder() {
+export function useAvatarBuilder(liveAvatarOptions: ApiLiveAvatarOption[] = []) {
   const [state, setState] = useState(createInitialAvatarBuilderState);
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [errors, setErrors] = useState<AvatarBuilderValidation>({});
@@ -112,12 +111,26 @@ export function useAvatarBuilder() {
   const isLastStep = currentStepIndex === avatarBuilderSteps.length - 1;
   const selectedLiveAvatar = useMemo(
     () => liveAvatarOptions.find((option) => option.id === state.liveAvatarId) ?? null,
-    [state.liveAvatarId]
+    [liveAvatarOptions, state.liveAvatarId]
   );
   const selectedVoice = useMemo(
     () => voiceOptions.find((option) => option.id === state.voiceId) ?? null,
     [state.voiceId]
   );
+
+  useEffect(() => {
+    if (state.liveAvatarId || liveAvatarOptions.length === 0) {
+      return;
+    }
+
+    setState((currentState) => {
+      if (currentState.liveAvatarId) {
+        return currentState;
+      }
+
+      return { ...currentState, liveAvatarId: liveAvatarOptions[0]?.id ?? "" };
+    });
+  }, [liveAvatarOptions, state.liveAvatarId]);
 
   function updateField<Field extends keyof AvatarBuilderState>(field: Field, value: AvatarBuilderState[Field]) {
     setState((currentState) => ({ ...currentState, [field]: value }));

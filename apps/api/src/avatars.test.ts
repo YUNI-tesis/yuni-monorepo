@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { OwnershipError, type CreateAvatarAgentInput, type UpdateAvatarAgentInput } from "@yuni/domain";
+import type { AvatarOption } from "@yuni/avatars";
 import type { PublicUser, UserWithPassword } from "./domains/auth/repository";
 import type { AvatarAgentRecord } from "./domains/avatars/repository";
 import { createApp, type AppDependencies } from "./app";
@@ -68,10 +69,17 @@ function createAvatarRecord(
 
 function createTestDependencies(
   initialUsers: UserWithPassword[] = [],
-  runtimeLiveAvatarConfig = { mode: "lite", sandbox: true }
+  runtimeLiveAvatarConfig = { mode: "lite", sandbox: true },
+  liveAvatarProviderAvatars: AvatarOption[] = []
 ): AppDependencies {
   const users = new Map(initialUsers.map((user) => [user.email, user]));
   const avatars = new Map<string, AvatarAgentRecord>();
+  const liveAvatarProvider = {
+    name: "liveavatar" as const,
+    async listAvatars() {
+      return liveAvatarProviderAvatars;
+    },
+  };
 
   return {
     auth: {
@@ -114,6 +122,7 @@ function createTestDependencies(
         mode: runtimeLiveAvatarConfig.mode,
         sandbox: runtimeLiveAvatarConfig.sandbox,
       },
+      avatarProvider: liveAvatarProvider,
       repository: {
         async create(ownerId, input) {
           const avatar = createAvatarRecord(ownerId, input, { id: `avatar-${avatars.size + 1}` });
@@ -164,12 +173,7 @@ function createTestDependencies(
       },
     },
     liveAvatar: {
-      provider: {
-        name: "liveavatar",
-        async listAvatars() {
-          return [];
-        },
-      },
+      provider: liveAvatarProvider,
     },
   };
 }
@@ -318,6 +322,136 @@ describe("@yuni/api avatars", () => {
 
     expect(response.status).toBe(201);
     expect(body.avatar.liveAvatarConfig).toMatchObject({ mode: "provider-mode", sandbox: false });
+  });
+
+  it("persists trusted Live Avatar visual metadata resolved from the provider", async () => {
+    const app = createApp(
+      createTestDependencies(
+        [createUser()],
+        { mode: "lite", sandbox: true },
+        [
+          {
+            id: "demo",
+            displayName: "Trusted Demo Avatar",
+            thumbnailUrl: "https://cdn.liveavatar.test/trusted-demo.png",
+            provider: "liveavatar",
+            mode: "lite",
+            sandbox: true,
+          },
+        ]
+      )
+    );
+    const cookie = await login(app);
+    const response = await app.request("/avatars", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify(
+        avatarInput({
+          liveAvatarConfig: {
+            provider: "liveavatar",
+            avatarId: "demo",
+            displayName: "Client Supplied Avatar",
+            thumbnailUrl: "https://untrusted.example/avatar.png",
+            mode: "lite",
+            sandbox: true,
+          },
+        })
+      ),
+    });
+    const body = (await json(response)) as {
+      avatar: { id: string; liveAvatarConfig: { displayName?: string; thumbnailUrl?: string | null } };
+    };
+    const getResponse = await app.request(`/avatars/${body.avatar.id}`, { headers: { Cookie: cookie } });
+    const getBody = (await json(getResponse)) as {
+      avatar: { liveAvatarConfig: { displayName?: string; thumbnailUrl?: string | null } };
+    };
+
+    expect(response.status).toBe(201);
+    expect(body.avatar.liveAvatarConfig).toMatchObject({
+      displayName: "Trusted Demo Avatar",
+      thumbnailUrl: "https://cdn.liveavatar.test/trusted-demo.png",
+    });
+    expect(getBody.avatar.liveAvatarConfig).toMatchObject({
+      displayName: "Trusted Demo Avatar",
+      thumbnailUrl: "https://cdn.liveavatar.test/trusted-demo.png",
+    });
+  });
+
+  it("strips unverified Live Avatar visual metadata when the provider cannot resolve the avatar", async () => {
+    const app = createApp(createTestDependencies([createUser()]));
+    const cookie = await login(app);
+    const response = await app.request("/avatars", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify(
+        avatarInput({
+          liveAvatarConfig: {
+            provider: "liveavatar",
+            avatarId: "demo",
+            displayName: "Client Supplied Avatar",
+            thumbnailUrl: "https://untrusted.example/avatar.png",
+            mode: "lite",
+            sandbox: true,
+          },
+        })
+      ),
+    });
+    const body = (await json(response)) as {
+      avatar: { liveAvatarConfig: { displayName?: string; thumbnailUrl?: string | null } };
+    };
+
+    expect(response.status).toBe(201);
+    expect(body.avatar.liveAvatarConfig.displayName).toBeUndefined();
+    expect(body.avatar.liveAvatarConfig.thumbnailUrl).toBeUndefined();
+  });
+
+  it("preserves the existing trusted Live Avatar snapshot when updating the same avatar and provider lookup fails", async () => {
+    const providerAvatars: AvatarOption[] = [
+      {
+        id: "demo",
+        displayName: "Trusted Demo Avatar",
+        thumbnailUrl: "https://cdn.liveavatar.test/trusted-demo.png",
+        provider: "liveavatar",
+        mode: "lite",
+        sandbox: true,
+      },
+    ];
+    const app = createApp(createTestDependencies([createUser()], { mode: "lite", sandbox: true }, providerAvatars));
+    const cookie = await login(app);
+    const createResponse = await app.request("/avatars", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify(avatarInput()),
+    });
+    const createBody = (await json(createResponse)) as { avatar: { id: string } };
+
+    providerAvatars.length = 0;
+
+    const updateResponse = await app.request(`/avatars/${createBody.avatar.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify({
+        name: "Avatar actualizado",
+        liveAvatarConfig: {
+          provider: "liveavatar",
+          avatarId: "demo",
+          displayName: "Client Supplied Avatar",
+          thumbnailUrl: "https://untrusted.example/avatar.png",
+          mode: "lite",
+          sandbox: true,
+        },
+      }),
+    });
+    const updateBody = (await json(updateResponse)) as {
+      avatar: { name: string; liveAvatarConfig: { displayName?: string; thumbnailUrl?: string | null } };
+    };
+
+    expect(updateResponse.status).toBe(200);
+    expect(updateBody.avatar.name).toBe("Avatar actualizado");
+    expect(updateBody.avatar.liveAvatarConfig).toMatchObject({
+      displayName: "Trusted Demo Avatar",
+      thumbnailUrl: "https://cdn.liveavatar.test/trusted-demo.png",
+    });
   });
 
   it("returns 404 when accessing another creator avatar", async () => {

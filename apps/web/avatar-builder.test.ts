@@ -1,10 +1,21 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createAvatar } from "./lib/api-client";
+import { createAvatar } from "./lib/api/avatar-api";
+import { getLiveAvatarOptions } from "./lib/api/live-avatar-api";
 import {
   buildCreateAvatarRequest,
   createInitialAvatarBuilderState,
   validateAvatarBuilderState,
 } from "./hooks/useAvatarBuilder";
+import type { ApiLiveAvatarOption } from "./lib/api/live-avatar-api";
+
+const liveAvatarOption: ApiLiveAvatarOption = {
+  id: "demo-guide",
+  displayName: "Guia cercano",
+  thumbnailUrl: "https://cdn.yuni.test/demo-guide.png",
+  provider: "liveavatar",
+  mode: "lite",
+  sandbox: true,
+};
 
 describe("avatar builder", () => {
   afterEach(() => {
@@ -14,7 +25,7 @@ describe("avatar builder", () => {
   it("initializes with safe defaults", () => {
     const state = createInitialAvatarBuilderState();
 
-    expect(state.liveAvatarId).toBeTruthy();
+    expect(state.liveAvatarId).toBe("");
     expect(state.voiceId).toBeTruthy();
     expect(state.files).toEqual([]);
   });
@@ -37,13 +48,15 @@ describe("avatar builder", () => {
       context: "Contexto base",
     };
 
-    const payload = buildCreateAvatarRequest(state);
+    const payload = buildCreateAvatarRequest(state, liveAvatarOption);
 
     expect(payload).toMatchObject({
       name: "YUNI Demo",
       status: "active",
       liveAvatarConfig: {
         provider: "liveavatar",
+        displayName: "Guia cercano",
+        thumbnailUrl: "https://cdn.yuni.test/demo-guide.png",
         mode: "lite",
         sandbox: true,
       },
@@ -93,4 +106,24 @@ describe("avatar builder", () => {
       })
     );
   });
+
+  it("fetches live avatar options with credentials included", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ avatars: [] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await getLiveAvatarOptions();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:4000/live-avatar/avatars",
+      expect.objectContaining({
+        credentials: "include",
+      })
+    );
+  });
+
 });

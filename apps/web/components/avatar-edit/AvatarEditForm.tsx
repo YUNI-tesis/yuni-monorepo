@@ -1,17 +1,19 @@
 "use client";
 
-import { Badge, Button, Card, ErrorState, FileDrop, FormField, Input, Select, Textarea } from "@yuni/ui";
+import { Button, Card, ErrorState, FileDrop, FormField, Input, Select, Textarea } from "@yuni/ui";
 import type {
   AvatarEditState,
   AvatarEditValidation,
 } from "../../hooks/useAvatarEdit";
-import type { LiveAvatarOption, VoiceOption } from "../avatar-builder/options";
+import type { LiveAvatarOptionsState } from "../../hooks/useLiveAvatarOptions";
+import { LiveAvatarPicker } from "../live-avatar/LiveAvatarPicker";
+import type { VoiceOption } from "../avatar-builder/options";
 import styles from "./AvatarEdit.module.css";
 
 export type AvatarEditFormProps = {
   state: AvatarEditState;
   errors: AvatarEditValidation;
-  liveAvatarOptions: LiveAvatarOption[];
+  liveAvatarOptions: LiveAvatarOptionsState;
   voiceOptions: VoiceOption[];
   isSubmitting: boolean;
   onFieldChange: <Field extends keyof AvatarEditState>(field: Field, value: AvatarEditState[Field]) => void;
@@ -101,27 +103,12 @@ export function AvatarEditForm({
             title="Avatar visual"
             description="Selecciona la apariencia que tendrá el avatar durante la interacción."
           />
-          <div className={styles.optionGrid}>
-            {liveAvatarOptions.map((option) => (
-              <button
-                className={styles.option}
-                data-selected={state.liveAvatarId === option.id}
-                key={option.id}
-                type="button"
-                onClick={() => onFieldChange("liveAvatarId", option.id)}
-              >
-                <span className={styles.avatarPreview} aria-hidden="true">
-                  {option.name.slice(0, 1)}
-                </span>
-                <span>
-                  <strong>{option.name}</strong>
-                  <small>{option.description}</small>
-                </span>
-                <Badge tone={state.liveAvatarId === option.id ? "success" : "neutral"}>Lite sandbox</Badge>
-              </button>
-            ))}
-          </div>
-          {errors.liveAvatarId ? <p className="yuni-form-field__error">{errors.liveAvatarId}</p> : null}
+          <LiveAvatarPicker
+            optionsState={liveAvatarOptions}
+            selectedId={state.liveAvatarId}
+            error={errors.liveAvatarId}
+            onSelect={(avatarId) => onFieldChange("liveAvatarId", avatarId)}
+          />
         </section>
 
         <section className={styles.section}>

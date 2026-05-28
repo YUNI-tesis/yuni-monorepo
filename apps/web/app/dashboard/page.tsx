@@ -3,7 +3,8 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Button, Card, ErrorState, LoadingState, PageHeader, PageShell } from "@yuni/ui";
-import { ApiClientError, ApiUser, getMe, logout } from "../../lib/api-client";
+import { getMe, logout, type ApiUser } from "../../lib/api/auth-api";
+import { ApiClientError } from "../../lib/api/http-client";
 
 export default function DashboardPage() {
   const router = useRouter();

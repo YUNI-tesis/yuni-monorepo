@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { updateAvatar, type ApiAvatar } from "./lib/api-client";
+import { updateAvatar, type ApiAvatar } from "./lib/api/avatar-api";
+import type { ApiLiveAvatarOption } from "./lib/api/live-avatar-api";
 import {
   buildUpdateAvatarRequest,
   createAvatarEditStateFromAvatar,
-  getLiveAvatarEditOptions,
   getVoiceEditOptions,
   validateAvatarEditState,
 } from "./hooks/useAvatarEdit";
@@ -22,12 +22,23 @@ const avatar: ApiAvatar = {
   liveAvatarConfig: {
     provider: "liveavatar",
     avatarId: "demo-guide",
+    displayName: "Guia cercano",
+    thumbnailUrl: "https://cdn.yuni.test/demo-guide.png",
     mode: "lite",
     sandbox: true,
   },
   status: "active",
   createdAt: "2026-05-21T13:30:00.000Z",
   updatedAt: "2026-05-21T14:45:00.000Z",
+};
+
+const liveAvatarOption: ApiLiveAvatarOption = {
+  id: "demo-guide",
+  displayName: "Guia cercano actualizado",
+  thumbnailUrl: "https://cdn.yuni.test/demo-guide-updated.png",
+  provider: "liveavatar",
+  mode: "lite",
+  sandbox: true,
 };
 
 describe("avatar edit", () => {
@@ -63,6 +74,8 @@ describe("avatar edit", () => {
       instructions: "Responde claro.",
       context: "Contexto base",
       liveAvatarId: "demo-guide",
+      liveAvatarDisplayName: "Guia cercano",
+      liveAvatarThumbnailUrl: "https://cdn.yuni.test/demo-guide.png",
       voiceId: "alloy",
       files: [],
     });
@@ -82,7 +95,7 @@ describe("avatar edit", () => {
   });
 
   it("builds an update payload without ownerId and with live avatar lite sandbox", () => {
-    const payload = buildUpdateAvatarRequest(createAvatarEditStateFromAvatar(avatar));
+    const payload = buildUpdateAvatarRequest(createAvatarEditStateFromAvatar(avatar), liveAvatarOption);
 
     expect(payload).toMatchObject({
       name: "YUNI Demo",
@@ -90,6 +103,8 @@ describe("avatar edit", () => {
       liveAvatarConfig: {
         provider: "liveavatar",
         avatarId: "demo-guide",
+        displayName: "Guia cercano actualizado",
+        thumbnailUrl: "https://cdn.yuni.test/demo-guide-updated.png",
         mode: "lite",
         sandbox: true,
       },
@@ -102,11 +117,7 @@ describe("avatar edit", () => {
     expect(payload).not.toHaveProperty("ownerId");
   });
 
-  it("keeps current avatar and voice options when provider catalogs do not contain them", () => {
-    expect(getLiveAvatarEditOptions("provider-avatar-42")[0]).toMatchObject({
-      id: "provider-avatar-42",
-      name: "Avatar actual",
-    });
+  it("keeps current voice option when provider catalog does not contain it", () => {
     expect(getVoiceEditOptions("provider-voice-42")[0]).toMatchObject({
       id: "provider-voice-42",
       name: "Voz actual",

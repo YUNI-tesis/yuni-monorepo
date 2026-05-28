@@ -3,8 +3,10 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Button, Card, ErrorState, PageHeader, PageShell } from "@yuni/ui";
-import { ApiClientError, createAvatar } from "../../lib/api-client";
+import { createAvatar } from "../../lib/api/avatar-api";
+import { ApiClientError } from "../../lib/api/http-client";
 import { buildCreateAvatarRequest, useAvatarBuilder } from "../../hooks/useAvatarBuilder";
+import { useLiveAvatarOptions } from "../../hooks/useLiveAvatarOptions";
 import { BuilderSteps } from "./BuilderSteps";
 import { ContextStep } from "./steps/ContextStep";
 import { IdentityStep } from "./steps/IdentityStep";
@@ -16,7 +18,8 @@ import styles from "./AvatarBuilder.module.css";
 
 export function AvatarBuilder() {
   const router = useRouter();
-  const builder = useAvatarBuilder();
+  const liveAvatarOptions = useLiveAvatarOptions();
+  const builder = useAvatarBuilder(liveAvatarOptions.options);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   async function saveAvatar() {
@@ -27,7 +30,7 @@ export function AvatarBuilder() {
     setIsSubmitting(true);
 
     try {
-      const { avatar } = await createAvatar(buildCreateAvatarRequest(builder.state));
+      const { avatar } = await createAvatar(buildCreateAvatarRequest(builder.state, builder.selectedLiveAvatar));
       router.push(`/avatars/${avatar.id}`);
       router.refresh();
     } catch (caughtError) {
@@ -54,7 +57,9 @@ export function AvatarBuilder() {
 
         <div className={styles.content}>
           {builder.currentStep === "Identidad" ? <IdentityStep builder={builder} /> : null}
-          {builder.currentStep === "Avatar" ? <LiveAvatarStep builder={builder} /> : null}
+          {builder.currentStep === "Avatar" ? (
+            <LiveAvatarStep builder={builder} liveAvatarOptions={liveAvatarOptions} />
+          ) : null}
           {builder.currentStep === "Voz" ? <VoiceStep builder={builder} /> : null}
           {builder.currentStep === "Persona" ? <PersonaStep builder={builder} /> : null}
           {builder.currentStep === "Contexto" ? <ContextStep builder={builder} /> : null}

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getAvatar, type ApiAvatar } from "./lib/api-client";
+import { getAvatar, type ApiAvatar } from "./lib/api/avatar-api";
 import {
   formatAvatarStatus,
   formatDateTime,
@@ -21,6 +21,8 @@ const avatar: ApiAvatar = {
   liveAvatarConfig: {
     provider: "liveavatar",
     avatarId: "demo-guide",
+    displayName: "Guia cercano",
+    thumbnailUrl: "https://cdn.yuni.test/demo-guide.png",
     mode: "lite",
     sandbox: true,
   },
@@ -56,9 +58,13 @@ describe("avatar profile", () => {
   it("formats profile metadata", () => {
     expect(formatAvatarStatus("active")).toBe("Activo");
     expect(getLiveAvatarSummary(avatar)).toEqual({
-      selectedAvatar: "demo-guide",
+      avatarId: "demo-guide",
+      selectedAvatar: "Guia cercano",
+      thumbnailUrl: "https://cdn.yuni.test/demo-guide.png",
+      hasVisualSnapshot: true,
       mode: "lite",
       sandbox: "Activo",
+      sandboxEnabled: true,
     });
     expect(getVoiceSummary(avatar)).toEqual({
       selectedVoice: "alloy",
@@ -77,5 +83,23 @@ describe("avatar profile", () => {
 
     expect(getLiveAvatarSummary(incompleteAvatar).selectedAvatar).toBe("Sin avatar seleccionado");
     expect(getVoiceSummary(incompleteAvatar).selectedVoice).toBe("No definido");
+  });
+
+  it("does not treat thumbnail-only metadata as a complete visual snapshot", () => {
+    const thumbnailOnlyAvatar = {
+      ...avatar,
+      liveAvatarConfig: {
+        provider: "liveavatar",
+        avatarId: "demo-guide",
+        thumbnailUrl: "https://cdn.yuni.test/demo-guide.png",
+        mode: "lite",
+        sandbox: true,
+      },
+    };
+
+    expect(getLiveAvatarSummary(thumbnailOnlyAvatar)).toMatchObject({
+      avatarId: "demo-guide",
+      hasVisualSnapshot: false,
+    });
   });
 });

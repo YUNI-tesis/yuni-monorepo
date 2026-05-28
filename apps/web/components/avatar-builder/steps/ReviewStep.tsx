@@ -1,4 +1,3 @@
-import { Badge } from "@yuni/ui";
 import { StepHeading } from "../StepHeading";
 import type { AvatarBuilderController } from "../types";
 import styles from "../AvatarBuilder.module.css";
@@ -10,18 +9,12 @@ export function ReviewStep({ builder }: { builder: AvatarBuilderController }) {
       <dl className={styles.review}>
         <ReviewItem label="Nombre" value={builder.state.name || "Sin nombre"} />
         <ReviewItem label="Descripcion" value={builder.state.description || "Sin descripcion"} />
-        <ReviewItem label="Avatar visual" value={builder.selectedLiveAvatar?.name ?? "Sin seleccionar"} />
+        <ReviewItem label="Avatar visual" value={builder.selectedLiveAvatar?.displayName ?? "Sin seleccionar"} />
         <ReviewItem label="Voz" value={builder.selectedVoice?.name ?? "Sin seleccionar"} />
         <ReviewItem label="Instrucciones" value={builder.state.instructions || "Sin instrucciones"} />
         <ReviewItem label="Contexto" value={builder.state.context || "Sin contexto textual"} />
         <ReviewItem label="Archivos" value={formatSelectedFiles(builder.state.files.length)} />
       </dl>
-      <div className={styles.configBadges} aria-label="Configuracion tecnica">
-        <Badge tone="success">Live Avatar</Badge>
-        <Badge tone="success">Lite</Badge>
-        <Badge tone="success">Sandbox activo</Badge>
-        <Badge tone="neutral">OpenAI voice</Badge>
-      </div>
     </section>
   );
 }

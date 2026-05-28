@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Button, Card, FormField, Input, PageHeader, PageShell } from "@yuni/ui";
-import { register } from "../../../lib/api-client";
+import { register } from "../../../lib/api/auth-api";
 
 type FormSubmitEvent = {
   preventDefault: () => void;

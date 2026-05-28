@@ -2,7 +2,8 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { ApiClientError, getAvatar, type ApiAvatar } from "../lib/api-client";
+import { getAvatar, type ApiAvatar } from "../lib/api/avatar-api";
+import { ApiClientError } from "../lib/api/http-client";
 
 export type AvatarProfileState =
   | {

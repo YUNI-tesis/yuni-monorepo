@@ -1,9 +1,13 @@
-import type { ApiAvatar, ApiAvatarStatus } from "../../lib/api-client";
+import type { ApiAvatar, ApiAvatarStatus } from "../../lib/api/avatar-api";
 
 export type LiveAvatarSummary = {
+  avatarId: string;
   selectedAvatar: string;
+  thumbnailUrl: string | null;
+  hasVisualSnapshot: boolean;
   mode: string;
   sandbox: string;
+  sandboxEnabled: boolean;
 };
 
 export type VoiceSummary = {
@@ -49,11 +53,18 @@ export function formatDateTime(value: string): string {
 
 export function getLiveAvatarSummary(avatar: ApiAvatar): LiveAvatarSummary {
   const config = readRecord(avatar.liveAvatarConfig);
+  const avatarId = readString(config.avatarId, "");
+  const displayName = readString(config.displayName, "");
+  const thumbnailUrl = readNullableString(config.thumbnailUrl);
 
   return {
-    selectedAvatar: readString(config.displayName, readString(config.avatarId, "Sin avatar seleccionado")),
+    avatarId,
+    selectedAvatar: displayName || "Sin avatar seleccionado",
+    thumbnailUrl,
+    hasVisualSnapshot: Boolean(displayName),
     mode: readString(config.mode, "No definido"),
     sandbox: config.sandbox === true ? "Activo" : "No definido",
+    sandboxEnabled: config.sandbox === true,
   };
 }
 
@@ -89,6 +100,10 @@ function readRecord(value: unknown): Record<string, unknown> {
 
 function readString(value: unknown, fallback: string): string {
   return typeof value === "string" && value.length > 0 ? value : fallback;
+}
+
+function readNullableString(value: unknown): string | null {
+  return typeof value === "string" && value.length > 0 ? value : null;
 }
 
 function readNumber(value: unknown, fallback: string): string {

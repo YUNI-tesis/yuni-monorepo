@@ -22,6 +22,8 @@ export type AppDependencies = {
   liveAvatar: LiveAvatarControllerDependencies;
 };
 
+const liveAvatarProvider = new LiveAvatarProvider();
+
 const defaultDependencies: AppDependencies = {
   auth: {
     repository: createAuthRepository(prisma),
@@ -30,9 +32,10 @@ const defaultDependencies: AppDependencies = {
   avatars: {
     repository: createAvatarsRepository(prisma),
     liveAvatarConfig,
+    avatarProvider: liveAvatarProvider,
   },
   liveAvatar: {
-    provider: new LiveAvatarProvider(),
+    provider: liveAvatarProvider,
   },
 };
 

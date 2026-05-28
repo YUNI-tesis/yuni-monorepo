@@ -166,7 +166,6 @@
   overflow-wrap: anywhere;
 }
 
-.configBadges,
 .actions {
   display: flex;
   flex-wrap: wrap;

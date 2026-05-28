@@ -3,14 +3,20 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Button, ErrorState, LoadingState, PageHeader, PageShell } from "@yuni/ui";
-import { ApiClientError, updateAvatar } from "../../lib/api-client";
+import { updateAvatar } from "../../lib/api/avatar-api";
+import { ApiClientError } from "../../lib/api/http-client";
 import { buildUpdateAvatarRequest, useAvatarEdit } from "../../hooks/useAvatarEdit";
+import { useLiveAvatarOptions } from "../../hooks/useLiveAvatarOptions";
 import { AvatarEditForm } from "./AvatarEditForm";
 import styles from "./AvatarEdit.module.css";
 
 export function AvatarEdit({ avatarId }: { avatarId: string }) {
   const router = useRouter();
   const edit = useAvatarEdit(avatarId);
+  const liveAvatarOptions = useLiveAvatarOptions({
+    currentAvatarId: edit.loadState.state?.liveAvatarId,
+    includeCurrentFallback: true,
+  });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   if (edit.loadState.status === "loading") {
@@ -52,6 +58,8 @@ export function AvatarEdit({ avatarId }: { avatarId: string }) {
   }
 
   const editableState = state;
+  const selectedLiveAvatar =
+    liveAvatarOptions.options.find((option) => option.id === editableState.liveAvatarId) ?? null;
 
   async function saveChanges() {
     if (isSubmitting || !edit.validateAll()) {
@@ -61,7 +69,10 @@ export function AvatarEdit({ avatarId }: { avatarId: string }) {
     setIsSubmitting(true);
 
     try {
-      const { avatar: updatedAvatar } = await updateAvatar(avatarId, buildUpdateAvatarRequest(editableState));
+      const { avatar: updatedAvatar } = await updateAvatar(
+        avatarId,
+        buildUpdateAvatarRequest(editableState, selectedLiveAvatar)
+      );
       edit.setSuccess("Cambios guardados.");
       router.push(`/avatars/${updatedAvatar.id}`);
       router.refresh();
@@ -93,7 +104,7 @@ export function AvatarEdit({ avatarId }: { avatarId: string }) {
         <AvatarEditForm
           state={editableState}
           errors={edit.errors}
-          liveAvatarOptions={edit.liveAvatarEditOptions}
+          liveAvatarOptions={liveAvatarOptions}
           voiceOptions={edit.voiceEditOptions}
           isSubmitting={isSubmitting}
           onFieldChange={edit.updateField}
