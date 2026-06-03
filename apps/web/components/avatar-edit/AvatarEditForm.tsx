@@ -1,11 +1,12 @@
 "use client";
 
-import { Button, Card, ErrorState, FileDrop, FormField, Input, Textarea } from "@yuni/ui";
+import { Button, Card, ErrorState, FormField, Input, Textarea } from "@yuni/ui";
 import type {
   AvatarEditState,
   AvatarEditValidation,
 } from "../../hooks/useAvatarEdit";
 import type { LiveAvatarOptionsState } from "../../hooks/useLiveAvatarOptions";
+import { DocumentFileDrop } from "../documents/DocumentFileDrop";
 import { LiveAvatarPicker } from "../live-avatar/LiveAvatarPicker";
 import { VoiceSelector } from "../voice/VoiceSelector";
 import type { VoiceOption } from "../../lib/voice-config";
@@ -150,10 +151,7 @@ export function AvatarEditForm({
               onChange={(event) => onFieldChange("context", event.currentTarget.value)}
             />
           </FormField>
-          <FileDrop
-            title="Subir contexto"
-            description="Carga archivos para que el agente base sus respuestas en ese contenido."
-            accept=".pdf,.txt,.doc,.docx"
+          <DocumentFileDrop
             files={state.files}
             onFilesSelected={(files) => onFieldChange("files", files)}
           />

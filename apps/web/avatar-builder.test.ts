@@ -71,6 +71,7 @@ describe("avatar builder", () => {
       },
     });
     expect(payload).not.toHaveProperty("ownerId");
+    expect(payload).not.toHaveProperty("files");
   });
 
   it("creates voice config with catalog metadata", () => {

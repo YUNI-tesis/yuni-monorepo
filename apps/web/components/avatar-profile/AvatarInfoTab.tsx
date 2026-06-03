@@ -35,7 +35,7 @@ export function AvatarInfoTab({ avatar }: { avatar: ApiAvatar }) {
           <p className="yuni-eyebrow">Documentos</p>
           <div className={styles.documentsShell}>
             <strong>Todavia no hay documentos asociados</strong>
-            <p className={styles.emptyText}>La subida e ingestion de documentos se implementa en un modulo posterior.</p>
+            <p className={styles.emptyText}>Carga documentos desde la edición del avatar para sumar contexto a sus respuestas.</p>
           </div>
         </Card>
 

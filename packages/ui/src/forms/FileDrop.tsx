@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import { useId, useState, type ChangeEvent, type DragEvent, type InputHTMLAttributes } from "react";
 import { cn } from "../utils";
 

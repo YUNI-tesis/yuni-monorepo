@@ -5,9 +5,9 @@ export function AvatarSharePlaceholder() {
   return (
     <Card className={styles.sharePlaceholder} padding="md">
       <p className="yuni-eyebrow">Compartir</p>
-      <h2>Share se implementa en el proximo modulo</h2>
+      <h2>Links públicos del avatar</h2>
       <p className={styles.emptyText}>
-        Esta tab queda reservada para links publicos, metricas basicas y acciones de compartir.
+        Crea y administra enlaces para que otras personas puedan interactuar con este avatar.
       </p>
     </Card>
   );

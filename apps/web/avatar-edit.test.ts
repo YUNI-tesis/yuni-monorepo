@@ -124,6 +124,7 @@ describe("avatar edit", () => {
       },
     });
     expect(payload).not.toHaveProperty("ownerId");
+    expect(payload).not.toHaveProperty("files");
   });
 
   it("keeps current voice option when provider catalog does not contain it", () => {

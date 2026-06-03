@@ -1,0 +1,91 @@
+.root {
+  display: grid;
+  gap: var(--yuni-space-3);
+}
+
+.existing {
+  display: grid;
+  gap: var(--yuni-space-3);
+  border: 1px solid var(--yuni-color-border);
+  border-radius: var(--yuni-radius-md);
+  padding: var(--yuni-space-4);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.sectionHeader {
+  display: grid;
+  gap: var(--yuni-space-1);
+}
+
+.sectionHeader strong {
+  color: var(--yuni-color-text);
+}
+
+.sectionHeader span,
+.note {
+  color: var(--yuni-color-text-muted);
+  font-size: var(--yuni-font-sm);
+  line-height: 1.5;
+}
+
+.list,
+.errors {
+  display: grid;
+  gap: var(--yuni-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: var(--yuni-space-3);
+  border: 1px solid var(--yuni-color-border);
+  border-radius: var(--yuni-radius-md);
+  padding: var(--yuni-space-3);
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.fileIcon {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: var(--yuni-radius-md);
+  background: rgba(100, 195, 215, 0.12);
+  color: #bceff8;
+  font-size: var(--yuni-font-xs);
+  font-weight: 900;
+}
+
+.fileInfo {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.fileInfo strong,
+.fileInfo span {
+  overflow-wrap: anywhere;
+}
+
+.fileInfo span {
+  color: var(--yuni-color-text-muted);
+  font-size: var(--yuni-font-sm);
+}
+
+.note {
+  margin: 0;
+}
+
+.errors {
+  border: 1px solid rgba(255, 114, 114, 0.26);
+  border-radius: var(--yuni-radius-md);
+  padding: var(--yuni-space-3);
+  background: var(--yuni-color-danger-soft);
+  color: #ffdada;
+  font-size: var(--yuni-font-sm);
+  line-height: 1.5;
+}
