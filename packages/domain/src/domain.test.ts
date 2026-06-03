@@ -19,6 +19,8 @@ const validAvatarInput = {
   voiceConfig: {
     provider: "openai",
     voiceId: "alloy",
+    displayName: "Alloy",
+    description: "Voz equilibrada y natural para conversaciones generales.",
     speakingRate: 1,
   },
   liveAvatarConfig: {
@@ -64,6 +66,42 @@ describe("@yuni/domain", () => {
 
     expect(parsed.provider).toBe("openai");
     expect(parsed.voiceId).toBe("alloy");
+    expect(parsed.displayName).toBe("Alloy");
+    expect(parsed.description).toBe("Voz equilibrada y natural para conversaciones generales.");
+  });
+
+  it("defaults voice speaking rate", () => {
+    const parsed = VoiceConfigSchema.parse({
+      provider: "openai",
+      voiceId: "alloy",
+    });
+
+    expect(parsed.speakingRate).toBe(1);
+  });
+
+  it("rejects unsupported voice config", () => {
+    expect(() =>
+      VoiceConfigSchema.parse({
+        provider: "elevenlabs",
+        voiceId: "voice-1",
+        speakingRate: 1,
+      })
+    ).toThrow();
+    expect(() =>
+      VoiceConfigSchema.parse({
+        provider: "openai",
+        voiceId: "",
+        speakingRate: 1,
+      })
+    ).toThrow();
+    expect(() =>
+      VoiceConfigSchema.parse({
+        provider: "openai",
+        voiceId: "alloy",
+        speakingRate: 1,
+        extra: "not-allowed",
+      })
+    ).toThrow();
   });
 
   it("validates public slug format", () => {

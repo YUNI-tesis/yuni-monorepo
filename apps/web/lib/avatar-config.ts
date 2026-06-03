@@ -1,4 +1,4 @@
-import type { ApiAvatarLiveAvatarConfig, ApiVoiceConfig } from "./api/avatar-api";
+import type { ApiAvatarLiveAvatarConfig } from "./api/avatar-api";
 import type { ApiLiveAvatarOption } from "./api/live-avatar-api";
 
 export const currentLiveAvatarOptionName = "Avatar actual";
@@ -37,12 +37,4 @@ export function createLiveAvatarConfig({
   }
 
   return config;
-}
-
-export function createVoiceConfig(voiceId: string): ApiVoiceConfig {
-  return {
-    provider: "openai",
-    voiceId,
-    speakingRate: 1,
-  };
 }

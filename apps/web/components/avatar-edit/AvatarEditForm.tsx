@@ -1,13 +1,14 @@
 "use client";
 
-import { Button, Card, ErrorState, FileDrop, FormField, Input, Select, Textarea } from "@yuni/ui";
+import { Button, Card, ErrorState, FileDrop, FormField, Input, Textarea } from "@yuni/ui";
 import type {
   AvatarEditState,
   AvatarEditValidation,
 } from "../../hooks/useAvatarEdit";
 import type { LiveAvatarOptionsState } from "../../hooks/useLiveAvatarOptions";
 import { LiveAvatarPicker } from "../live-avatar/LiveAvatarPicker";
-import type { VoiceOption } from "../avatar-builder/options";
+import { VoiceSelector } from "../voice/VoiceSelector";
+import type { VoiceOption } from "../../lib/voice-config";
 import styles from "./AvatarEdit.module.css";
 
 export type AvatarEditFormProps = {
@@ -31,7 +32,6 @@ export function AvatarEditForm({
   onSubmit,
   onCancel,
 }: AvatarEditFormProps) {
-  const selectedVoice = voiceOptions.find((voice) => voice.id === state.voiceId);
   const statusOptions: Array<{ value: AvatarEditState["status"]; label: string }> = [
     { value: "active", label: "Activo" },
     { value: "draft", label: "Borrador" },
@@ -113,26 +113,12 @@ export function AvatarEditForm({
 
         <section className={styles.section}>
           <SectionHeader title="Voz" description="Selecciona la voz para las respuestas habladas." />
-          <FormField label="Voz" htmlFor="avatar-edit-voice" error={errors.voiceId}>
-            <Select
-              id="avatar-edit-voice"
-              value={state.voiceId}
-              invalid={Boolean(errors.voiceId)}
-              onValueChange={(value) => onFieldChange("voiceId", value)}
-            >
-              {voiceOptions.map((voice) => (
-                <option key={voice.id} value={voice.id}>
-                  {voice.name}
-                </option>
-              ))}
-            </Select>
-          </FormField>
-          {selectedVoice ? (
-            <div className={styles.voicePreview}>
-              <strong>{selectedVoice.name}</strong>
-              <span>{selectedVoice.description}</span>
-            </div>
-          ) : null}
+          <VoiceSelector
+            options={voiceOptions}
+            selectedId={state.voiceId}
+            error={errors.voiceId}
+            onSelect={(voiceId) => onFieldChange("voiceId", voiceId)}
+          />
         </section>
 
         <section className={styles.section}>

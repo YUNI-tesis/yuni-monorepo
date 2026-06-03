@@ -30,7 +30,9 @@ export function AvatarBuilder() {
     setIsSubmitting(true);
 
     try {
-      const { avatar } = await createAvatar(buildCreateAvatarRequest(builder.state, builder.selectedLiveAvatar));
+      const { avatar } = await createAvatar(
+        buildCreateAvatarRequest(builder.state, builder.selectedLiveAvatar, builder.selectedVoice)
+      );
       router.push(`/avatars/${avatar.id}`);
       router.refresh();
     } catch (caughtError) {

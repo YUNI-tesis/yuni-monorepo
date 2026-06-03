@@ -68,10 +68,9 @@ export function AvatarInfoTab({ avatar }: { avatar: ApiAvatar }) {
 
         <Card className={styles.stack} padding="md">
           <p className="yuni-eyebrow">Voz</p>
-          <div className={styles.detailsGrid}>
+          <div className={styles.voiceDetails}>
             <InfoField label="Voz seleccionada" value={voice.selectedVoice} />
-            <InfoField label="Provider" value={voice.providerLabel} />
-            <InfoField label="Velocidad" value={voice.speakingRate} />
+            <InfoField label="Descripción" value={voice.description} />
           </div>
         </Card>
       </aside>

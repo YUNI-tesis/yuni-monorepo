@@ -7,6 +7,8 @@ export type ApiAvatarStatus = "draft" | "active" | "disabled";
 export type ApiVoiceConfig = {
   provider: "openai";
   voiceId: string;
+  displayName?: string;
+  description?: string;
   speakingRate: number;
 };
 

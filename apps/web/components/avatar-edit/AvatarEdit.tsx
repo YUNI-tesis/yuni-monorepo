@@ -60,6 +60,7 @@ export function AvatarEdit({ avatarId }: { avatarId: string }) {
   const editableState = state;
   const selectedLiveAvatar =
     liveAvatarOptions.options.find((option) => option.id === editableState.liveAvatarId) ?? null;
+  const selectedVoice = edit.voiceEditOptions.find((option) => option.id === editableState.voiceId) ?? null;
 
   async function saveChanges() {
     if (isSubmitting || !edit.validateAll()) {
@@ -71,7 +72,7 @@ export function AvatarEdit({ avatarId }: { avatarId: string }) {
     try {
       const { avatar: updatedAvatar } = await updateAvatar(
         avatarId,
-        buildUpdateAvatarRequest(editableState, selectedLiveAvatar)
+        buildUpdateAvatarRequest(editableState, selectedLiveAvatar, selectedVoice)
       );
       edit.setSuccess("Cambios guardados.");
       router.push(`/avatars/${updatedAvatar.id}`);

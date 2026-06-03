@@ -7,6 +7,7 @@ import {
   getVoiceEditOptions,
   validateAvatarEditState,
 } from "./hooks/useAvatarEdit";
+import { voiceOptions } from "./lib/voice-config";
 
 const avatar: ApiAvatar = {
   id: "avatar-1",
@@ -17,6 +18,8 @@ const avatar: ApiAvatar = {
   voiceConfig: {
     provider: "openai",
     voiceId: "alloy",
+    displayName: "Alloy",
+    description: "Voz equilibrada y natural para conversaciones generales.",
     speakingRate: 1,
   },
   liveAvatarConfig: {
@@ -77,6 +80,8 @@ describe("avatar edit", () => {
       liveAvatarDisplayName: "Guia cercano",
       liveAvatarThumbnailUrl: "https://cdn.yuni.test/demo-guide.png",
       voiceId: "alloy",
+      voiceDisplayName: "Alloy",
+      voiceDescription: "Voz equilibrada y natural para conversaciones generales.",
       files: [],
     });
   });
@@ -95,7 +100,9 @@ describe("avatar edit", () => {
   });
 
   it("builds an update payload without ownerId and with live avatar lite sandbox", () => {
-    const payload = buildUpdateAvatarRequest(createAvatarEditStateFromAvatar(avatar), liveAvatarOption);
+    const state = createAvatarEditStateFromAvatar(avatar);
+    const selectedVoice = voiceOptions.find((option) => option.id === state.voiceId) ?? null;
+    const payload = buildUpdateAvatarRequest(state, liveAvatarOption, selectedVoice);
 
     expect(payload).toMatchObject({
       name: "YUNI Demo",
@@ -111,6 +118,8 @@ describe("avatar edit", () => {
       voiceConfig: {
         provider: "openai",
         voiceId: "alloy",
+        displayName: "Alloy",
+        description: "Voz equilibrada y natural para conversaciones generales.",
         speakingRate: 1,
       },
     });
@@ -120,7 +129,31 @@ describe("avatar edit", () => {
   it("keeps current voice option when provider catalog does not contain it", () => {
     expect(getVoiceEditOptions("provider-voice-42")[0]).toMatchObject({
       id: "provider-voice-42",
-      name: "Voz actual",
+      displayName: "Voz actual",
+      toneLabel: "Actual",
+    });
+  });
+
+  it("preserves current voice metadata when it is not in the catalog", () => {
+    const customAvatar = {
+      ...avatar,
+      voiceConfig: {
+        provider: "openai",
+        voiceId: "provider-voice-42",
+        displayName: "Provider Voice",
+        description: "Voz traída desde provider.",
+        speakingRate: 1,
+      },
+    };
+    const state = createAvatarEditStateFromAvatar(customAvatar);
+    const selectedVoice = getVoiceEditOptions(state.voiceId).find((option) => option.id === state.voiceId) ?? null;
+
+    expect(buildUpdateAvatarRequest(state, liveAvatarOption, selectedVoice).voiceConfig).toEqual({
+      provider: "openai",
+      voiceId: "provider-voice-42",
+      displayName: "Provider Voice",
+      description: "Voz traída desde provider.",
+      speakingRate: 1,
     });
   });
 });

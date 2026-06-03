@@ -10,7 +10,7 @@ export function ReviewStep({ builder }: { builder: AvatarBuilderController }) {
         <ReviewItem label="Nombre" value={builder.state.name || "Sin nombre"} />
         <ReviewItem label="Descripcion" value={builder.state.description || "Sin descripcion"} />
         <ReviewItem label="Avatar visual" value={builder.selectedLiveAvatar?.displayName ?? "Sin seleccionar"} />
-        <ReviewItem label="Voz" value={builder.selectedVoice?.name ?? "Sin seleccionar"} />
+        <ReviewItem label="Voz" value={builder.selectedVoice?.displayName ?? "Sin seleccionar"} />
         <ReviewItem label="Instrucciones" value={builder.state.instructions || "Sin instrucciones"} />
         <ReviewItem label="Contexto" value={builder.state.context || "Sin contexto textual"} />
         <ReviewItem label="Archivos" value={formatSelectedFiles(builder.state.files.length)} />

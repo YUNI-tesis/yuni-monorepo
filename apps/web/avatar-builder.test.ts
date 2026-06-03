@@ -7,6 +7,7 @@ import {
   validateAvatarBuilderState,
 } from "./hooks/useAvatarBuilder";
 import type { ApiLiveAvatarOption } from "./lib/api/live-avatar-api";
+import { createVoiceConfig, voiceOptions } from "./lib/voice-config";
 
 const liveAvatarOption: ApiLiveAvatarOption = {
   id: "demo-guide",
@@ -48,7 +49,8 @@ describe("avatar builder", () => {
       context: "Contexto base",
     };
 
-    const payload = buildCreateAvatarRequest(state, liveAvatarOption);
+    const selectedVoice = voiceOptions.find((option) => option.id === state.voiceId) ?? null;
+    const payload = buildCreateAvatarRequest(state, liveAvatarOption, selectedVoice);
 
     expect(payload).toMatchObject({
       name: "YUNI Demo",
@@ -62,10 +64,28 @@ describe("avatar builder", () => {
       },
       voiceConfig: {
         provider: "openai",
+        voiceId: "alloy",
+        displayName: "Alloy",
+        description: "Voz equilibrada y natural para conversaciones generales.",
         speakingRate: 1,
       },
     });
     expect(payload).not.toHaveProperty("ownerId");
+  });
+
+  it("creates voice config with catalog metadata", () => {
+    expect(
+      createVoiceConfig({
+        voiceId: "verse",
+        selectedVoice: voiceOptions.find((option) => option.id === "verse"),
+      })
+    ).toEqual({
+      provider: "openai",
+      voiceId: "verse",
+      displayName: "Verse",
+      description: "Voz cálida con un ritmo más expresivo.",
+      speakingRate: 1,
+    });
   });
 
   it("sends create avatar requests with credentials included", async () => {
