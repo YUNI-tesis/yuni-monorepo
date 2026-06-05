@@ -104,4 +104,10 @@ packages/
   observability/
 ```
 
+## Documentacion De Tesis
+
+El material para el informe final vive en [docs/thesis/README.md](docs/thesis/README.md).
+
+Cada feature o plan terminado debe actualizar su estado en `docs/plan-prompts/README.md` y dejar un decision record en `docs/thesis/decision-records/` con decisiones de diseno, tradeoffs, fuentes y notas de implementacion utiles para la tesis.
+
 Esta fase no implementa producto. Solo deja una base modular para construir YUNI por partes.

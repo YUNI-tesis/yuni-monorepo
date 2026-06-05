@@ -28,6 +28,7 @@ Prompts base para pedir planes modulares de YUNI y seguir implementando por part
 - `21-public-link-resolver-api.md`: pendiente.
 - `22-public-avatar-ui.md`: pendiente.
 - `23-public-session-api.md`: pendiente.
+- `24A-agent-voice-architecture-context-contract.md`: pendiente.
 - `24-openai-adapter-prompt-builder.md`: pendiente.
 - `25-private-text-chat-api.md`: pendiente.
 - `26-public-text-chat-api.md`: pendiente.
@@ -45,3 +46,10 @@ Prompts base para pedir planes modulares de YUNI y seguir implementando por part
 ## Uso
 
 Copiar el prompt del módulo que corresponda, iterarlo si hace falta, y recién después pedir implementación en una branch nueva.
+
+Cuando se termina una feature o plan, el agente responsable debe:
+
+- actualizar el estado del plan en este README
+- crear un decision record en [docs/thesis/decision-records/](../thesis/decision-records/)
+- linkear el plan implementado y las fuentes o evidencia usadas
+- si el cambio fue mecanico y no hubo tradeoff relevante, crear igual una nota breve de implementacion explicando eso
