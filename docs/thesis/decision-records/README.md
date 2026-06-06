@@ -17,4 +17,5 @@ Registros de decisiones usadas como insumo para el informe final de tesis.
 
 | # | Registro | Plan asociado | Fecha | Estado |
 | --- | --- | --- | --- | --- |
-| 0001 | [Voice Agent Provider Strategy](0001-plan-24a-voice-agent-provider-strategy.md) | `24A-agent-voice-architecture-context-contract.md` | 2026-06-04 | accepted |
+| 0001 | [Voice Agent Provider Strategy](0001-plan-24a-voice-agent-provider-strategy.md) | `24A-agent-voice-architecture-context-contract.md` | 2026-06-04 | superseded |
+| 0002 | [ElevenLabs-first MVP Voice Option](0002-plan-24a-elevenlabs-first-mvp-option.md) | `24A-agent-voice-architecture-context-contract.md` | 2026-06-04 | accepted |

@@ -2,7 +2,7 @@
 
 ## Status
 
-accepted
+superseded
 
 ## Related plan
 
@@ -11,6 +11,8 @@ accepted
 ## Date
 
 2026-06-04
+
+Superseded by [0002-plan-24a-elevenlabs-first-mvp-option.md](0002-plan-24a-elevenlabs-first-mvp-option.md).
 
 ## Context
 
