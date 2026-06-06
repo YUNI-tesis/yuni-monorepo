@@ -35,6 +35,12 @@
   gap: var(--yuni-space-3);
 }
 
+.voiceDetails {
+  display: flex;
+  flex-direction: column;
+  gap: var(--yuni-space-3);
+}
+
 .field {
   display: grid;
   gap: var(--yuni-space-2);

@@ -3,8 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import type { CreateAvatarRequest } from "../lib/api/avatar-api";
 import type { ApiLiveAvatarOption } from "../lib/api/live-avatar-api";
-import { createLiveAvatarConfig, createVoiceConfig } from "../lib/avatar-config";
-import { voiceOptions } from "../components/avatar-builder/options";
+import { createLiveAvatarConfig } from "../lib/avatar-config";
+import { createVoiceConfig, voiceOptions, type VoiceOption } from "../lib/voice-config";
 
 export const avatarBuilderSteps = ["Identidad", "Avatar", "Voz", "Persona", "Contexto", "Review"] as const;
 
@@ -86,14 +86,18 @@ export function validateAvatarBuilderStep(
 
 export function buildCreateAvatarRequest(
   state: AvatarBuilderState,
-  selectedLiveAvatar?: ApiLiveAvatarOption | null
+  selectedLiveAvatar?: ApiLiveAvatarOption | null,
+  selectedVoice?: VoiceOption | null
 ): CreateAvatarRequest {
   return {
     name: state.name.trim(),
     description: state.description.trim(),
     instructions: state.instructions.trim(),
     context: state.context.trim(),
-    voiceConfig: createVoiceConfig(state.voiceId),
+    voiceConfig: createVoiceConfig({
+      voiceId: state.voiceId,
+      selectedVoice: selectedVoice ?? voiceOptions.find((option) => option.id === state.voiceId) ?? null,
+    }),
     liveAvatarConfig: createLiveAvatarConfig({
       avatarId: state.liveAvatarId,
       selectedAvatar: selectedLiveAvatar,

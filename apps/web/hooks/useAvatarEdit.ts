@@ -9,14 +9,13 @@ import {
 } from "../lib/api/avatar-api";
 import { ApiClientError } from "../lib/api/http-client";
 import type { ApiLiveAvatarOption } from "../lib/api/live-avatar-api";
+import { createLiveAvatarConfig } from "../lib/avatar-config";
 import {
-  createLiveAvatarConfig,
   createVoiceConfig,
-} from "../lib/avatar-config";
-import {
+  currentVoiceOptionName,
   voiceOptions,
   type VoiceOption,
-} from "../components/avatar-builder/options";
+} from "../lib/voice-config";
 
 export type AvatarEditState = {
   name: string;
@@ -26,6 +25,8 @@ export type AvatarEditState = {
   liveAvatarDisplayName: string;
   liveAvatarThumbnailUrl: string | null;
   voiceId: string;
+  voiceDisplayName: string;
+  voiceDescription: string;
   instructions: string;
   context: string;
   files: File[];
@@ -66,6 +67,8 @@ export function createAvatarEditStateFromAvatar(avatar: ApiAvatar): AvatarEditSt
     liveAvatarDisplayName: readString(liveAvatarConfig.displayName, ""),
     liveAvatarThumbnailUrl: readNullableString(liveAvatarConfig.thumbnailUrl),
     voiceId: readString(voiceConfig.voiceId, ""),
+    voiceDisplayName: readString(voiceConfig.displayName, ""),
+    voiceDescription: readString(voiceConfig.description, ""),
     instructions: avatar.instructions,
     context: avatar.context,
     files: [],
@@ -96,7 +99,8 @@ export function validateAvatarEditState(state: AvatarEditState): AvatarEditValid
 
 export function buildUpdateAvatarRequest(
   state: AvatarEditState,
-  selectedLiveAvatar?: ApiLiveAvatarOption | null
+  selectedLiveAvatar?: ApiLiveAvatarOption | null,
+  selectedVoice?: VoiceOption | null
 ): UpdateAvatarRequest {
   return {
     name: state.name.trim(),
@@ -104,7 +108,12 @@ export function buildUpdateAvatarRequest(
     status: state.status,
     instructions: state.instructions.trim(),
     context: state.context.trim(),
-    voiceConfig: createVoiceConfig(state.voiceId),
+    voiceConfig: createVoiceConfig({
+      voiceId: state.voiceId,
+      selectedVoice: selectedVoice ?? getVoiceEditOptions(state.voiceId).find((option) => option.id === state.voiceId) ?? null,
+      fallbackDisplayName: state.voiceDisplayName,
+      fallbackDescription: state.voiceDescription,
+    }),
     liveAvatarConfig: createLiveAvatarConfig({
       avatarId: state.liveAvatarId,
       selectedAvatar: selectedLiveAvatar,
@@ -122,9 +131,11 @@ export function getVoiceEditOptions(currentVoiceId: string): VoiceOption[] {
   return [
     {
       id: currentVoiceId,
-      name: "Voz actual",
+      displayName: currentVoiceOptionName,
       description: "Se preserva la voz actual hasta conectar el provider real.",
       provider: "openai",
+      toneLabel: "Actual",
+      recommendedFor: "Mantener la voz guardada en este avatar.",
     },
     ...voiceOptions,
   ];

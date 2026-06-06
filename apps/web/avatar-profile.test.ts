@@ -16,6 +16,8 @@ const avatar: ApiAvatar = {
   voiceConfig: {
     provider: "openai",
     voiceId: "alloy",
+    displayName: "Alloy",
+    description: "Voz equilibrada y natural para conversaciones generales.",
     speakingRate: 1,
   },
   liveAvatarConfig: {
@@ -67,9 +69,8 @@ describe("avatar profile", () => {
       sandboxEnabled: true,
     });
     expect(getVoiceSummary(avatar)).toEqual({
-      selectedVoice: "alloy",
-      providerLabel: "OpenAI",
-      speakingRate: "1",
+      selectedVoice: "Alloy",
+      description: "Voz equilibrada y natural para conversaciones generales.",
     });
     expect(formatDateTime(avatar.createdAt)).not.toBe("Fecha no disponible");
   });
@@ -82,7 +83,10 @@ describe("avatar profile", () => {
     };
 
     expect(getLiveAvatarSummary(incompleteAvatar).selectedAvatar).toBe("Sin avatar seleccionado");
-    expect(getVoiceSummary(incompleteAvatar).selectedVoice).toBe("No definido");
+    expect(getVoiceSummary(incompleteAvatar)).toMatchObject({
+      selectedVoice: "No definido",
+      description: "Sin descripción configurada.",
+    });
   });
 
   it("does not treat thumbnail-only metadata as a complete visual snapshot", () => {

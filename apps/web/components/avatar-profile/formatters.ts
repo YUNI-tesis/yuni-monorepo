@@ -12,8 +12,7 @@ export type LiveAvatarSummary = {
 
 export type VoiceSummary = {
   selectedVoice: string;
-  providerLabel: string;
-  speakingRate: string;
+  description: string;
 };
 
 export function formatAvatarStatus(status: ApiAvatarStatus): string {
@@ -73,21 +72,8 @@ export function getVoiceSummary(avatar: ApiAvatar): VoiceSummary {
 
   return {
     selectedVoice: readString(config.displayName, readString(config.voiceId, "No definido")),
-    providerLabel: formatProvider(readString(config.provider, "No definido")),
-    speakingRate: readNumber(config.speakingRate, "No definido"),
+    description: readString(config.description, "Sin descripción configurada."),
   };
-}
-
-function formatProvider(provider: string): string {
-  if (provider === "openai") {
-    return "OpenAI";
-  }
-
-  if (provider === "elevenlabs") {
-    return "ElevenLabs";
-  }
-
-  return provider;
 }
 
 function readRecord(value: unknown): Record<string, unknown> {
@@ -104,8 +90,4 @@ function readString(value: unknown, fallback: string): string {
 
 function readNullableString(value: unknown): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
-}
-
-function readNumber(value: unknown, fallback: string): string {
-  return typeof value === "number" ? String(value) : fallback;
 }
