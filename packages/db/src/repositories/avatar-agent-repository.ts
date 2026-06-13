@@ -1,5 +1,10 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
-import type { CreateAvatarAgentInput, UpdateAvatarAgentInput } from "@yuni/domain";
+import type {
+  AgentProvider,
+  CreateAvatarAgentInput,
+  ProviderSyncStatus,
+  UpdateAvatarAgentInput,
+} from "@yuni/domain";
 import { OwnershipError } from "@yuni/domain";
 
 type Db = PrismaClient | Prisma.TransactionClient;
@@ -24,6 +29,39 @@ export function createAvatarAgentRepository(db: Db) {
     findByIdForOwner(ownerId: string, avatarAgentId: string) {
       return db.avatarAgent.findFirst({
         where: { id: avatarAgentId, ownerId },
+      });
+    },
+
+    async updateProviderSync(
+      ownerId: string,
+      avatarAgentId: string,
+      input: {
+        agentProvider?: AgentProvider;
+        providerAgentId?: string | null;
+        providerSyncStatus: ProviderSyncStatus;
+        providerSyncError?: string | null;
+        providerSyncedAt?: Date | null;
+        providerSyncFingerprint?: string | null;
+      }
+    ) {
+      const current = await this.findByIdForOwner(ownerId, avatarAgentId);
+      if (!current) throw new OwnershipError();
+
+      const data: Prisma.AvatarAgentUncheckedUpdateInput = {
+        providerSyncStatus: input.providerSyncStatus,
+        providerSyncError: input.providerSyncError ?? null,
+      };
+
+      if (input.agentProvider !== undefined) data.agentProvider = input.agentProvider;
+      if (input.providerAgentId !== undefined) data.providerAgentId = input.providerAgentId;
+      if (input.providerSyncedAt !== undefined) data.providerSyncedAt = input.providerSyncedAt;
+      if (input.providerSyncFingerprint !== undefined) {
+        data.providerSyncFingerprint = input.providerSyncFingerprint;
+      }
+
+      return db.avatarAgent.update({
+        where: { id: avatarAgentId },
+        data,
       });
     },
 

@@ -47,6 +47,42 @@ function createTestDependencies(providerError?: Error): AppDependencies {
       sandbox: true,
     },
   ];
+  const liveAvatarProvider = {
+    name: "liveavatar" as const,
+    async listAvatars() {
+      if (providerError) {
+        throw providerError;
+      }
+
+      return avatars;
+    },
+    async createLiteSessionToken() {
+      return {
+        sessionToken: "liveavatar-session-token",
+        sessionId: "liveavatar-session",
+      };
+    },
+  };
+  const avatarRepository = {
+    async create(): Promise<AvatarAgentRecord> {
+      throw new Error("Avatar repository is not used in live avatar tests");
+    },
+    async listByOwner() {
+      return [];
+    },
+    async findByIdForOwner() {
+      return null;
+    },
+    async updateProviderSync(): Promise<AvatarAgentRecord> {
+      throw new Error("Avatar repository is not used in live avatar tests");
+    },
+    async updateForOwner(): Promise<AvatarAgentRecord> {
+      throw new Error("Avatar repository is not used in live avatar tests");
+    },
+    async deleteForOwner(): Promise<AvatarAgentRecord> {
+      throw new Error("Avatar repository is not used in live avatar tests");
+    },
+  };
 
   return {
     auth: {
@@ -78,33 +114,57 @@ function createTestDependencies(providerError?: Error): AppDependencies {
         mode: "lite",
         sandbox: true,
       },
-      repository: {
-        async create(): Promise<AvatarAgentRecord> {
-          throw new Error("Avatar repository is not used in live avatar tests");
-        },
-        async listByOwner() {
-          return [];
-        },
-        async findByIdForOwner() {
-          return null;
-        },
-        async updateForOwner(): Promise<AvatarAgentRecord> {
-          throw new Error("Avatar repository is not used in live avatar tests");
-        },
-        async deleteForOwner(): Promise<AvatarAgentRecord> {
-          throw new Error("Avatar repository is not used in live avatar tests");
-        },
-      },
+      repository: avatarRepository,
     },
     liveAvatar: {
-      provider: {
-        name: "liveavatar",
-        async listAvatars() {
-          if (providerError) {
-            throw providerError;
-          }
-
-          return avatars;
+      provider: liveAvatarProvider,
+    },
+    voiceSessions: {
+      avatarsRepository: avatarRepository,
+      conversationsRepository: {
+        async createPrivate() {
+          return { id: "conversation-1" };
+        },
+        async markEnded() {},
+      },
+      realtimeSessionsRepository: {
+        async create() {
+          return { id: "realtime-1" };
+        },
+        async findPrivateForOwner() {
+          return null;
+        },
+        async markActive() {
+          return {
+            id: "realtime-1",
+            conversationId: "conversation-1",
+            providerSessionId: "liveavatar-session",
+            status: "active",
+            endedAt: null,
+          };
+        },
+        async markEnded() {
+          return {
+            id: "realtime-1",
+            conversationId: "conversation-1",
+            providerSessionId: "liveavatar-session",
+            status: "ended",
+            endedAt: new Date("2026-05-16T00:00:00.000Z"),
+          };
+        },
+        async markErrored() {},
+      },
+      messagesRepository: {
+        async append() {},
+      },
+      liveAvatarProvider,
+      elevenLabsAgentProvider: {
+        async syncAvatarAgent() {
+          return {
+            providerAgentId: "agent-1",
+            providerSyncFingerprint: "fingerprint",
+            synced: true,
+          };
         },
       },
     },

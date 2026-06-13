@@ -8,6 +8,7 @@ export * from "./schemas/conversation";
 export * from "./schemas/message";
 export * from "./schemas/public-session";
 export * from "./schemas/realtime-session";
+export * from "./schemas/voice-session";
 export * from "./schemas/document";
 export * from "./schemas/usage-event";
 export * from "./schemas/job";

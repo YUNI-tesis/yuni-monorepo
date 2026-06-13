@@ -1,4 +1,9 @@
-import { type LiveAvatarConfig, liveAvatarConfig, requireLiveAvatarConfig } from "@yuni/config";
+import {
+  type LiveAvatarConfig,
+  liveAvatarConfig,
+  requireLiveAvatarConfig,
+  requireLiveAvatarElevenLabsConnectorConfig,
+} from "@yuni/config";
 
 export type AvatarProviderName = "liveavatar";
 export type LiveAvatarMode = LiveAvatarConfig["mode"];
@@ -12,9 +17,20 @@ export type AvatarOption = {
   sandbox: boolean;
 };
 
+export type LiveAvatarLiteSessionTokenInput = {
+  avatarId: string;
+  elevenLabsAgentId: string;
+};
+
+export type LiveAvatarLiteSessionToken = {
+  sessionToken: string;
+  sessionId: string | null;
+};
+
 export interface AvatarProvider {
   readonly name: AvatarProviderName;
   listAvatars(): Promise<AvatarOption[]>;
+  createLiteSessionToken(input: LiveAvatarLiteSessionTokenInput): Promise<LiveAvatarLiteSessionToken>;
 }
 
 export class AvatarProviderError extends Error {
@@ -62,6 +78,34 @@ export class LiveAvatarProvider implements AvatarProvider {
     return this.fetchAvatarList(config, "/v1/avatars/public");
   }
 
+  async createLiteSessionToken(input: LiveAvatarLiteSessionTokenInput): Promise<LiveAvatarLiteSessionToken> {
+    const config = this.requireElevenLabsConnectorConfig();
+    const body = await this.fetchJson(config, "/v1/sessions/token", {
+      method: "POST",
+      headers: {
+        "X-API-KEY": config.apiKey,
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        mode: "LITE",
+        avatar_id: input.avatarId,
+        is_sandbox: config.sandbox,
+        elevenlabs_agent_config: {
+          secret_id: config.elevenLabsSecretId,
+          agent_id: input.elevenLabsAgentId,
+        },
+      }),
+    });
+    const token = extractSessionToken(body);
+
+    if (!token) {
+      throw new AvatarProviderError("Live Avatar did not return a session token");
+    }
+
+    return token;
+  }
+
   private requireConfig(): LiveAvatarConfig {
     try {
       return requireLiveAvatarConfig(this.config);
@@ -70,7 +114,29 @@ export class LiveAvatarProvider implements AvatarProvider {
     }
   }
 
+  private requireElevenLabsConnectorConfig(): LiveAvatarConfig {
+    try {
+      return requireLiveAvatarElevenLabsConnectorConfig(this.config);
+    } catch (error) {
+      throw new AvatarProviderUnavailableError("Live Avatar ElevenLabs connector is not configured", error);
+    }
+  }
+
   private async fetchAvatarList(config: LiveAvatarConfig, path: string): Promise<AvatarOption[]> {
+    const body = await this.fetchJson(config, path, {
+      method: "GET",
+      headers: {
+        "X-API-KEY": config.apiKey,
+        Accept: "application/json",
+      },
+    });
+
+    return extractAvatarItems(body)
+      .map((item) => normalizeAvatarOption(item, config))
+      .filter((option): option is AvatarOption => option !== null);
+  }
+
+  private async fetchJson(config: LiveAvatarConfig, path: string, init: RequestInit): Promise<unknown> {
     const url = new URL(path, withTrailingSlash(config.baseUrl));
     const abortController = new AbortController();
     const timeout = setTimeout(() => abortController.abort(), config.requestTimeoutMs);
@@ -79,11 +145,7 @@ export class LiveAvatarProvider implements AvatarProvider {
       let response: Response;
       try {
         response = await this.fetcher(url, {
-          method: "GET",
-          headers: {
-            "X-API-KEY": config.apiKey,
-            Accept: "application/json",
-          },
+          ...init,
           signal: abortController.signal,
         });
       } catch (error) {
@@ -94,11 +156,7 @@ export class LiveAvatarProvider implements AvatarProvider {
         throw new AvatarProviderError("Live Avatar request failed", error);
       }
 
-      if (!response.ok) {
-        throw new AvatarProviderError(`Live Avatar returned ${response.status}`);
-      }
-
-      const body: unknown = await response.json().catch((error: unknown) => {
+      const body = await response.json().catch((error: unknown) => {
         if (isAbortError(error)) {
           throw new AvatarProviderTimeoutError("Live Avatar request timed out", error);
         }
@@ -106,9 +164,16 @@ export class LiveAvatarProvider implements AvatarProvider {
         throw new AvatarProviderError("Live Avatar returned invalid JSON", error);
       });
 
-      return extractAvatarItems(body)
-        .map((item) => normalizeAvatarOption(item, config))
-        .filter((option): option is AvatarOption => option !== null);
+      if (!response.ok) {
+        throw new AvatarProviderError(formatLiveAvatarError(response.status, body));
+      }
+
+      const bodyError = readLiveAvatarBodyError(body);
+      if (bodyError) {
+        throw new AvatarProviderError(bodyError);
+      }
+
+      return body;
     } finally {
       clearTimeout(timeout);
     }
@@ -136,6 +201,17 @@ export class MockAvatarProvider implements AvatarProvider {
     }
 
     return this.avatars;
+  }
+
+  async createLiteSessionToken(): Promise<LiveAvatarLiteSessionToken> {
+    if (this.error) {
+      throw this.error;
+    }
+
+    return {
+      sessionToken: "mock-liveavatar-session-token",
+      sessionId: "mock-liveavatar-session",
+    };
   }
 }
 
@@ -171,6 +247,26 @@ function extractAvatarItems(body: unknown): unknown[] {
   }
 
   return [];
+}
+
+function extractSessionToken(body: unknown): LiveAvatarLiteSessionToken | null {
+  const data = isRecord(body) ? body.data : null;
+  const candidate = isRecord(data) ? data : isRecord(body) ? body : null;
+
+  if (!candidate) {
+    return null;
+  }
+
+  const sessionToken = readString(candidate.session_token) ?? readString(candidate.sessionToken);
+
+  if (!sessionToken) {
+    return null;
+  }
+
+  return {
+    sessionToken,
+    sessionId: readString(candidate.session_id) ?? readString(candidate.sessionId),
+  };
 }
 
 function normalizeAvatarOption(item: unknown, config: LiveAvatarConfig): AvatarOption | null {
@@ -211,6 +307,96 @@ function normalizeAvatarOption(item: unknown, config: LiveAvatarConfig): AvatarO
 
 function readString(value: unknown): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function readNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function formatLiveAvatarError(status: number, body: unknown): string {
+  const bodyMessage = readLiveAvatarBodyMessage(body);
+
+  return bodyMessage ? `Live Avatar returned ${status}: ${bodyMessage}` : `Live Avatar returned ${status}`;
+}
+
+function readLiveAvatarBodyError(body: unknown): string | null {
+  if (!isRecord(body)) {
+    return null;
+  }
+
+  const code = readNumber(body.code);
+  const message = readLiveAvatarBodyMessage(body);
+
+  if (code !== null && code !== 100 && code !== 1000 && message) {
+    return `Live Avatar returned code ${code}: ${message}`;
+  }
+
+  return null;
+}
+
+function readLiveAvatarBodyMessage(body: unknown): string | null {
+  if (!isRecord(body)) {
+    return null;
+  }
+
+  const message =
+    readString(body.message) ??
+    readString(body.detail) ??
+    (isRecord(body.error) ? readString(body.error.message) : null) ??
+    readString(body.error);
+  const dataMessage = readLiveAvatarDataMessage(body.data);
+
+  if (message && dataMessage && isGenericLiveAvatarMessage(message)) {
+    return dataMessage;
+  }
+
+  if (message && dataMessage && message !== dataMessage) {
+    return `${message}: ${dataMessage}`;
+  }
+
+  if (message) {
+    return message;
+  }
+
+  return dataMessage;
+}
+
+function readLiveAvatarDataMessage(data: unknown): string | null {
+  if (Array.isArray(data)) {
+    const messages = data.map(readLiveAvatarIssueMessage).filter((message): message is string => message !== null);
+
+    return messages.length > 0 ? messages.join("; ") : null;
+  }
+
+  if (isRecord(data)) {
+    return readString(data.message) ?? readString(data.error);
+  }
+
+  return null;
+}
+
+function readLiveAvatarIssueMessage(issue: unknown): string | null {
+  if (!isRecord(issue)) {
+    return null;
+  }
+
+  const message = readString(issue.message) ?? readString(issue.msg) ?? readString(issue.error);
+  if (!message) {
+    return null;
+  }
+
+  const loc = Array.isArray(issue.loc)
+    ? issue.loc
+        .map((part) => (typeof part === "string" || typeof part === "number" ? String(part) : null))
+        .filter((part): part is string => part !== null)
+        .join(".")
+    : "";
+
+  return loc.length > 0 ? `${loc}: ${message}` : message;
+}
+
+function isGenericLiveAvatarMessage(message: string): boolean {
+  return message.toLowerCase() === "bad request error";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

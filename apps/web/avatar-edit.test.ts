@@ -4,10 +4,20 @@ import type { ApiLiveAvatarOption } from "./lib/api/live-avatar-api";
 import {
   buildUpdateAvatarRequest,
   createAvatarEditStateFromAvatar,
-  getVoiceEditOptions,
   validateAvatarEditState,
 } from "./hooks/useAvatarEdit";
-import { voiceOptions } from "./lib/voice-config";
+import { withCurrentVoiceOption } from "./hooks/useElevenLabsVoiceOptions";
+import type { VoiceOption } from "./lib/voice-config";
+
+const voiceOption: VoiceOption = {
+  id: "voice-1",
+  displayName: "Agustin",
+  description: "Relaxed, warm and approachable.",
+  provider: "elevenlabs",
+  toneLabel: "Warm",
+  recommendedFor: "Conversaciones naturales.",
+  previewUrl: "https://cdn.elevenlabs.test/voice-1.mp3",
+};
 
 const avatar: ApiAvatar = {
   id: "avatar-1",
@@ -16,10 +26,10 @@ const avatar: ApiAvatar = {
   instructions: "Responde claro.",
   context: "Contexto base",
   voiceConfig: {
-    provider: "openai",
-    voiceId: "alloy",
-    displayName: "Alloy",
-    description: "Voz equilibrada y natural para conversaciones generales.",
+    provider: "elevenlabs",
+    voiceId: "voice-1",
+    displayName: "Agustin",
+    description: "Relaxed, warm and approachable.",
     speakingRate: 1,
   },
   liveAvatarConfig: {
@@ -30,6 +40,12 @@ const avatar: ApiAvatar = {
     mode: "lite",
     sandbox: true,
   },
+  agentProvider: "elevenlabs_agents",
+  providerAgentId: null,
+  providerSyncStatus: "not_synced",
+  providerSyncError: null,
+  providerSyncedAt: null,
+  providerSyncFingerprint: null,
   status: "active",
   createdAt: "2026-05-21T13:30:00.000Z",
   updatedAt: "2026-05-21T14:45:00.000Z",
@@ -79,9 +95,10 @@ describe("avatar edit", () => {
       liveAvatarId: "demo-guide",
       liveAvatarDisplayName: "Guia cercano",
       liveAvatarThumbnailUrl: "https://cdn.yuni.test/demo-guide.png",
-      voiceId: "alloy",
-      voiceDisplayName: "Alloy",
-      voiceDescription: "Voz equilibrada y natural para conversaciones generales.",
+      voiceProvider: "elevenlabs",
+      voiceId: "voice-1",
+      voiceDisplayName: "Agustin",
+      voiceDescription: "Relaxed, warm and approachable.",
       files: [],
     });
   });
@@ -101,8 +118,7 @@ describe("avatar edit", () => {
 
   it("builds an update payload without ownerId and with live avatar lite sandbox", () => {
     const state = createAvatarEditStateFromAvatar(avatar);
-    const selectedVoice = voiceOptions.find((option) => option.id === state.voiceId) ?? null;
-    const payload = buildUpdateAvatarRequest(state, liveAvatarOption, selectedVoice);
+    const payload = buildUpdateAvatarRequest(state, liveAvatarOption, voiceOption);
 
     expect(payload).toMatchObject({
       name: "YUNI Demo",
@@ -116,10 +132,10 @@ describe("avatar edit", () => {
         sandbox: true,
       },
       voiceConfig: {
-        provider: "openai",
-        voiceId: "alloy",
-        displayName: "Alloy",
-        description: "Voz equilibrada y natural para conversaciones generales.",
+        provider: "elevenlabs",
+        voiceId: "voice-1",
+        displayName: "Agustin",
+        description: "Relaxed, warm and approachable.",
         speakingRate: 1,
       },
     });
@@ -127,7 +143,7 @@ describe("avatar edit", () => {
   });
 
   it("keeps current voice option when provider catalog does not contain it", () => {
-    expect(getVoiceEditOptions("provider-voice-42")[0]).toMatchObject({
+    expect(withCurrentVoiceOption([], { currentVoiceId: "provider-voice-42" })[0]).toMatchObject({
       id: "provider-voice-42",
       displayName: "Voz actual",
       toneLabel: "Actual",
@@ -138,7 +154,7 @@ describe("avatar edit", () => {
     const customAvatar = {
       ...avatar,
       voiceConfig: {
-        provider: "openai",
+        provider: "elevenlabs",
         voiceId: "provider-voice-42",
         displayName: "Provider Voice",
         description: "Voz traída desde provider.",
@@ -146,10 +162,16 @@ describe("avatar edit", () => {
       },
     };
     const state = createAvatarEditStateFromAvatar(customAvatar);
-    const selectedVoice = getVoiceEditOptions(state.voiceId).find((option) => option.id === state.voiceId) ?? null;
+    const selectedVoice =
+      withCurrentVoiceOption([], {
+        currentVoiceId: state.voiceId,
+        currentVoiceDisplayName: state.voiceDisplayName,
+        currentVoiceDescription: state.voiceDescription,
+        currentVoiceProvider: state.voiceProvider,
+      }).find((option) => option.id === state.voiceId) ?? null;
 
     expect(buildUpdateAvatarRequest(state, liveAvatarOption, selectedVoice).voiceConfig).toEqual({
-      provider: "openai",
+      provider: "elevenlabs",
       voiceId: "provider-voice-42",
       displayName: "Provider Voice",
       description: "Voz traída desde provider.",

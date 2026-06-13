@@ -2,7 +2,7 @@ import { z } from "zod";
 import { AvatarStatusSchema } from "../enums";
 
 export const VoiceConfigSchema = z.strictObject({
-  provider: z.literal("openai"),
+  provider: z.enum(["openai", "elevenlabs"]),
   voiceId: z.string().min(1),
   displayName: z.string().trim().min(1).optional(),
   description: z.string().trim().min(1).optional(),

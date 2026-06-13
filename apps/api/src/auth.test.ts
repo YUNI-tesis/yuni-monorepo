@@ -30,6 +30,38 @@ function publicUser(user: UserWithPassword): PublicUser {
 
 function createTestDependencies(initialUsers: UserWithPassword[] = []): AppDependencies {
   const users = new Map(initialUsers.map((user) => [user.email, user]));
+  const avatarRepository = {
+    async create() {
+      throw new Error("Avatar repository is not used in auth tests");
+    },
+    async listByOwner() {
+      return [];
+    },
+    async findByIdForOwner() {
+      return null;
+    },
+    async updateProviderSync() {
+      throw new Error("Avatar repository is not used in auth tests");
+    },
+    async updateForOwner() {
+      throw new Error("Avatar repository is not used in auth tests");
+    },
+    async deleteForOwner() {
+      throw new Error("Avatar repository is not used in auth tests");
+    },
+  };
+  const liveAvatarProvider = {
+    name: "liveavatar" as const,
+    async listAvatars() {
+      return [];
+    },
+    async createLiteSessionToken() {
+      return {
+        sessionToken: "liveavatar-session-token",
+        sessionId: "liveavatar-session",
+      };
+    },
+  };
 
   return {
     auth: {
@@ -72,29 +104,57 @@ function createTestDependencies(initialUsers: UserWithPassword[] = []): AppDepen
         mode: "lite",
         sandbox: true,
       },
-      repository: {
-        async create() {
-          throw new Error("Avatar repository is not used in auth tests");
-        },
-        async listByOwner() {
-          return [];
-        },
-        async findByIdForOwner() {
-          return null;
-        },
-        async updateForOwner() {
-          throw new Error("Avatar repository is not used in auth tests");
-        },
-        async deleteForOwner() {
-          throw new Error("Avatar repository is not used in auth tests");
-        },
-      },
+      repository: avatarRepository,
     },
     liveAvatar: {
-      provider: {
-        name: "liveavatar",
-        async listAvatars() {
-          return [];
+      provider: liveAvatarProvider,
+    },
+    voiceSessions: {
+      avatarsRepository: avatarRepository,
+      conversationsRepository: {
+        async createPrivate() {
+          return { id: "conversation-1" };
+        },
+        async markEnded() {},
+      },
+      realtimeSessionsRepository: {
+        async create() {
+          return { id: "realtime-1" };
+        },
+        async findPrivateForOwner() {
+          return null;
+        },
+        async markActive() {
+          return {
+            id: "realtime-1",
+            conversationId: "conversation-1",
+            providerSessionId: "liveavatar-session",
+            status: "active",
+            endedAt: null,
+          };
+        },
+        async markEnded() {
+          return {
+            id: "realtime-1",
+            conversationId: "conversation-1",
+            providerSessionId: "liveavatar-session",
+            status: "ended",
+            endedAt: new Date("2026-05-16T00:00:00.000Z"),
+          };
+        },
+        async markErrored() {},
+      },
+      messagesRepository: {
+        async append() {},
+      },
+      liveAvatarProvider,
+      elevenLabsAgentProvider: {
+        async syncAvatarAgent() {
+          return {
+            providerAgentId: "agent-1",
+            providerSyncFingerprint: "fingerprint",
+            synced: true,
+          };
         },
       },
     },

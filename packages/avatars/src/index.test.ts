@@ -14,6 +14,7 @@ const config = {
   mode: "full" as const,
   sandbox: false,
   requestTimeoutMs: 10000,
+  elevenLabsSecretId: "secret-1",
 };
 
 function jsonResponse(body: unknown, init: ResponseInit = {}) {
@@ -120,13 +121,116 @@ describe("@yuni/avatars", () => {
     await expect(provider.listAvatars()).rejects.toBeInstanceOf(AvatarProviderUnavailableError);
   });
 
+  it("creates a LITE session token for the ElevenLabs connector", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(
+      jsonResponse({
+        data: {
+          session_token: "liveavatar-session-token",
+          session_id: "liveavatar-session-id",
+        },
+      })
+    );
+    const provider = new LiveAvatarProvider({ config, fetch: fetcher });
+
+    const session = await provider.createLiteSessionToken({
+      avatarId: "liveavatar-1",
+      elevenLabsAgentId: "agent-1",
+    });
+
+    expect(fetcher).toHaveBeenCalledWith(
+      new URL("https://api.liveavatar.test/v1/sessions/token"),
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({ "X-API-KEY": "liveavatar-key" }),
+        body: JSON.stringify({
+          mode: "LITE",
+          avatar_id: "liveavatar-1",
+          is_sandbox: false,
+          elevenlabs_agent_config: {
+            secret_id: "secret-1",
+            agent_id: "agent-1",
+          },
+        }),
+      })
+    );
+    expect(session).toEqual({
+      sessionToken: "liveavatar-session-token",
+      sessionId: "liveavatar-session-id",
+    });
+  });
+
+  it("requires the Live Avatar ElevenLabs connector secret before creating a session token", async () => {
+    const provider = new LiveAvatarProvider({
+      config: { ...config, elevenLabsSecretId: "" },
+      fetch: vi.fn<typeof fetch>(),
+    });
+
+    await expect(
+      provider.createLiteSessionToken({
+        avatarId: "liveavatar-1",
+        elevenLabsAgentId: "agent-1",
+      })
+    ).rejects.toBeInstanceOf(AvatarProviderUnavailableError);
+  });
+
   it("throws provider errors when Live Avatar fails", async () => {
     const provider = new LiveAvatarProvider({
       config,
       fetch: vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({ error: "nope" }, { status: 500 })),
     });
 
-    await expect(provider.listAvatars()).rejects.toBeInstanceOf(AvatarProviderError);
+    await expect(provider.listAvatars()).rejects.toThrow(new AvatarProviderError("Live Avatar returned 500: nope"));
+  });
+
+  it("surfaces Live Avatar validation details from data arrays", async () => {
+    const provider = new LiveAvatarProvider({
+      config,
+      fetch: vi.fn<typeof fetch>().mockResolvedValue(
+        jsonResponse(
+          {
+            code: 4000,
+            data: [
+              {
+                loc: ["avatar_id"],
+                message: "This avatar is not supported in sandbox mode",
+                params: { avatar_id: "liveavatar-1" },
+              },
+            ],
+            message: "Bad request error",
+          },
+          { status: 400 }
+        )
+      ),
+    });
+
+    await expect(
+      provider.createLiteSessionToken({
+        avatarId: "liveavatar-1",
+        elevenLabsAgentId: "agent-1",
+      })
+    ).rejects.toThrow(
+      new AvatarProviderError("Live Avatar returned 400: avatar_id: This avatar is not supported in sandbox mode")
+    );
+  });
+
+  it("surfaces Live Avatar application error messages from 200 responses", async () => {
+    const provider = new LiveAvatarProvider({
+      config,
+      fetch: vi.fn<typeof fetch>().mockResolvedValue(
+        jsonResponse({
+          code: 4000,
+          data: null,
+          message: "Invalid secret_id",
+        })
+      ),
+    });
+
+    await expect(
+      provider.createLiteSessionToken({
+        avatarId: "liveavatar-1",
+        elevenLabsAgentId: "agent-1",
+      })
+    ).rejects.toThrow(new AvatarProviderError("Live Avatar returned code 4000: Invalid secret_id"));
   });
 
   it("aborts Live Avatar requests after the configured timeout", async () => {
@@ -192,6 +296,9 @@ describe("@yuni/avatars", () => {
     ];
 
     await expect(new MockAvatarProvider({ avatars }).listAvatars()).resolves.toEqual(avatars);
+    await expect(new MockAvatarProvider({ avatars }).createLiteSessionToken()).resolves.toMatchObject({
+      sessionToken: "mock-liveavatar-session-token",
+    });
     await expect(new MockAvatarProvider({ error: new Error("boom") }).listAvatars()).rejects.toThrow("boom");
   });
 });

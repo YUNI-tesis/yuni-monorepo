@@ -2,6 +2,8 @@
 
 Prompts base para pedir planes modulares de YUNI y seguir implementando por partes.
 
+Roadmap operativo para dividir el MVP entre dos personas: [docs/roadmap/mvp-gantt.md](../roadmap/mvp-gantt.md).
+
 ## Estado
 
 - `00-monorepo-base.md`: implementado.
@@ -17,18 +19,21 @@ Prompts base para pedir planes modulares de YUNI y seguir implementando por part
 - `10-avatar-edit-ui.md`: implementado.
 - `11-live-avatar-adapter.md`: implementado.
 - `12-live-avatar-selector-stage.md`: implementado.
+- `12A-app-shell-navigation-dashboard.md`: pendiente.
 - `13-voice-selector-config.md`: implementado.
 - `14-documents-filedrop-shell.md`: pendiente.
 - `15-share-links-api.md`: pendiente.
 - `16-share-metrics-api.md`: pendiente.
 - `17-share-tab-ui.md`: pendiente.
-- `18-interact-shell-ui.md`: pendiente.
+- `18-interact-shell-ui.md`: implementado parcialmente dentro de `24B` para llamada privada MVP.
 - `19-private-conversations-api.md`: pendiente.
 - `20-private-chat-ui.md`: pendiente.
 - `21-public-link-resolver-api.md`: pendiente.
 - `22-public-avatar-ui.md`: pendiente.
 - `23-public-session-api.md`: pendiente.
 - `24A-agent-voice-architecture-context-contract.md`: pendiente.
+- `24B-elevenlabs-agent-provider-sync.md`: implementado para MVP privado con contexto textual.
+- `24C-elevenlabs-knowledge-base-context-sync.md`: pendiente.
 - `24-openai-adapter-prompt-builder.md`: pendiente.
 - `25-private-text-chat-api.md`: pendiente.
 - `26-public-text-chat-api.md`: pendiente.

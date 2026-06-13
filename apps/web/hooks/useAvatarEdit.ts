@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   getAvatar,
   type ApiAvatar,
@@ -10,12 +10,7 @@ import {
 import { ApiClientError } from "../lib/api/http-client";
 import type { ApiLiveAvatarOption } from "../lib/api/live-avatar-api";
 import { createLiveAvatarConfig } from "../lib/avatar-config";
-import {
-  createVoiceConfig,
-  currentVoiceOptionName,
-  voiceOptions,
-  type VoiceOption,
-} from "../lib/voice-config";
+import { createVoiceConfig, type VoiceOption } from "../lib/voice-config";
 
 export type AvatarEditState = {
   name: string;
@@ -24,6 +19,7 @@ export type AvatarEditState = {
   liveAvatarId: string;
   liveAvatarDisplayName: string;
   liveAvatarThumbnailUrl: string | null;
+  voiceProvider: VoiceOption["provider"];
   voiceId: string;
   voiceDisplayName: string;
   voiceDescription: string;
@@ -66,6 +62,7 @@ export function createAvatarEditStateFromAvatar(avatar: ApiAvatar): AvatarEditSt
     liveAvatarId: readString(liveAvatarConfig.avatarId, ""),
     liveAvatarDisplayName: readString(liveAvatarConfig.displayName, ""),
     liveAvatarThumbnailUrl: readNullableString(liveAvatarConfig.thumbnailUrl),
+    voiceProvider: readVoiceProvider(voiceConfig.provider),
     voiceId: readString(voiceConfig.voiceId, ""),
     voiceDisplayName: readString(voiceConfig.displayName, ""),
     voiceDescription: readString(voiceConfig.description, ""),
@@ -110,7 +107,8 @@ export function buildUpdateAvatarRequest(
     context: state.context.trim(),
     voiceConfig: createVoiceConfig({
       voiceId: state.voiceId,
-      selectedVoice: selectedVoice ?? getVoiceEditOptions(state.voiceId).find((option) => option.id === state.voiceId) ?? null,
+      selectedVoice: selectedVoice ?? null,
+      fallbackProvider: state.voiceProvider,
       fallbackDisplayName: state.voiceDisplayName,
       fallbackDescription: state.voiceDescription,
     }),
@@ -121,24 +119,6 @@ export function buildUpdateAvatarRequest(
       fallbackThumbnailUrl: state.liveAvatarThumbnailUrl,
     }),
   };
-}
-
-export function getVoiceEditOptions(currentVoiceId: string): VoiceOption[] {
-  if (!currentVoiceId || voiceOptions.some((option) => option.id === currentVoiceId)) {
-    return voiceOptions;
-  }
-
-  return [
-    {
-      id: currentVoiceId,
-      displayName: currentVoiceOptionName,
-      description: "Se preserva la voz actual hasta conectar el provider real.",
-      provider: "openai",
-      toneLabel: "Actual",
-      recommendedFor: "Mantener la voz guardada en este avatar.",
-    },
-    ...voiceOptions,
-  ];
 }
 
 export function useAvatarEdit(avatarId: string) {
@@ -201,11 +181,6 @@ export function useAvatarEdit(avatarId: string) {
     };
   }, [avatarId, router]);
 
-  const voiceEditOptions = useMemo(
-    () => getVoiceEditOptions(loadState.state?.voiceId ?? ""),
-    [loadState.state?.voiceId]
-  );
-
   function updateField<Field extends keyof AvatarEditState>(field: Field, value: AvatarEditState[Field]) {
     setLoadState((currentLoadState) => {
       if (currentLoadState.status !== "ready") {
@@ -261,7 +236,6 @@ export function useAvatarEdit(avatarId: string) {
   return {
     loadState,
     errors,
-    voiceEditOptions,
     updateField,
     validateAll,
     setFormError,
@@ -279,6 +253,10 @@ function readRecord(value: unknown): Record<string, unknown> {
 
 function readString(value: unknown, fallback: string): string {
   return typeof value === "string" && value.length > 0 ? value : fallback;
+}
+
+function readVoiceProvider(value: unknown): VoiceOption["provider"] {
+  return value === "openai" || value === "elevenlabs" ? value : "elevenlabs";
 }
 
 function readNullableString(value: unknown): string | null {

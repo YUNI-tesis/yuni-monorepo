@@ -1,25 +1,31 @@
 # Prompt: Voice Selector Y Voice Config
 
+Estado: actualizado para ElevenLabs real el 2026-06-12.
+
 Armame un plan específico para configuración de voz en YUNI.
 
 Objetivo:
-Permitir seleccionar voz y guardar `voiceConfig` en el avatar.
+Permitir seleccionar una voz real de `My Voices` de ElevenLabs y guardar `voiceConfig` en el avatar.
 
 Debe incluir:
 
 - contrato de `voiceConfig`
-- lista inicial de voces OpenAI
+- endpoint privado para listar voces de ElevenLabs sin exponer API keys
+- listado desde `GET /v2/voices` con `voice_type=saved`
 - componente `VoiceSelector`
 - integración en builder/edit
 - validación de provider/voiceId/speakingRate
-- preview visual si aplica, sin TTS real todavía
+- preview desde `previewUrl` de ElevenLabs, sin generar TTS nuevo
+- preservación de "Voz actual" si la voz guardada ya no está en el catálogo
 
 Reglas:
 
 - no implementar llamada ni TTS real en este módulo
 - no clonado de voz
-- no ElevenLabs salvo placeholder futuro
+- ElevenLabs se usa como catálogo real de voces
+- OpenAI queda solo como compatibilidad legacy
 - config debe ser extensible
+- API keys quedan server-side
 
 Checklist:
 
@@ -27,3 +33,5 @@ Checklist:
 - config se guarda
 - edit carga voz existente
 - schemas rechazan config inválida
+- el wizard no muestra voces hardcodeadas de OpenAI
+- el backend valida una voz nueva contra `My Voices` cuando ElevenLabs responde correctamente

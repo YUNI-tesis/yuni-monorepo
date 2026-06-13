@@ -19,3 +19,9 @@ Registros de decisiones usadas como insumo para el informe final de tesis.
 | --- | --- | --- | --- | --- |
 | 0001 | [Voice Agent Provider Strategy](0001-plan-24a-voice-agent-provider-strategy.md) | `24A-agent-voice-architecture-context-contract.md` | 2026-06-04 | superseded |
 | 0002 | [ElevenLabs-first MVP Voice Option](0002-plan-24a-elevenlabs-first-mvp-option.md) | `24A-agent-voice-architecture-context-contract.md` | 2026-06-04 | accepted |
+| 0003 | [MVP Roadmap Two Person Execution](0003-mvp-roadmap-two-person-execution.md) | `mvp-gantt.md` | 2026-06-06 | accepted |
+| 0004 | [ElevenLabs + LiveAvatar Private Call MVP](0004-elevenlabs-liveavatar-private-call-mvp.md) | `24B-elevenlabs-agent-provider-sync.md` | 2026-06-08 | accepted |
+| 0005 | [ElevenLabs Expressive Conversation UX](0005-elevenlabs-expressive-conversation-ux.md) | `24B-elevenlabs-agent-provider-sync.md` | 2026-06-09 | accepted |
+| 0006 | [ElevenLabs My Voices Catalog + Eager Agent Sync](0006-elevenlabs-my-voices-catalog-eager-agent-sync.md) | `13-voice-selector-config.md`, `24B-elevenlabs-agent-provider-sync.md` | 2026-06-12 | accepted |
+| 0007 | [ElevenLabs Knowledge Base Context Sync](0007-elevenlabs-knowledge-base-context-sync.md) | `24C-elevenlabs-knowledge-base-context-sync.md` | 2026-06-12 | accepted |
+| 0008 | [ElevenLabs + LiveAvatar Integration Hardening](0008-elevenlabs-liveavatar-integration-hardening.md) | `24B-elevenlabs-agent-provider-sync.md` | 2026-06-13 | accepted |

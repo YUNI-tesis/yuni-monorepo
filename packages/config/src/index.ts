@@ -11,9 +11,19 @@ export {
   type OpenAiConfig,
 } from "./openai";
 export {
+  createElevenLabsConfig,
+  elevenLabsConfig,
+  hasElevenLabsDefaultVoice,
+  hasElevenLabsConfig,
+  requireElevenLabsDefaultVoice,
+  requireElevenLabsConfig,
+  type ElevenLabsConfig,
+} from "./elevenlabs";
+export {
   createLiveAvatarConfig,
   hasLiveAvatarConfig,
   liveAvatarConfig,
+  requireLiveAvatarElevenLabsConnectorConfig,
   requireLiveAvatarConfig,
   type LiveAvatarConfig,
 } from "./live-avatar";

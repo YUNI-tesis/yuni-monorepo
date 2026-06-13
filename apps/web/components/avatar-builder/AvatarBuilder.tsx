@@ -6,6 +6,7 @@ import { Button, Card, ErrorState, PageHeader, PageShell } from "@yuni/ui";
 import { createAvatar } from "../../lib/api/avatar-api";
 import { ApiClientError } from "../../lib/api/http-client";
 import { buildCreateAvatarRequest, useAvatarBuilder } from "../../hooks/useAvatarBuilder";
+import { useElevenLabsVoiceOptions } from "../../hooks/useElevenLabsVoiceOptions";
 import { useLiveAvatarOptions } from "../../hooks/useLiveAvatarOptions";
 import { BuilderSteps } from "./BuilderSteps";
 import { ContextStep } from "./steps/ContextStep";
@@ -19,7 +20,8 @@ import styles from "./AvatarBuilder.module.css";
 export function AvatarBuilder() {
   const router = useRouter();
   const liveAvatarOptions = useLiveAvatarOptions();
-  const builder = useAvatarBuilder(liveAvatarOptions.options);
+  const voiceOptions = useElevenLabsVoiceOptions();
+  const builder = useAvatarBuilder(liveAvatarOptions.options, voiceOptions.options);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   async function saveAvatar() {
@@ -62,7 +64,7 @@ export function AvatarBuilder() {
           {builder.currentStep === "Avatar" ? (
             <LiveAvatarStep builder={builder} liveAvatarOptions={liveAvatarOptions} />
           ) : null}
-          {builder.currentStep === "Voz" ? <VoiceStep builder={builder} /> : null}
+          {builder.currentStep === "Voz" ? <VoiceStep builder={builder} voiceOptions={voiceOptions} /> : null}
           {builder.currentStep === "Persona" ? <PersonaStep builder={builder} /> : null}
           {builder.currentStep === "Contexto" ? <ContextStep builder={builder} /> : null}
           {builder.currentStep === "Review" ? <ReviewStep builder={builder} /> : null}

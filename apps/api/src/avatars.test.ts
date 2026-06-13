@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { OwnershipError, type CreateAvatarAgentInput, type UpdateAvatarAgentInput } from "@yuni/domain";
 import type { AvatarOption } from "@yuni/avatars";
+import { ElevenLabsProviderError, ElevenLabsProviderUnavailableError, type ElevenLabsVoiceOption } from "@yuni/voice";
 import type { PublicUser, UserWithPassword } from "./domains/auth/repository";
 import type { AvatarAgentRecord } from "./domains/avatars/repository";
 import { createApp, type AppDependencies } from "./app";
@@ -44,6 +45,20 @@ function avatarInput(overrides: Partial<CreateAvatarAgentInput> = {}): CreateAva
   };
 }
 
+function elevenLabsVoice(overrides: Partial<ElevenLabsVoiceOption> = {}): ElevenLabsVoiceOption {
+  return {
+    id: "voice-1",
+    displayName: "Agustin",
+    description: "Relaxed, warm and approachable.",
+    provider: "elevenlabs",
+    previewUrl: "https://cdn.elevenlabs.test/voice-1.mp3",
+    category: "cloned",
+    labels: { accent: "argentinian" },
+    recommendedFor: "argentinian",
+    ...overrides,
+  };
+}
+
 function createAvatarRecord(
   ownerId: string,
   input: CreateAvatarAgentInput,
@@ -60,6 +75,12 @@ function createAvatarRecord(
     context: input.context,
     voiceConfig: input.voiceConfig,
     liveAvatarConfig: input.liveAvatarConfig,
+    agentProvider: "elevenlabs_agents",
+    providerAgentId: null,
+    providerSyncStatus: "not_synced",
+    providerSyncError: null,
+    providerSyncedAt: null,
+    providerSyncFingerprint: null,
     status: input.status,
     createdAt: now,
     updatedAt: now,
@@ -70,7 +91,12 @@ function createAvatarRecord(
 function createTestDependencies(
   initialUsers: UserWithPassword[] = [],
   runtimeLiveAvatarConfig = { mode: "lite", sandbox: true },
-  liveAvatarProviderAvatars: AvatarOption[] = []
+  liveAvatarProviderAvatars: AvatarOption[] = [],
+  options: {
+    elevenLabsVoices?: ElevenLabsVoiceOption[];
+    listVoicesError?: Error;
+    syncError?: Error;
+  } = {}
 ): AppDependencies {
   const users = new Map(initialUsers.map((user) => [user.email, user]));
   const avatars = new Map<string, AvatarAgentRecord>();
@@ -78,6 +104,101 @@ function createTestDependencies(
     name: "liveavatar" as const,
     async listAvatars() {
       return liveAvatarProviderAvatars;
+    },
+    async createLiteSessionToken() {
+      return {
+        sessionToken: "liveavatar-session-token",
+        sessionId: "liveavatar-session",
+      };
+    },
+  };
+  const elevenLabsVoiceProvider = {
+    async listVoices() {
+      if (options.listVoicesError) {
+        throw options.listVoicesError;
+      }
+
+      return options.elevenLabsVoices ?? [];
+    },
+  };
+  const elevenLabsAgentProvider = {
+    async syncAvatarAgent() {
+      if (options.syncError) {
+        throw options.syncError;
+      }
+
+      return {
+        providerAgentId: "agent-1",
+        providerSyncFingerprint: "fingerprint",
+        synced: true,
+      };
+    },
+  };
+  const avatarRepository = {
+    async create(ownerId: string, input: CreateAvatarAgentInput) {
+      const avatar = createAvatarRecord(ownerId, input, { id: `avatar-${avatars.size + 1}` });
+      avatars.set(avatar.id, avatar);
+
+      return avatar;
+    },
+    async listByOwner(ownerId: string) {
+      return Array.from(avatars.values()).filter((avatar) => avatar.ownerId === ownerId);
+    },
+    async findByIdForOwner(ownerId: string, avatarId: string) {
+      const avatar = avatars.get(avatarId);
+
+      return avatar?.ownerId === ownerId ? avatar : null;
+    },
+    async updateProviderSync(ownerId: string, avatarId: string, input: Parameters<AppDependencies["voiceSessions"]["avatarsRepository"]["updateProviderSync"]>[2]) {
+      const avatar = avatars.get(avatarId);
+
+      if (!avatar || avatar.ownerId !== ownerId) {
+        throw new OwnershipError();
+      }
+
+      const updated: AvatarAgentRecord = {
+        ...avatar,
+        ...input,
+        providerSyncError: input.providerSyncError ?? null,
+        providerSyncedAt: input.providerSyncedAt ?? null,
+        updatedAt: new Date("2026-05-16T00:00:00.000Z"),
+      };
+
+      avatars.set(avatarId, updated);
+
+      return updated;
+    },
+    async updateForOwner(ownerId: string, avatarId: string, input: UpdateAvatarAgentInput) {
+      const avatar = avatars.get(avatarId);
+
+      if (!avatar || avatar.ownerId !== ownerId) {
+        throw new OwnershipError();
+      }
+
+      const updated: AvatarAgentRecord = { ...avatar, updatedAt: new Date("2026-05-16T00:00:00.000Z") };
+
+      if (input.name !== undefined) updated.name = input.name;
+      if (input.description !== undefined) updated.description = input.description;
+      if (input.instructions !== undefined) updated.instructions = input.instructions;
+      if (input.context !== undefined) updated.context = input.context;
+      if (input.voiceConfig !== undefined) updated.voiceConfig = input.voiceConfig;
+      if (input.liveAvatarConfig !== undefined) updated.liveAvatarConfig = input.liveAvatarConfig;
+      if (input.status !== undefined) updated.status = input.status;
+
+      avatars.set(avatarId, updated);
+
+      return updated;
+    },
+    async deleteForOwner(ownerId: string, avatarId: string) {
+      const avatar = avatars.get(avatarId);
+
+      if (!avatar || avatar.ownerId !== ownerId) {
+        throw new OwnershipError();
+      }
+
+      avatars.delete(avatarId);
+
+      return avatar;
     },
   };
 
@@ -123,57 +244,56 @@ function createTestDependencies(
         sandbox: runtimeLiveAvatarConfig.sandbox,
       },
       avatarProvider: liveAvatarProvider,
-      repository: {
-        async create(ownerId, input) {
-          const avatar = createAvatarRecord(ownerId, input, { id: `avatar-${avatars.size + 1}` });
-          avatars.set(avatar.id, avatar);
-
-          return avatar;
-        },
-        async listByOwner(ownerId) {
-          return Array.from(avatars.values()).filter((avatar) => avatar.ownerId === ownerId);
-        },
-        async findByIdForOwner(ownerId, avatarId) {
-          const avatar = avatars.get(avatarId);
-
-          return avatar?.ownerId === ownerId ? avatar : null;
-        },
-        async updateForOwner(ownerId, avatarId, input: UpdateAvatarAgentInput) {
-          const avatar = avatars.get(avatarId);
-
-          if (!avatar || avatar.ownerId !== ownerId) {
-            throw new OwnershipError();
-          }
-
-          const updated: AvatarAgentRecord = { ...avatar, updatedAt: new Date("2026-05-16T00:00:00.000Z") };
-
-          if (input.name !== undefined) updated.name = input.name;
-          if (input.description !== undefined) updated.description = input.description;
-          if (input.instructions !== undefined) updated.instructions = input.instructions;
-          if (input.context !== undefined) updated.context = input.context;
-          if (input.voiceConfig !== undefined) updated.voiceConfig = input.voiceConfig;
-          if (input.liveAvatarConfig !== undefined) updated.liveAvatarConfig = input.liveAvatarConfig;
-          if (input.status !== undefined) updated.status = input.status;
-
-          avatars.set(avatarId, updated);
-
-          return updated;
-        },
-        async deleteForOwner(ownerId, avatarId) {
-          const avatar = avatars.get(avatarId);
-
-          if (!avatar || avatar.ownerId !== ownerId) {
-            throw new OwnershipError();
-          }
-
-          avatars.delete(avatarId);
-
-          return avatar;
-        },
-      },
+      elevenLabsVoiceProvider,
+      elevenLabsAgentProvider,
+      repository: avatarRepository,
     },
     liveAvatar: {
       provider: liveAvatarProvider,
+    },
+    voiceSessions: {
+      avatarsRepository: avatarRepository,
+      conversationsRepository: {
+        async createPrivate() {
+          return { id: "conversation-1" };
+        },
+        async markEnded() {},
+      },
+      realtimeSessionsRepository: {
+        async create() {
+          return { id: "realtime-1" };
+        },
+        async findPrivateForOwner() {
+          return null;
+        },
+        async markActive() {
+          return {
+            id: "realtime-1",
+            conversationId: "conversation-1",
+            providerSessionId: "liveavatar-session",
+            status: "active",
+            endedAt: null,
+          };
+        },
+        async markEnded() {
+          return {
+            id: "realtime-1",
+            conversationId: "conversation-1",
+            providerSessionId: "liveavatar-session",
+            status: "ended",
+            endedAt: new Date("2026-05-16T00:00:00.000Z"),
+          };
+        },
+        async markErrored() {},
+      },
+      messagesRepository: {
+        async append() {},
+      },
+      liveAvatarProvider,
+      elevenLabsAgentProvider,
+    },
+    voiceProviders: {
+      elevenLabsVoiceProvider,
     },
   };
 }
@@ -193,6 +313,39 @@ async function json(response: Response) {
 }
 
 describe("@yuni/api avatars", () => {
+  it("rejects anonymous ElevenLabs voice catalog requests", async () => {
+    const app = createApp(createTestDependencies([createUser()]));
+    const response = await app.request("/voice-providers/elevenlabs/voices");
+
+    expect(response.status).toBe(401);
+  });
+
+  it("lists ElevenLabs My Voices for authenticated creators", async () => {
+    const app = createApp(
+      createTestDependencies([createUser()], { mode: "lite", sandbox: true }, [], {
+        elevenLabsVoices: [elevenLabsVoice()],
+      })
+    );
+    const cookie = await login(app);
+    const response = await app.request("/voice-providers/elevenlabs/voices", { headers: { Cookie: cookie } });
+    const body = (await json(response)) as { voices: ElevenLabsVoiceOption[] };
+
+    expect(response.status).toBe(200);
+    expect(body.voices).toEqual([elevenLabsVoice()]);
+  });
+
+  it("returns 503 when ElevenLabs voice catalog is not configured", async () => {
+    const app = createApp(
+      createTestDependencies([createUser()], { mode: "lite", sandbox: true }, [], {
+        listVoicesError: new ElevenLabsProviderUnavailableError(),
+      })
+    );
+    const cookie = await login(app);
+    const response = await app.request("/voice-providers/elevenlabs/voices", { headers: { Cookie: cookie } });
+
+    expect(response.status).toBe(503);
+  });
+
   it("rejects anonymous list requests", async () => {
     const app = createApp(createTestDependencies([createUser()]));
     const response = await app.request("/avatars");
@@ -224,6 +377,236 @@ describe("@yuni/api avatars", () => {
     expect(response.status).toBe(201);
     expect(body.avatar.name).toBe("Avatar creado");
     expect(body.avatar.ownerId).toBeUndefined();
+  });
+
+  it("creates an avatar with a trusted ElevenLabs voice and eager provider sync", async () => {
+    const app = createApp(
+      createTestDependencies([createUser()], { mode: "lite", sandbox: true }, [], {
+        elevenLabsVoices: [elevenLabsVoice()],
+      })
+    );
+    const cookie = await login(app);
+    const response = await app.request("/avatars", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify(
+        avatarInput({
+          voiceConfig: {
+            provider: "elevenlabs",
+            voiceId: "voice-1",
+            displayName: "Client Supplied Voice",
+            description: "Untrusted description.",
+            speakingRate: 1,
+          },
+        })
+      ),
+    });
+    const body = (await json(response)) as {
+      avatar: {
+        voiceConfig: { provider: string; voiceId: string; displayName?: string; description?: string };
+        providerAgentId: string | null;
+        providerSyncStatus: string;
+        providerSyncError: string | null;
+      };
+    };
+
+    expect(response.status).toBe(201);
+    expect(body.avatar.voiceConfig).toMatchObject({
+      provider: "elevenlabs",
+      voiceId: "voice-1",
+      displayName: "Agustin",
+      description: "Relaxed, warm and approachable.",
+    });
+    expect(body.avatar.providerAgentId).toBe("agent-1");
+    expect(body.avatar.providerSyncStatus).toBe("synced");
+    expect(body.avatar.providerSyncError).toBeNull();
+  });
+
+  it("keeps the created avatar with failed sync state when ElevenLabs Agent sync fails", async () => {
+    const app = createApp(
+      createTestDependencies([createUser()], { mode: "lite", sandbox: true }, [], {
+        elevenLabsVoices: [elevenLabsVoice()],
+        syncError: new ElevenLabsProviderError("ElevenLabs returned 400: bad agent config"),
+      })
+    );
+    const cookie = await login(app);
+    const response = await app.request("/avatars", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify(
+        avatarInput({
+          voiceConfig: {
+            provider: "elevenlabs",
+            voiceId: "voice-1",
+            speakingRate: 1,
+          },
+        })
+      ),
+    });
+    const body = (await json(response)) as {
+      avatar: { id: string; providerSyncStatus: string; providerSyncError: string | null };
+    };
+    const getResponse = await app.request(`/avatars/${body.avatar.id}`, { headers: { Cookie: cookie } });
+    const getBody = (await json(getResponse)) as {
+      avatar: { providerSyncStatus: string; providerSyncError: string | null };
+    };
+
+    expect(response.status).toBe(201);
+    expect(body.avatar.providerSyncStatus).toBe("failed");
+    expect(body.avatar.providerSyncError).toBe("ElevenLabs returned 400: bad agent config");
+    expect(getBody.avatar.providerSyncStatus).toBe("failed");
+  });
+
+  it("rejects new ElevenLabs voices when the provider catalog cannot validate metadata", async () => {
+    const app = createApp(
+      createTestDependencies([createUser()], { mode: "lite", sandbox: true }, [], {
+        listVoicesError: new ElevenLabsProviderUnavailableError(),
+      })
+    );
+    const cookie = await login(app);
+    const response = await app.request("/avatars", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify(
+        avatarInput({
+          voiceConfig: {
+            provider: "elevenlabs",
+            voiceId: "voice-1",
+            displayName: "Client Supplied Voice",
+            description: "Untrusted description.",
+            speakingRate: 1,
+          },
+        })
+      ),
+    });
+    const listResponse = await app.request("/avatars", { headers: { Cookie: cookie } });
+    const listBody = (await json(listResponse)) as { avatars: unknown[] };
+
+    expect(response.status).toBe(503);
+    expect(listBody.avatars).toHaveLength(0);
+  });
+
+  it("rejects a new ElevenLabs voice id that is not present in My Voices", async () => {
+    const app = createApp(
+      createTestDependencies([createUser()], { mode: "lite", sandbox: true }, [], {
+        elevenLabsVoices: [elevenLabsVoice({ id: "other-voice" })],
+      })
+    );
+    const cookie = await login(app);
+    const response = await app.request("/avatars", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify(
+        avatarInput({
+          voiceConfig: {
+            provider: "elevenlabs",
+            voiceId: "missing-voice",
+            speakingRate: 1,
+          },
+        })
+      ),
+    });
+
+    expect(response.status).toBe(400);
+  });
+
+  it("preserves an existing ElevenLabs voice snapshot when updating the same voice and catalog lookup fails", async () => {
+    const providerOptions: {
+      elevenLabsVoices?: ElevenLabsVoiceOption[];
+      listVoicesError?: Error;
+    } = {
+      elevenLabsVoices: [elevenLabsVoice()],
+    };
+    const app = createApp(createTestDependencies([createUser()], { mode: "lite", sandbox: true }, [], providerOptions));
+    const cookie = await login(app);
+    const createResponse = await app.request("/avatars", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify(
+        avatarInput({
+          voiceConfig: {
+            provider: "elevenlabs",
+            voiceId: "voice-1",
+            speakingRate: 1,
+          },
+        })
+      ),
+    });
+    const createBody = (await json(createResponse)) as { avatar: { id: string } };
+
+    providerOptions.elevenLabsVoices = [];
+    providerOptions.listVoicesError = new ElevenLabsProviderError("ElevenLabs returned 500");
+
+    const updateResponse = await app.request(`/avatars/${createBody.avatar.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify({
+        name: "Avatar actualizado",
+        voiceConfig: {
+          provider: "elevenlabs",
+          voiceId: "voice-1",
+          displayName: "Client Supplied Voice",
+          description: "Untrusted description.",
+          speakingRate: 1,
+        },
+      }),
+    });
+    const updateBody = (await json(updateResponse)) as {
+      avatar: { voiceConfig: { displayName?: string; description?: string } };
+    };
+
+    expect(updateResponse.status).toBe(200);
+    expect(updateBody.avatar.voiceConfig).toMatchObject({
+      displayName: "Agustin",
+      description: "Relaxed, warm and approachable.",
+    });
+  });
+
+  it("rejects changing to a new ElevenLabs voice when catalog lookup fails", async () => {
+    const providerOptions: {
+      elevenLabsVoices?: ElevenLabsVoiceOption[];
+      listVoicesError?: Error;
+    } = {
+      elevenLabsVoices: [elevenLabsVoice()],
+    };
+    const app = createApp(createTestDependencies([createUser()], { mode: "lite", sandbox: true }, [], providerOptions));
+    const cookie = await login(app);
+    const createResponse = await app.request("/avatars", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify(
+        avatarInput({
+          voiceConfig: {
+            provider: "elevenlabs",
+            voiceId: "voice-1",
+            speakingRate: 1,
+          },
+        })
+      ),
+    });
+    const createBody = (await json(createResponse)) as { avatar: { id: string } };
+
+    providerOptions.elevenLabsVoices = [];
+    providerOptions.listVoicesError = new ElevenLabsProviderError("ElevenLabs returned 500");
+
+    const updateResponse = await app.request(`/avatars/${createBody.avatar.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify({
+        voiceConfig: {
+          provider: "elevenlabs",
+          voiceId: "voice-2",
+          displayName: "Client Supplied Voice",
+          description: "Untrusted description.",
+          speakingRate: 1,
+        },
+      }),
+    });
+    const getResponse = await app.request(`/avatars/${createBody.avatar.id}`, { headers: { Cookie: cookie } });
+    const getBody = (await json(getResponse)) as { avatar: { voiceConfig: { voiceId?: string } } };
+
+    expect(updateResponse.status).toBe(502);
+    expect(getBody.avatar.voiceConfig.voiceId).toBe("voice-1");
   });
 
   it("lists only avatars owned by the authenticated creator", async () => {

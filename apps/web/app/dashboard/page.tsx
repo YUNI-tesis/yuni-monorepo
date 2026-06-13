@@ -53,11 +53,23 @@ export default function DashboardPage() {
       <div className="yuni-stack">
         {error ? <ErrorState description={error} /> : null}
         {user ? (
-          <Card className="yuni-stack" padding="md">
-            <p className="yuni-eyebrow">Sesion actual</p>
-            <strong>{user.name ?? user.email}</strong>
-            <span className="yuni-text-muted">{user.email}</span>
-          </Card>
+          <>
+            <Card className="yuni-stack" padding="md">
+              <p className="yuni-eyebrow">Sesion actual</p>
+              <strong>{user.name ?? user.email}</strong>
+              <span className="yuni-text-muted">{user.email}</span>
+            </Card>
+            <Card className="yuni-stack" padding="md">
+              <p className="yuni-eyebrow">Accesos</p>
+              <strong>Avatares e Interact</strong>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem" }}>
+                <Button variant="secondary" onClick={() => router.push("/avatars/new")}>
+                  Crear avatar
+                </Button>
+                <Button onClick={() => router.push("/interact")}>Interactuar</Button>
+              </div>
+            </Card>
+          </>
         ) : (
           <LoadingState title="Cargando sesion" description="Estamos verificando tus datos." />
         )}

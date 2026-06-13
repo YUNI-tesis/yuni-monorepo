@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   AppendMessageInputSchema,
   CreateAvatarAgentInputSchema,
+  EndVoiceSessionInputSchema,
   CreateShareLinkInputSchema,
   LiveAvatarConfigSchema,
   LoginInputSchema,
@@ -79,14 +80,18 @@ describe("@yuni/domain", () => {
     expect(parsed.speakingRate).toBe(1);
   });
 
-  it("rejects unsupported voice config", () => {
-    expect(() =>
-      VoiceConfigSchema.parse({
-        provider: "elevenlabs",
-        voiceId: "voice-1",
-        speakingRate: 1,
-      })
-    ).toThrow();
+  it("validates ElevenLabs voice config", () => {
+    const parsed = VoiceConfigSchema.parse({
+      provider: "elevenlabs",
+      voiceId: "voice-1",
+      speakingRate: 1,
+    });
+
+    expect(parsed.provider).toBe("elevenlabs");
+    expect(parsed.voiceId).toBe("voice-1");
+  });
+
+  it("rejects invalid voice config", () => {
     expect(() =>
       VoiceConfigSchema.parse({
         provider: "openai",
@@ -134,6 +139,14 @@ describe("@yuni/domain", () => {
     });
 
     expect(parsed.role).toBe("user");
+  });
+
+  it("validates voice session transcript input", () => {
+    const parsed = EndVoiceSessionInputSchema.parse({
+      transcript: [{ role: "assistant", content: "Hola" }],
+    });
+
+    expect(parsed.transcript).toHaveLength(1);
   });
 
   it("validates register input and normalizes email", () => {

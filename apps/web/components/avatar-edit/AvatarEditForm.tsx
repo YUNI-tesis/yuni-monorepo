@@ -1,21 +1,21 @@
 "use client";
 
-import { Button, Card, ErrorState, FileDrop, FormField, Input, Textarea } from "@yuni/ui";
+import { Button, Card, ErrorState, FileDrop, FormField, Input, LoadingState, Textarea } from "@yuni/ui";
 import type {
   AvatarEditState,
   AvatarEditValidation,
 } from "../../hooks/useAvatarEdit";
+import type { ElevenLabsVoiceOptionsState } from "../../hooks/useElevenLabsVoiceOptions";
 import type { LiveAvatarOptionsState } from "../../hooks/useLiveAvatarOptions";
 import { LiveAvatarPicker } from "../live-avatar/LiveAvatarPicker";
 import { VoiceSelector } from "../voice/VoiceSelector";
-import type { VoiceOption } from "../../lib/voice-config";
 import styles from "./AvatarEdit.module.css";
 
 export type AvatarEditFormProps = {
   state: AvatarEditState;
   errors: AvatarEditValidation;
   liveAvatarOptions: LiveAvatarOptionsState;
-  voiceOptions: VoiceOption[];
+  voiceOptions: ElevenLabsVoiceOptionsState;
   isSubmitting: boolean;
   onFieldChange: <Field extends keyof AvatarEditState>(field: Field, value: AvatarEditState[Field]) => void;
   onSubmit: () => void;
@@ -113,12 +113,26 @@ export function AvatarEditForm({
 
         <section className={styles.section}>
           <SectionHeader title="Voz" description="Selecciona la voz para las respuestas habladas." />
-          <VoiceSelector
-            options={voiceOptions}
-            selectedId={state.voiceId}
-            error={errors.voiceId}
-            onSelect={(voiceId) => onFieldChange("voiceId", voiceId)}
-          />
+          {voiceOptions.status === "loading" ? (
+            <LoadingState title="Cargando voces" description="Estamos trayendo tus voces de ElevenLabs." />
+          ) : null}
+          {voiceOptions.status === "error" ? (
+            <ErrorState title="No pudimos cargar las voces" description={voiceOptions.error} />
+          ) : null}
+          {voiceOptions.status === "empty" ? (
+            <ErrorState
+              title="No hay voces disponibles"
+              description="Agrega una voz en My Voices de ElevenLabs para usarla en este avatar."
+            />
+          ) : null}
+          {voiceOptions.status === "ready" ? (
+            <VoiceSelector
+              options={voiceOptions.options}
+              selectedId={state.voiceId}
+              error={errors.voiceId}
+              onSelect={(voiceId) => onFieldChange("voiceId", voiceId)}
+            />
+          ) : null}
         </section>
 
         <section className={styles.section}>

@@ -6,6 +6,7 @@ import { Button, ErrorState, LoadingState, PageHeader, PageShell } from "@yuni/u
 import { updateAvatar } from "../../lib/api/avatar-api";
 import { ApiClientError } from "../../lib/api/http-client";
 import { buildUpdateAvatarRequest, useAvatarEdit } from "../../hooks/useAvatarEdit";
+import { useElevenLabsVoiceOptions } from "../../hooks/useElevenLabsVoiceOptions";
 import { useLiveAvatarOptions } from "../../hooks/useLiveAvatarOptions";
 import { AvatarEditForm } from "./AvatarEditForm";
 import styles from "./AvatarEdit.module.css";
@@ -15,6 +16,13 @@ export function AvatarEdit({ avatarId }: { avatarId: string }) {
   const edit = useAvatarEdit(avatarId);
   const liveAvatarOptions = useLiveAvatarOptions({
     currentAvatarId: edit.loadState.state?.liveAvatarId,
+    includeCurrentFallback: true,
+  });
+  const voiceOptions = useElevenLabsVoiceOptions({
+    currentVoiceId: edit.loadState.state?.voiceId,
+    currentVoiceDisplayName: edit.loadState.state?.voiceDisplayName,
+    currentVoiceDescription: edit.loadState.state?.voiceDescription,
+    currentVoiceProvider: edit.loadState.state?.voiceProvider,
     includeCurrentFallback: true,
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -60,7 +68,7 @@ export function AvatarEdit({ avatarId }: { avatarId: string }) {
   const editableState = state;
   const selectedLiveAvatar =
     liveAvatarOptions.options.find((option) => option.id === editableState.liveAvatarId) ?? null;
-  const selectedVoice = edit.voiceEditOptions.find((option) => option.id === editableState.voiceId) ?? null;
+  const selectedVoice = voiceOptions.options.find((option) => option.id === editableState.voiceId) ?? null;
 
   async function saveChanges() {
     if (isSubmitting || !edit.validateAll()) {
@@ -106,7 +114,7 @@ export function AvatarEdit({ avatarId }: { avatarId: string }) {
           state={editableState}
           errors={edit.errors}
           liveAvatarOptions={liveAvatarOptions}
-          voiceOptions={edit.voiceEditOptions}
+          voiceOptions={voiceOptions}
           isSubmitting={isSubmitting}
           onFieldChange={edit.updateField}
           onSubmit={saveChanges}

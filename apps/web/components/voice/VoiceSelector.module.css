@@ -91,3 +91,25 @@
   font-size: var(--yuni-font-sm);
   line-height: 1.45;
 }
+
+.previewButton {
+  width: fit-content;
+  border: 1px solid var(--yuni-color-border);
+  border-radius: var(--yuni-radius-sm);
+  padding: 6px 10px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--yuni-color-text);
+  font: inherit;
+  font-size: var(--yuni-font-sm);
+  cursor: pointer;
+}
+
+.previewButton:hover {
+  border-color: rgba(100, 195, 215, 0.54);
+  background: rgba(100, 195, 215, 0.12);
+}
+
+.previewButton:focus-visible {
+  outline: none;
+  box-shadow: var(--yuni-focus-ring);
+}
