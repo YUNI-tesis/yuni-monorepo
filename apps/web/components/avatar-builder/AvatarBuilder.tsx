@@ -2,11 +2,12 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Button, Card, ErrorState, PageHeader, PageShell } from "@yuni/ui";
+import { Button, Card, ErrorState, PageHeader } from "@yuni/ui";
 import { createAvatar } from "../../lib/api/avatar-api";
 import { ApiClientError } from "../../lib/api/http-client";
 import { buildCreateAvatarRequest, useAvatarBuilder } from "../../hooks/useAvatarBuilder";
 import { useElevenLabsVoiceOptions } from "../../hooks/useElevenLabsVoiceOptions";
+import { invalidateAvatarListCache } from "../../hooks/useAvatarList";
 import { useLiveAvatarOptions } from "../../hooks/useLiveAvatarOptions";
 import { BuilderSteps } from "./BuilderSteps";
 import { ContextStep } from "./steps/ContextStep";
@@ -35,6 +36,7 @@ export function AvatarBuilder() {
       const { avatar } = await createAvatar(
         buildCreateAvatarRequest(builder.state, builder.selectedLiveAvatar, builder.selectedVoice)
       );
+      invalidateAvatarListCache();
       router.push(`/avatars/${avatar.id}`);
       router.refresh();
     } catch (caughtError) {
@@ -49,7 +51,7 @@ export function AvatarBuilder() {
   }
 
   return (
-    <PageShell maxWidth="980px">
+    <>
       <PageHeader
         eyebrow="Avatares"
         title="Crear avatar"
@@ -85,6 +87,6 @@ export function AvatarBuilder() {
           )}
         </div>
       </Card>
-    </PageShell>
+    </>
   );
 }

@@ -1,28 +1,33 @@
 # Prompt: Realtime Service Foundation
 
-Armame un plan específico para la base de `apps/realtime`.
+Armame un plan especifico para la base de `apps/realtime`.
 
 Objetivo:
-Preparar WebSocket service para sesiones privadas y públicas.
+Preparar WebSocket service para sesiones privadas, compartidas y publicas identificadas.
 
 Debe incluir:
 
 - server WebSocket
 - protocolo de eventos
-- validación de sesión privada/pública
-- state machine básica
+- validacion de sesion privada owner
+- validacion de usuario compartido con grant activo
+- validacion de sesion publica con token y `participantEmail`
+- state machine basica
 - errores
 - request/session ids
 - tests de state machine
 
 Reglas:
 
-- no implementar voz completa todavía
-- no Live Avatar real todavía si va en módulo posterior
+- no implementar voz completa todavia
+- no Live Avatar real todavia si va en modulo posterior
 - protocolo debe quedar estable
+- no iniciar participante publico sin email de sesion
+- no exponer prompts/contexto/documentos por eventos realtime
 
 Checklist:
 
-- conexión abre/cierra
-- session.init valida modo
+- conexion abre/cierra
+- session.init valida modo owner/shared/public
+- public init exige identidad de sesion
 - errores son consistentes

@@ -2,7 +2,7 @@
 
 ## Status
 
-accepted
+superseded
 
 ## Related plan
 
@@ -11,6 +11,10 @@ accepted
 ## Date
 
 2026-06-12
+
+Superseded by [0009-product-navigation-sharing-background-sync.md](0009-product-navigation-sharing-background-sync.md).
+
+Nota: la seleccion de voces reales de ElevenLabs sigue vigente. Lo supercedido es la decision de tratar el sync eager al guardar como comportamiento principal visible de producto. La direccion actual mueve la sincronizacion de Agent/Knowledge Base a background jobs con reintentos automaticos y estados de producto discretos.
 
 ## Context
 

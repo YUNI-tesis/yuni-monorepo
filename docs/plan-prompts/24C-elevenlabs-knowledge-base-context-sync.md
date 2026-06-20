@@ -1,6 +1,6 @@
-# Prompt: ElevenLabs Knowledge Base Context Sync
+# Prompt: ElevenLabs Knowledge Base Background Context Sync
 
-Estado: pendiente.
+Estado: pendiente. Refactorizado conceptualmente el 2026-06-19 por `0009-product-navigation-sharing-background-sync.md`.
 
 ## Objetivo
 
@@ -8,41 +8,31 @@ Integrar el contexto del creador con ElevenLabs Knowledge Base para que el Agent
 
 YUNI sigue siendo la fuente de verdad. ElevenLabs Knowledge Base es una copia derivada para mejorar la experiencia conversacional del MVP ElevenLabs-first. Este plan no reemplaza el RAG propio de YUNI definido en `31-rag-retriever-integration.md`.
 
-## Fuentes
-
-- LiveAvatar ElevenLabs Agent Connector: https://docs.liveavatar.com/docs/lite-mode/connectors/elevenlabs-agent
-- ElevenLabs Agents Overview: https://elevenlabs.io/docs/eleven-agents/overview
-- ElevenLabs Knowledge Base: https://elevenlabs.io/docs/eleven-agents/customization/knowledge-base
-- ElevenLabs Knowledge Base API - create from text: https://elevenlabs.io/docs/eleven-agents/api-reference/knowledge-base/create-from-text
-- ElevenLabs Knowledge Base API - create from file: https://elevenlabs.io/docs/eleven-agents/api-reference/knowledge-base/create-from-file
-- ElevenLabs Knowledge Base API - create from URL: https://elevenlabs.io/docs/eleven-agents/api-reference/knowledge-base/create-from-url
-- ElevenLabs Knowledge Base API - update document: https://elevenlabs.io/docs/eleven-agents/api-reference/knowledge-base/update
-- ElevenLabs Knowledge Base API - compute RAG index: https://elevenlabs.io/docs/eleven-agents/api-reference/knowledge-base/compute-rag-index
-
 ## Dependencias
 
-- Requiere `24B-elevenlabs-agent-provider-sync.md`, porque el Agent de ElevenLabs ya debe existir y estar asociado al avatar.
+- Requiere `24B-elevenlabs-agent-provider-sync.md`, porque el Agent de ElevenLabs ya debe existir o poder crearse en background.
 - Para contexto textual del avatar, puede implementarse sin esperar documentos reales.
 - Para documentos subidos por el creador, requiere `28-s3-storage-adapter.md` y `29-document-upload-api.md`.
-- `30-document-ingestion-worker.md` es opcional para este plan si se sube el archivo original a ElevenLabs. Se vuelve necesario si decidimos extraer texto en YUNI y sincronizarlo como documento de texto.
+- `30-document-ingestion-worker.md` es opcional si se sube el archivo original a ElevenLabs; es necesario si YUNI extrae texto y sincroniza documentos textuales.
 - `31-rag-retriever-integration.md` puede avanzar despues o en paralelo, pero no bloquea este MVP provider-first.
 
 ## Alcance MVP
 
 - Sincronizar `AvatarAgent.context` como documento de texto en ElevenLabs Knowledge Base.
 - Sincronizar documentos confirmados de YUNI hacia ElevenLabs Knowledge Base.
-- Asociar los Knowledge Base document IDs al ElevenLabs Agent del avatar.
+- Asociar Knowledge Base document IDs al ElevenLabs Agent del avatar.
 - Mantener la llamada privada LiveAvatar LITE + ElevenLabs Connector funcionando con `pcm_24000`.
-- Mostrar estados claros de sync para contexto y documentos.
+- Mostrar estados de producto para contexto/documentos solo cuando sean relevantes.
+- Reintentar automaticamente los fallos transitorios.
 - No exponer API keys, storage keys ni payloads crudos del provider al frontend.
 
 Fuera de alcance:
 
 - RAG propio de YUNI.
-- Public share y llamadas publicas.
 - Multiagente.
 - Creacion o clonacion de voces.
 - Edicion avanzada de chunks dentro de ElevenLabs.
+- Botones de sync como flujo principal del usuario.
 
 ## Diseno De Producto
 
@@ -51,10 +41,11 @@ El creador debe poder:
 1. Crear o editar un avatar.
 2. Escribir instrucciones y contexto textual.
 3. Subir documentos asociados al avatar.
-4. Ver si cada fuente de contexto esta `synced`, `pending` o `failed`.
-5. Iniciar una llamada y hacer preguntas que solo se responden con ese contexto.
+4. Ver documentos en la tab `Contexto`.
+5. Ver estados simples: `Listo`, `Procesando` o `No se pudo actualizar`.
+6. Iniciar una llamada aunque parte del contexto este fallando, si hay una version previa valida.
 
-El usuario final no debe ver conceptos de Knowledge Base ni IDs de ElevenLabs. Para el producto, esto es simplemente "contexto del avatar".
+El usuario final no debe ver conceptos de Knowledge Base, provider sync ni IDs de ElevenLabs. Para el producto, esto es simplemente "contexto del avatar".
 
 ## Contratos De Dominio
 
@@ -65,6 +56,7 @@ Para contexto textual del avatar, extender `AvatarAgent` o crear una tabla asoci
 - `providerContextSyncError`
 - `providerContextSyncedAt`
 - `providerContextSyncFingerprint`
+- `providerContextLastUsableAt`
 
 Para documentos subidos, crear `DocumentProviderSync` o campos equivalentes por documento:
 
@@ -76,6 +68,8 @@ Para documentos subidos, crear `DocumentProviderSync` o campos equivalentes por 
 - `providerSyncedAt`
 - `providerSyncFingerprint`
 - `providerRagIndexStatus`: `not_started | processing | ready | failed`
+- `nextRetryAt`
+- `attempts`
 - `createdAt`
 - `updatedAt`
 
@@ -85,6 +79,7 @@ Reglas:
 - Si el documento se elimina en YUNI, debe desasociarse del Agent y luego borrarse o marcarse para cleanup en ElevenLabs.
 - Si falla el sync provider, el documento local no se borra.
 - Solo documentos `synced` pueden entrar al Agent payload.
+- Si hay una version previa usable, el fallo actual no debe bloquear llamadas.
 
 ## Provider ElevenLabs
 
@@ -92,19 +87,10 @@ Extender `ElevenLabsAgentProvider` en `packages/voice` con metodos server-side:
 
 - `createKnowledgeBaseTextDocument(input)`
 - `createKnowledgeBaseFileDocument(input)`
-- `createKnowledgeBaseUrlDocument(input)`
 - `updateKnowledgeBaseDocument(input)`
 - `deleteKnowledgeBaseDocument(input)`
 - `computeKnowledgeBaseRagIndex(input)`
 - `syncAvatarKnowledgeBase(input)`
-
-Usar:
-
-- `POST /v1/convai/knowledge-base/text` para contexto textual de avatar.
-- `PATCH /v1/convai/knowledge-base/:documentation_id` para actualizar documentos textuales o contenido cuando ElevenLabs lo permita.
-- `POST /v1/convai/knowledge-base/file` para PDF/TXT/DOCX u otros archivos soportados.
-- `POST /v1/convai/knowledge-base/url` solo cuando YUNI agregue fuentes por URL.
-- `POST /v1/convai/knowledge-base/:documentation_id/rag-index` para disparar o consultar indexacion RAG si hace falta para disponibilidad inmediata.
 
 El provider debe resumir errores sin guardar secretos. Ejemplos:
 
@@ -117,122 +103,93 @@ El provider debe resumir errores sin guardar secretos. Ejemplos:
 
 ### Fase 1: Contexto textual
 
-1. Al crear o editar avatar, calcular fingerprint de:
-   - `name`
-   - `description`
-   - `instructions`
-   - `context`
-   - version de sync KB
-2. Si no hay `providerContextDocumentId`, crear documento con `POST /knowledge-base/text`.
-3. Si ya existe y cambio el fingerprint, actualizar con `PATCH`.
-4. Disparar o consultar RAG index si ElevenLabs lo requiere.
-5. Guardar `providerContextDocumentId` y estado `synced`.
-6. Sincronizar el Agent para que su `knowledge_base` incluya ese documento.
+1. Al crear o editar avatar, calcular fingerprint de nombre, descripcion, instrucciones, contexto y version de sync KB.
+2. Encolar job liviano de context sync.
+3. Si no hay `providerContextDocumentId`, crear documento con `POST /knowledge-base/text`.
+4. Si ya existe y cambio el fingerprint, actualizar con `PATCH`.
+5. Disparar o consultar RAG index si ElevenLabs lo requiere.
+6. Guardar estado `synced` y `providerContextDocumentId`.
+7. Encolar o ejecutar sync del Agent para asociar el documento.
 
 ### Fase 2: Documentos subidos
 
-1. `29-document-upload-api.md` confirma el upload y crea `Document`.
-2. Encolar job `document_provider_sync`.
-3. El worker descarga el archivo desde storage server-side.
-4. Subir el archivo a ElevenLabs con `POST /knowledge-base/file`.
-5. Guardar `providerDocumentId`.
-6. Disparar o consultar RAG index.
-7. Marcar documento como `synced`.
-8. Encolar o ejecutar sync del Agent para asociar el nuevo documento.
-
-Si el file endpoint de ElevenLabs rechaza un formato que YUNI puede parsear, usar fallback:
-
-1. esperar a `30-document-ingestion-worker.md`
-2. extraer texto
-3. crear documento con `POST /knowledge-base/text`
+1. `29-document-upload-api.md` confirma upload y crea `Document`.
+2. `30-document-ingestion-worker.md` procesa o valida el documento.
+3. Encolar job `document_provider_sync`.
+4. El worker descarga el archivo desde storage server-side.
+5. Subir archivo o texto extraido a ElevenLabs.
+6. Guardar `providerDocumentId`.
+7. Disparar o consultar RAG index.
+8. Marcar documento como `synced`.
+9. Encolar sync del Agent para asociar el nuevo documento.
 
 ### Fase 3: Asociacion al Agent
 
-1. Construir la lista efectiva de Knowledge Base documents:
-   - contexto textual del avatar si esta `synced`
+1. Construir lista efectiva de documentos:
+   - contexto textual si esta `synced`
    - documentos del avatar con provider sync `synced`
-2. Extender el payload de `createElevenLabsAgentPayload`.
-3. Reemplazar el `knowledge_base: []` actual por referencias provider verificadas.
-4. Incluir IDs y fingerprints de KB en `providerSyncFingerprint`.
-5. Hacer `PATCH` del Agent cuando cambia la lista.
-
-Nota de implementacion: al implementar, verificar contra la API actual de ElevenLabs la forma exacta de cada entrada en `conversation_config.agent.prompt.knowledge_base` y cubrirla con tests. El plan define el contrato de producto; el wire shape debe seguir la documentacion vigente del provider.
+2. Extender payload de Agent.
+3. Incluir IDs y fingerprints de KB en `providerSyncFingerprint`.
+4. Hacer `PATCH` del Agent cuando cambia la lista.
 
 ## APIs YUNI
 
-Agregar endpoints privados:
+Agregar endpoints privados de soporte:
 
 - `POST /avatars/:avatarId/context-provider/sync`
-  - fuerza sync del contexto textual y documentos ya confirmados
-  - valida ownership
-  - no corre uploads pesados en request path si hay documentos grandes
-
 - `POST /documents/:documentId/provider-sync`
-  - fuerza sync de un documento
-  - valida ownership por avatar/documento
-  - encola job o ejecuta sync si es liviano
-
 - `GET /avatars/:avatarId/context-provider/status`
-  - devuelve estado resumido del contexto textual y documentos
-  - no devuelve storage keys ni payload crudo de ElevenLabs
+
+Reglas de API:
+
+- los endpoints de `POST ...sync` fuerzan o encolan sync para soporte/dev/admin
+- la UI normal no depende de esos endpoints como CTA principal
+- `GET status` devuelve estado resumido sin storage keys ni payload crudo de ElevenLabs
 
 Actualizar flujos existentes:
 
-- `POST /avatars` y update de avatar:
-  - sincronizan texto de contexto si ElevenLabs esta configurado
-  - sincronizan Agent despues de la KB
-  - si KB falla, guardan estado `failed` y el avatar se conserva
-
-- `POST /avatars/:avatarId/voice-sessions`:
-  - mantiene auto-sync defensivo del Agent
-  - no debe subir documentos grandes en el inicio de llamada
-  - puede disparar sync liviano de texto si el fingerprint cambio
+- crear/editar avatar encola sync de texto si ElevenLabs esta configurado
+- confirmar documento encola ingestion y luego provider sync
+- borrar documento encola cleanup provider
+- iniciar llamada no debe subir documentos grandes en request path
+- iniciar llamada puede disparar verificacion liviana si el fingerprint cambio
 
 ## Worker
 
-Crear job `document_provider_sync`:
+Crear jobs:
+
+- `avatar_context_provider_sync`
+- `document_provider_sync`
+- `document_provider_cleanup`
+- `agent_provider_sync`
+
+Cada job debe:
 
 - claim con lock para evitar doble upload
-- validar que el documento siga existiendo y pertenezca al avatar
-- descargar desde storage
-- subir a ElevenLabs
-- registrar `providerDocumentId`
-- computar o consultar RAG index
-- actualizar Agent asociado
+- validar ownership/estado vigente
+- respetar `nextRetryAt`
 - retry con backoff en errores transitorios
 - marcar `failed` en errores permanentes
-
-Crear job opcional `document_provider_cleanup`:
-
-- borra o desasocia documentos eliminados
-- tolera que el documento remoto ya no exista
-- no bloquea la eliminacion local
+- guardar errores resumidos sin secrets
+- emitir logs/metricas para observabilidad
 
 ## UX
 
-En avatar profile/edit, agregar estado de contexto:
+En avatar profile/edit, tab `Contexto`:
 
-- `Contexto sincronizado`
-- `Sincronizacion pendiente`
-- `Error al sincronizar contexto`
-- `Documento pendiente de indexacion`
+- documento/contexto `Listo`
+- documento/contexto `Procesando`
+- documento/contexto `No se pudo actualizar`
+- sin botones de sync como accion principal
+- accion secundaria de soporte/dev para forzar reintento solo si se decide exponerla internamente
 
-Para cada documento:
-
-- nombre
-- tipo
-- fecha de subida
-- estado local
-- estado provider
-- boton `Reintentar sync` si falla
-
-En llamada privada, si hay documentos `failed`, mostrar un aviso discreto antes de iniciar:
+En llamada privada o publica:
 
 ```txt
-Parte del contexto no esta sincronizado todavia.
+Parte del contexto puede no estar actualizado.
 ```
 
-No bloquear la llamada si al menos el Agent base esta sincronizado.
+El aviso es discreto y no bloquea si el Agent base esta disponible.
 
 ## Seguridad Y Privacidad
 
@@ -241,27 +198,7 @@ No bloquear la llamada si al menos el Agent base esta sincronizado.
 - No usar URLs publicas temporales como fuente de ElevenLabs si el backend puede subir el archivo directamente.
 - No sincronizar documentos borrados, no confirmados o de otro owner.
 - Registrar en tesis que esta arquitectura duplica contexto en un provider externo.
-- Para futuro publico/share, definir si un documento esta habilitado para uso publico antes de asociarlo a Agents usados por links publicos.
-
-## Costos Y Tradeoffs
-
-Ventajas:
-
-- Es el camino mas corto para que el avatar responda con documentos reales dentro de ElevenLabs Agents.
-- Reduce complejidad frente a construir RAG propio antes del MVP de voz.
-- Mantiene LiveAvatar LITE Connector sin cambiar arquitectura de audio.
-
-Costos/riesgos:
-
-- El contexto queda duplicado en ElevenLabs.
-- Hay dependencia fuerte del provider para indexacion, limites y calidad de recuperacion.
-- Puede haber latencia entre upload y disponibilidad real del documento.
-- Los errores de KB no deben romper creacion de avatar ni llamadas basicas.
-
-Decision de producto:
-
-- Usar Knowledge Base de ElevenLabs para el MVP conversacional.
-- Mantener `31-rag-retriever-integration.md` como camino posterior para independencia de provider, explicabilidad y soporte de otros canales.
+- Para share/public, solo asociar documentos habilitados para el avatar y respetar revocacion de acceso.
 
 ## Test Plan
 
@@ -273,14 +210,15 @@ Unit tests en `packages/voice`:
 - compute RAG index soporta `processing`, `ready` y errores.
 - errores 401/403/400/timeout quedan resumidos.
 
-Tests de dominio/API:
+Tests de dominio/API/worker:
 
-- crear avatar con contexto crea o actualiza KB text doc.
-- editar contexto cambia fingerprint y resincroniza.
+- crear avatar con contexto encola sync.
+- editar contexto cambia fingerprint y encola resincronizacion.
 - falta de config ElevenLabs deja estado claro sin romper avatar.
-- documento confirmado encola `document_provider_sync`.
+- documento confirmado encola ingestion/provider sync.
 - documento ajeno no puede sincronizarse.
 - documento eliminado queda desasociado del Agent.
+- retry respeta backoff y max attempts.
 
 Tests de Agent payload:
 
@@ -292,17 +230,9 @@ Tests de Agent payload:
 Manual acceptance:
 
 1. Crear avatar con contexto textual que mencione un dato unico.
-2. Sincronizar Agent y abrir llamada.
+2. Esperar sync background y abrir llamada.
 3. Preguntar por ese dato y confirmar respuesta correcta.
 4. Subir PDF/TXT con un dato nuevo.
-5. Esperar provider sync/index.
+5. Esperar procesamiento/indexacion.
 6. Iniciar llamada nueva y preguntar por el dato del documento.
-7. Eliminar el documento y confirmar que el Agent deja de usarlo despues del sync.
-
-## Assumptions
-
-- ElevenLabs API key tiene permisos para Agents y Knowledge Base.
-- LiveAvatar solo necesita el `agent_id` y el secret de ElevenLabs; no necesita conocer cada documento.
-- La disponibilidad real de un documento depende de indexacion en ElevenLabs.
-- Para MVP, el primer paso debe ser texto de contexto porque reduce riesgo y no depende de upload/storage.
-- Para archivos, se prefiere subir archivo original a ElevenLabs. Si falla por formato o calidad, se usa texto extraido por YUNI como fallback.
+7. Eliminar el documento y confirmar que el Agent deja de usarlo despues del cleanup.

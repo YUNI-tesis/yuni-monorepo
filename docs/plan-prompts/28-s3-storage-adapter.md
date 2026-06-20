@@ -1,9 +1,9 @@
 # Prompt: S3 Storage Adapter
 
-Armame un plan específico para storage en S3.
+Armame un plan especifico para storage en S3.
 
 Objetivo:
-Implementar storage provider principal para documentos.
+Implementar storage provider principal para documentos de contexto del avatar.
 
 Debe incluir:
 
@@ -21,12 +21,15 @@ Reglas:
 
 - S3 es storage principal
 - no Azure
-- storage keys no se exponen públicamente
+- storage keys no se exponen publicamente
 - presigned URLs expiran
+- documentos almacenados se muestran como `Contexto` en UI
+- sync provider o RAG no vive en storage; storage solo provee archivos para jobs posteriores
 
 Checklist:
 
 - genera upload URL
-- genera download URL
+- genera download URL server-side
 - delete funciona
-- local adapter útil para tests
+- local adapter util para tests
+- no filtra storage keys a frontend/publico

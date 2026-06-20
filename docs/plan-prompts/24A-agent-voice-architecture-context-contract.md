@@ -5,6 +5,16 @@ Armame un plan especifico para definir el contrato de agente AI, contexto person
 Objetivo:
 Dejar decidida la arquitectura que conecta avatares configurados en YUNI con un agente de voz, contexto personalizado del creador, Live Avatar LITE sandbox y providers posibles: OpenAI Realtime/LangChain o ElevenLabs Agents.
 
+Decision vigente 2026-06-19:
+
+- La direccion de producto se rige por `0009-product-navigation-sharing-background-sync.md`.
+- `Mis avatares` es el centro operativo y `Interactuar` es una accion contextual sobre un avatar.
+- Las sesiones publicas deben identificar al participante por email y vincular cuenta si existe.
+- Los usuarios compartidos autenticados acceden por grants/invitaciones activos.
+- La sincronizacion de Agent/Knowledge Base es background con jobs, fingerprints, backoff y reintentos automaticos.
+- Los endpoints de force-sync quedan para soporte/dev/admin o fallback interno; no son CTA principal de usuario.
+- La UI habla de `contexto` y `documentos`, no de Knowledge Base, provider sync ni IDs externos.
+
 Este modulo no implementa la llamada completa. Define contratos, responsabilidades, opciones de provider y criterios para que `24`, `31`, `32`, `33` y `34` se implementen sin redisenar el loop de voz.
 
 Fuentes base:
@@ -79,6 +89,10 @@ Debe incluir:
 - protocolo conceptual de `apps/realtime`
 - puente conceptual OpenAI Realtime -> Live Avatar LITE
 - persistencia de transcript y mensajes interrumpidos
+- identidad efectiva de sesion:
+  - owner privado
+  - usuario compartido con grant activo
+  - participante publico con `participantEmail` y `participantUserId?`
 - manejo de preambulos, silencio, audio poco claro e interrupciones
 - dependencias exactas con los modulos existentes
 
@@ -103,9 +117,13 @@ Contratos requeridos:
 
 - `AvatarAgentRuntimeConfig`
   - `avatarId`
-  - `ownerId` o public session identity segun modo
+  - `ownerId`, `participantUserId?` o public session identity segun modo
+  - `participantEmail?`
+  - `accessGrantId?`
+  - `shareLinkId?`
+  - `publicSessionId?`
   - `conversationId`
-  - `visibility`: private | public
+  - `visibility`: private | shared | public
   - `instructions`
   - `baseContext`
   - `voiceConfig`
@@ -144,6 +162,8 @@ Politica de contexto:
 - El agente debe llamar `retrieve_avatar_context` antes de responder preguntas facticas que dependan del material del creador.
 - Si retrieval no encuentra contexto suficiente, el agente debe decirlo de forma breve y no inventar.
 - En publico, el visitante puede beneficiarse del RAG, pero nunca ver chunks, documentos, prompts, storage keys ni datos internos.
+- En publico, el participante debe tener `participantEmail`; IP/session id sirven para antifraude, no como identidad principal de producto.
+- En compartido autenticado, el usuario solo puede consultar avatares y conversaciones cubiertos por un grant activo.
 - En Ruta B ElevenLabs-first, YUNI sigue siendo fuente de verdad: los documentos se cargan, listan, eliminan y auditan en YUNI.
 - En Ruta B inicial, YUNI sincroniza el contexto publicado hacia ElevenLabs Knowledge Base y guarda metadata del provider:
   - `provider`: elevenlabs
@@ -151,6 +171,8 @@ Politica de contexto:
   - `providerDocumentId` si aplica
   - `syncStatus`: pending | synced | failed | deleted
   - `lastSyncedAt`
+- En Ruta B, la sincronizacion se dispara en background al crear/editar avatar, confirmar documentos o borrar contexto. No debe depender de una accion manual visible.
+- Si falla la sincronizacion pero existe una version previa usable, la llamada puede continuar con aviso discreto.
 - Si un documento se elimina o despublica en YUNI, el plan debe exigir eliminarlo/desasociarlo tambien del provider externo.
 - La sincronizacion con ElevenLabs es aceptable para MVP porque valida rapido la feature de contexto del creador, pero se debe documentar como duplicacion controlada de datos.
 - La evolucion preferida para mayor control es ElevenLabs Custom LLM: ElevenLabs conserva voz/turn-taking y consulta un endpoint de YUNI que ejecuta RAG propio.
@@ -169,7 +191,7 @@ Protocolo conceptual realtime:
 
 - `session.init`
   - valida auth privada o token de sesion publica
-  - valida ownership o share link activo
+  - valida ownership, grant activo o share link activo con participante identificado por email
   - crea/usa `Conversation`
   - crea `RealtimeSession`
   - crea token Live Avatar LITE
@@ -200,18 +222,21 @@ Protocolo conceptual realtime:
 Protocolo conceptual ElevenLabs-first:
 
 - `provider.agent.sync`
-  - se ejecuta al publicar o actualizar avatar/contexto
+  - se ejecuta en background al crear, publicar o actualizar avatar/contexto
   - crea o actualiza ElevenLabs Agent
   - sincroniza instrucciones, contexto corto, voz y Knowledge Base
   - persiste `providerAgentId`, `syncStatus`, errores resumidos y `lastSyncedAt`
+  - usa fingerprints, deduplicacion y retry con backoff
+  - no se expone como accion principal de usuario
 - `provider.document.sync`
-  - se ejecuta al subir, actualizar, publicar o borrar documentos
+  - se ejecuta en background al subir, actualizar, publicar o borrar documentos
   - sincroniza documentos permitidos con ElevenLabs Knowledge Base
   - guarda `providerDocumentId` si el provider lo devuelve
   - no expone storage keys ni documentos privados al visitante publico
+  - reintenta automaticamente fallos transitorios
 - `session.init`
   - valida auth privada o token de sesion publica
-  - valida ownership o share link activo
+  - valida ownership, grant activo o share link activo con `participantEmail`
   - valida que el avatar tenga `providerAgentId` sincronizado
   - crea/usa `Conversation`
   - crea sesion Live Avatar LITE usando ElevenLabs Agent Connector o el flujo seguro equivalente
@@ -238,6 +263,7 @@ Persistencia:
 - Registrar usage en modulo `27` usando `RealtimeSession`, `Conversation`, `PublicSession` y `ShareLink` cuando aplique.
 - Para providers hosted como ElevenLabs, persistir IDs externos no secretos (`providerAgentId`, `providerConversationId`, `providerDocumentId`) solo cuando sean necesarios para sincronizacion, auditoria o soporte.
 - Persistir `syncStatus` y errores resumidos de sincronizacion sin exponer payloads sensibles.
+- Persistir retries/attempts/nextRetryAt cuando el sync corra por jobs.
 
 Argumento de opcion ElevenLabs-first:
 
@@ -275,11 +301,13 @@ Reglas:
 - no llamar OpenAI desde UI con secretos persistentes
 - no llamar ElevenLabs desde UI con API keys persistentes
 - no exponer prompts/contexto/documentos en rutas publicas
+- no permitir sesiones publicas sin email de participante
 - no usar Live Avatar FULL mode como arquitectura principal si YUNI necesita controlar contexto y provider
 - no depender de que Live Avatar haga STT/LLM/TTS en LITE; si se usa ElevenLabs-first, esa responsabilidad vive en ElevenLabs Agents y debe quedar explicitada
 - no hardcodear modelos OpenAI en codigo de producto
 - no meter documentos completos en instrucciones de sesion realtime
 - no sincronizar documentos borrados, privados o no publicados hacia providers externos
+- no mostrar controles tecnicos de force-sync como flujo normal de producto
 - no implementar multiagente/grupos en este modulo
 - no implementar vector DB avanzada salvo que `31` lo decida explicitamente
 - mantener el contrato compatible con chat texto y voz
@@ -294,5 +322,7 @@ Checklist:
 - queda claro como se interrumpe una respuesta en OpenAI y Live Avatar
 - queda claro que en ElevenLabs-first las interrupciones quedan delegadas al provider/connector y YUNI persiste lo observable
 - queda claro que datos se persisten y cuales no
+- queda claro como se identifica a owner, usuario compartido y participante publico
+- queda claro que la sincronizacion provider es background y resiliente
 - queda claro que rutas/modulos deben existir antes de implementar voz
 - los planes `24`, `31`, `32`, `33` y `34` quedan actualizables contra este contrato

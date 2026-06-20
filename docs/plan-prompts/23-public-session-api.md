@@ -1,9 +1,9 @@
 # Prompt: Public Session API
 
-Armame un plan específico para sesiones públicas anónimas.
+Armame un plan especifico para sesiones publicas identificadas por email.
 
 Objetivo:
-Crear y finalizar sesiones públicas asociadas a un share link.
+Crear y finalizar sesiones publicas asociadas a un share link y a un participante identificable.
 
 Endpoints:
 
@@ -13,22 +13,28 @@ Endpoints:
 Debe incluir:
 
 - `PublicSession`
-- conversación pública asociada
-- anonymousId
-- token público corto
+- conversacion publica asociada
+- `participantEmail`
+- `participantUserId?` cuando el email este vinculado a una cuenta
+- token publico corto
 - validar link activo
+- validar identidad previa o email en el request
 - actualizar `ShareLink.lastUsedAt`
+- trazabilidad para metricas por alumno/email
 
 Reglas:
 
-- visitante no requiere cuenta
-- conversación pública no tiene ownerId
-- sesión pública se atribuye a `shareLinkId`
+- visitante no requiere cuenta, pero si email
+- conversacion publica no tiene ownerId del participante
+- sesion publica se atribuye a `shareLinkId`
 - bloquear nuevas sesiones si link desactivado
+- no exponer prompts/contexto/documentos al participante
+- session id/IP quedan para antifraude y rate limits; la identidad de producto es el email
 
 Checklist:
 
-- crear sesión pública
-- finalizar sesión
+- crear sesion publica con email
+- vincular cuenta si corresponde
+- finalizar sesion
 - link desactivado bloquea
-- token público no expone secretos
+- token publico no expone secretos

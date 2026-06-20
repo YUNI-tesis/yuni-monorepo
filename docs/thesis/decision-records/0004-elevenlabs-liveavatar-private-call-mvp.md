@@ -44,7 +44,7 @@ El diseno deja preparada la evolucion hacia documentos y RAG propio: el sync que
 - Se agregaron env server-only para ElevenLabs y el secret id del connector LiveAvatar.
 - `AvatarAgent` ahora guarda `agentProvider`, `providerAgentId`, `providerSyncStatus`, `providerSyncError`, `providerSyncedAt` y `providerSyncFingerprint`.
 - `voiceConfig.provider` ahora acepta `openai` y `elevenlabs`; si el avatar sigue con voz OpenAI, el sync usa `ELEVENLABS_DEFAULT_VOICE_ID`.
-- La API privada expone sync manual, start de voice session y cierre con transcript.
+- La API privada expone force-sync de soporte/dev, start de voice session y cierre con transcript. El flujo de producto vigente desde `0009` mueve la sincronizacion normal a background jobs.
 - El frontend agrega `/interact` y `/interact/[avatarId]` con `@heygen/liveavatar-web-sdk`.
 - Las API keys nunca salen al browser; el cliente recibe solo session token de LiveAvatar y IDs no secretos.
 - Ajuste posterior de integracion: el Agent de ElevenLabs debe configurarse explicitamente para LiveAvatar con audio input/output `pcm_24000`, LLM y TTS model definidos. Tambien se mejora el parser de errores para exponer mensajes anidados como `detail.message` y errores de validacion `data[]` sin guardar secretos.

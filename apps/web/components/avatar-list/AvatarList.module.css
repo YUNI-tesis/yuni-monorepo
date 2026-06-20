@@ -1,0 +1,56 @@
+.layout {
+  display: grid;
+  gap: var(--yuni-space-4);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+  gap: var(--yuni-space-4);
+}
+
+.card {
+  display: grid;
+  min-height: 230px;
+  align-content: space-between;
+  gap: var(--yuni-space-5);
+}
+
+.meta {
+  display: grid;
+  gap: var(--yuni-space-3);
+}
+
+.badges,
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--yuni-space-2);
+}
+
+.title {
+  margin: 0;
+  font-size: var(--yuni-font-lg);
+  line-height: 1.2;
+}
+
+.description {
+  margin: 0;
+  color: var(--yuni-color-text-muted);
+  line-height: 1.55;
+}
+
+.emptyCard {
+  display: grid;
+  gap: var(--yuni-space-4);
+}
+
+@media (max-width: 520px) {
+  .actions {
+    display: grid;
+  }
+
+  .actions button {
+    width: 100%;
+  }
+}

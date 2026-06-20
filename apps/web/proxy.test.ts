@@ -7,17 +7,23 @@ function createRequest(pathname: string, cookie?: string) {
 }
 
 describe("web auth proxy", () => {
-  it("redirects anonymous users away from private routes", () => {
-    const response = proxy(createRequest("/dashboard"));
+  it.each(["/dashboard", "/avatars", "/avatars/new", "/avatars/avatar-1", "/interact", "/interact/avatar-1"])(
+    "redirects anonymous users away from %s",
+    (pathname) => {
+      const response = proxy(createRequest(pathname));
 
-    expect(response.headers.get("location")).toBe("http://localhost:3000/auth/login");
-  });
+      expect(response.headers.get("location")).toBe("http://localhost:3000/auth/login");
+    }
+  );
 
-  it("allows private routes when a session cookie exists", () => {
-    const response = proxy(createRequest("/dashboard", "yuni_session=token"));
+  it.each(["/dashboard", "/avatars", "/avatars/new", "/avatars/avatar-1", "/interact", "/interact/avatar-1"])(
+    "allows %s when a session cookie exists",
+    (pathname) => {
+      const response = proxy(createRequest(pathname, "yuni_session=token"));
 
-    expect(response.headers.get("location")).toBeNull();
-  });
+      expect(response.headers.get("location")).toBeNull();
+    }
+  );
 
   it("redirects authenticated users away from auth routes", () => {
     const response = proxy(createRequest("/auth/login", "yuni_session=token"));

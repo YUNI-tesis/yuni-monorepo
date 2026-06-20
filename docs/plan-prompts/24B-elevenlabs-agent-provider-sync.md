@@ -1,6 +1,6 @@
-# Prompt: ElevenLabs Agent Provider Sync
+# Prompt: ElevenLabs Agent Provider Background Sync
 
-Estado: implementado para MVP privado el 2026-06-08.
+Estado: implementado para MVP privado el 2026-06-08; refactorizado conceptualmente el 2026-06-19 por `0009-product-navigation-sharing-background-sync.md`.
 
 Alcance implementado:
 
@@ -15,39 +15,30 @@ Alcance implementado:
 - UI privada `/interact` y `/interact/[avatarId]`
 - transcript local desde eventos del SDK y persistencia al cerrar la llamada
 
-Fuera de alcance en esta implementacion:
+Refactor de producto vigente:
 
-- documentos reales y sync a ElevenLabs Knowledge Base
-- RAG propio de YUNI
-- llamadas publicas/share
-- multiagente o llamadas entre N personas
-
-Nota de integracion:
-
-- El frontend usa `@heygen/liveavatar-web-sdk` con session token emitido por backend.
-- El backend nunca expone API keys de ElevenLabs o LiveAvatar.
-- El conector LiveAvatar + ElevenLabs requiere `LIVEAVATAR_ELEVENLABS_SECRET_ID` y que el agente entregue audio PCM 24 kHz.
-- Guia operativa de setup y troubleshooting: [docs/integrations/elevenlabs-liveavatar-mvp.md](../integrations/elevenlabs-liveavatar-mvp.md).
-
-Armame un plan especifico para implementar el spike/MVP ElevenLabs-first definido en `24A`.
+- La sincronizacion del Agent no debe ser una accion principal del usuario.
+- El endpoint `POST /avatars/:avatarId/agent-provider/sync` queda como herramienta de soporte/dev/admin o fallback interno.
+- Crear/editar avatar, cambiar voz/contexto y subir/borrar documentos deben encolar o disparar sync background.
+- El inicio de llamada puede hacer una verificacion defensiva liviana, pero no debe subir documentos grandes ni convertir sync en un paso visible.
+- La UI normal solo muestra estados de producto cuando importan:
+  - contexto listo
+  - contexto procesando
+  - no se pudo actualizar contexto
+- Si existe una version previa valida del Agent/contexto, una llamada no debe bloquearse por un fallo no critico de sync.
 
 Objetivo:
-Permitir que YUNI cree o sincronice un ElevenLabs Agent por avatar publicado, manteniendo a YUNI como fuente de verdad de avatar, contexto, documentos, permisos y estado.
-
-Contexto:
-
-- `24A` define dos rutas validas: OpenAI/YUNI controlado y ElevenLabs-first.
-- Para MVP de experiencia conversacional, ElevenLabs-first es la ruta recomendada si el spike confirma buena UX.
-- LiveAvatar LITE documenta ElevenLabs Agent Connector para renderizar hosted voice agents.
-- La primera etapa puede sincronizar contexto textual y luego documentos a ElevenLabs Knowledge Base.
+Permitir que YUNI mantenga un ElevenLabs Agent por avatar, manteniendo a YUNI como fuente de verdad de avatar, contexto, documentos, permisos y estado, con sync silencioso y reintentos automaticos.
 
 Debe incluir:
 
 - contrato de provider de agente:
   - `agentProvider`: elevenlabs_agents
   - `providerAgentId`
-  - `contextSyncStatus`
-  - `lastSyncedAt`
+  - `providerSyncStatus`
+  - `providerSyncError`
+  - `providerSyncedAt`
+  - `providerSyncFingerprint`
 - adapter o service server-side para ElevenLabs Agents
 - crear/actualizar agent desde avatar:
   - nombre
@@ -55,31 +46,34 @@ Debe incluir:
   - contexto corto
   - voz configurada
   - reglas de respuesta breve y conversacional
-- sincronizacion inicial de contexto textual del avatar
+- job o servicio de background sync con:
+  - fingerprint
+  - deduplicacion
+  - retry con backoff
+  - errores resumidos sin secrets
 - preparacion para Knowledge Base/documentos:
   - `providerDocumentId`
-  - `syncStatus`: pending | synced | failed | deleted
+  - `syncStatus`: pending | syncing | synced | failed | deleting | deleted
   - borrado/desasociacion cuando el documento se elimina en YUNI
-- endpoint o accion privada para disparar sync de provider
-- persistencia de errores resumidos sin guardar secretos
 - tests con mocks de provider
 
 Reglas:
 
 - YUNI sigue siendo fuente de verdad
 - no exponer ElevenLabs API keys al frontend
-- no subir documentos privados, borrados o no publicados
-- no bloquear todo el avatar si falla sync, pero mostrar estado claro
+- no subir documentos privados, borrados o no confirmados
+- no bloquear todo el avatar si falla sync
 - no implementar RAG propio en este modulo
 - no reemplazar la ruta OpenAI/LangChain documentada en `24A`
 - no persistir payloads sensibles ni texto completo duplicado salvo que el plan de documentos lo justifique
 - `ELEVENLABS_DEFAULT_VOICE_ID` queda como fallback legacy, no como requisito para avatars con voz ElevenLabs propia
+- no mostrar botones de sync como CTA principal en producto
 
 Checklist:
 
-- avatar propio puede sincronizar un ElevenLabs Agent
+- avatar propio puede crear/actualizar Agent por background sync
 - sync guarda `providerAgentId`
-- cambios de instrucciones/contexto pueden resincronizarse
-- error de provider queda resumido y visible para soporte
+- cambios de instrucciones/contexto encolan resincronizacion
+- error de provider queda resumido y visible solo cuando es accionable
 - API keys nunca salen al cliente
 - contratos quedan listos para LiveAvatar LITE + ElevenLabs Agent Connector

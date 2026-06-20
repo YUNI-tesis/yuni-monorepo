@@ -1,29 +1,35 @@
 # Prompt: Realtime Public Voice
 
-Armame un plan específico para llamada pública con voz.
+Armame un plan especifico para llamada publica con voz.
 
 Objetivo:
-Permitir que visitantes usen llamada sobre una `PublicSession`.
+Permitir que participantes identificados por email usen llamada sobre una `PublicSession`.
 
 Debe incluir:
 
-- validación de public session token
+- validacion de public session token
+- validacion de `participantEmail`
+- `participantUserId?` si existe cuenta vinculada
 - `RealtimeSession`
-- STT/TTS
+- STT/TTS o provider hosted segun arquitectura vigente
 - Live Avatar lite sandbox
-- persistencia
-- usage con share/public session
-- límites por sesión
+- persistencia de transcript
+- usage con share/public session/email
+- limites por sesion, email, IP y avatar/link
+- aviso de contexto parcialmente desactualizado si aplica
 
 Reglas:
 
-- visitante no requiere cuenta
+- participante no requiere cuenta, pero si una sesion con email
 - link debe estar activo para iniciar
 - cleanup obligatorio
+- no exponer prompts/contexto/documentos
+- owner podra ver actividad y transcripts desde la tab `Actividad`
 
 Checklist:
 
-- llamada pública inicia
+- llamada publica inicia con sesion identificada
 - procesa voz
-- registra usage
-- respeta límites
+- registra transcript
+- registra usage atribuido a email/link/session
+- respeta limites

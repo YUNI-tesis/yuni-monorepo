@@ -12,6 +12,8 @@ accepted
 
 2026-06-12
 
+Amended by [0009-product-navigation-sharing-background-sync.md](0009-product-navigation-sharing-background-sync.md): la Knowledge Base sigue siendo la proyeccion provider-first para el MVP, pero la sincronizacion debe ejecutarse en background con reintentos automaticos. La UI normal no debe exponer controles tecnicos de force-sync como accion principal.
+
 ## Context
 
 YUNI ya tiene un MVP de llamada privada con LiveAvatar LITE + ElevenLabs Agents. Hasta ahora el Agent recibe contexto textual dentro del prompt sincronizado por YUNI. La siguiente feature de producto es que el creador pueda subir texto y documentos para que el avatar los use durante la conversacion.
@@ -39,7 +41,7 @@ Construir RAG propio sigue siendo valioso, pero hacerlo antes de aprovechar la K
 ## Implementation notes
 
 - Crear `24C-elevenlabs-knowledge-base-context-sync.md`.
-- Sincronizar primero `AvatarAgent.context` con `POST /v1/convai/knowledge-base/text`.
+- Sincronizar primero `AvatarAgent.context` con `POST /v1/convai/knowledge-base/text` desde jobs o flujos server-side silenciosos.
 - Para archivos, usar `POST /v1/convai/knowledge-base/file` desde backend/worker despues de `28` y `29`.
 - Asociar solo documentos `synced` al Agent.
 - Incluir referencias de Knowledge Base en el fingerprint del Agent.
@@ -50,7 +52,7 @@ Construir RAG propio sigue siendo valioso, pero hacerlo antes de aprovechar la K
 
 El creador va a poder cargar documentos y probar una llamada donde el avatar contesta usando ese material. En UX, esto debe presentarse como "contexto del avatar", no como una configuracion tecnica de ElevenLabs.
 
-Si falla la sincronizacion provider, el avatar y los documentos locales se conservan. La UI debe mostrar estado y permitir reintentar.
+Si falla la sincronizacion provider, el avatar y los documentos locales se conservan. La UI debe mostrar estado resumido solo cuando sea accionable; los reintentos normales son automaticos.
 
 ## Cost/UX/security tradeoffs
 
@@ -60,7 +62,7 @@ Costo: duplica contexto del creador en un provider externo.
 
 Riesgo: la calidad, limites e indexacion dependen de ElevenLabs.
 
-Mitigacion: mantener YUNI como fuente de verdad, registrar estados de sync, permitir cleanup y conservar el plan de RAG propio para independencia futura.
+Mitigacion: mantener YUNI como fuente de verdad, registrar estados de sync, ejecutar retries automaticos, permitir cleanup y conservar el plan de RAG propio para independencia futura.
 
 ## Sources
 
