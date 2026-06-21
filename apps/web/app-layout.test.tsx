@@ -3,33 +3,42 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { YuniLogo } from "./components/brand/YuniLogo";
 import { PrivateNavigation } from "./components/app-layout/PrivateNavigation";
-import { getActivePrivateNavItem, getPrivatePageMaxWidth, isPrivatePathname } from "./components/app-layout/navigation";
+import {
+  getActivePrivateNavItem,
+  getPrivatePageLayoutVariant,
+  getPrivatePageMaxWidth,
+  isPrivatePathname,
+} from "./components/app-layout/navigation";
 
 describe("private app navigation", () => {
   it.each([
     ["/dashboard", "dashboard"],
     ["/avatars", "avatars"],
+    ["/avatars/new", "avatars"],
     ["/avatars/avatar-1", "avatars"],
     ["/avatars/avatar-1/edit", "avatars"],
-    ["/avatars/new", "create-avatar"],
-    ["/interact", "interact"],
-    ["/interact/avatar-1", "interact"],
   ])("marks %s as %s", (pathname, expectedId) => {
     expect(getActivePrivateNavItem(pathname)?.id).toBe(expectedId);
+  });
+
+  it("does not mark Interact as a primary navigation section", () => {
+    expect(getActivePrivateNavItem("/interact")).toBeNull();
+    expect(getActivePrivateNavItem("/interact/avatar-1")).toBeNull();
   });
 
   it("renders visible navigation labels and current page state", () => {
     const html = renderToStaticMarkup(createElement(PrivateNavigation, { pathname: "/avatars/new" }));
 
     expect(html).toContain("Dashboard");
-    expect(html).toContain("Avatares");
-    expect(html).toContain("Crear avatar");
-    expect(html).toContain("Interact");
+    expect(html).toContain("Mis avatares");
+    expect(html).not.toContain("Crear avatar");
+    expect(html).not.toContain("Interact");
     expect(html).toContain("aria-current=\"page\"");
-    expect(html).toContain("href=\"/avatars/new\"");
+    expect(html).toContain("href=\"/avatars\"");
   });
 
   it("identifies private routes for the persistent app chrome", () => {
+    expect(isPrivatePathname("/")).toBe(false);
     expect(isPrivatePathname("/dashboard")).toBe(true);
     expect(isPrivatePathname("/avatars/avatar-1/edit")).toBe(true);
     expect(isPrivatePathname("/interact/avatar-1")).toBe(true);
@@ -47,6 +56,15 @@ describe("private app navigation", () => {
     ["/interact/avatar-1", "1440px"],
   ])("uses %s max width for %s", (pathname, maxWidth) => {
     expect(getPrivatePageMaxWidth(pathname)).toBe(maxWidth);
+  });
+
+  it.each([
+    ["/dashboard", "standard"],
+    ["/avatars/avatar-1", "standard"],
+    ["/interact", "standard"],
+    ["/interact/avatar-1", "focus"],
+  ])("uses %s layout variant for %s", (pathname, variant) => {
+    expect(getPrivatePageLayoutVariant(pathname)).toBe(variant);
   });
 
   it("renders the YUNI logo component", () => {

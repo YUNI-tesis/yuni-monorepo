@@ -53,7 +53,7 @@ export function AvatarBuilder() {
   return (
     <>
       <PageHeader
-        eyebrow="Avatares"
+        eyebrow="Mis avatares"
         title="Crear avatar"
         description="Configura la identidad, voz y contexto base para probarlo despues en conversaciones."
       />

@@ -94,6 +94,7 @@ model Conversation {
   visibility       ConversationVisibility
   mode             ConversationMode
   status           ConversationStatus     @default(active)
+  title            String?
   lastMessageAt    DateTime?
   createdAt        DateTime               @default(now())
   updatedAt        DateTime               @updatedAt

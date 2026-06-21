@@ -1,5 +1,5 @@
-import { InteractList } from "../../components/interact/InteractList";
+import { redirect } from "next/navigation";
 
 export default function InteractPage() {
-  return <InteractList />;
+  redirect("/avatars");
 }

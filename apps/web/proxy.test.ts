@@ -7,6 +7,12 @@ function createRequest(pathname: string, cookie?: string) {
 }
 
 describe("web auth proxy", () => {
+  it("does not protect the public home route", () => {
+    const response = proxy(createRequest("/"));
+
+    expect(response.headers.get("location")).toBeNull();
+  });
+
   it.each(["/dashboard", "/avatars", "/avatars/new", "/avatars/avatar-1", "/interact", "/interact/avatar-1"])(
     "redirects anonymous users away from %s",
     (pathname) => {

@@ -126,6 +126,7 @@ function createTestDependencies(providerError?: Error): AppDependencies {
           return { id: "conversation-1" };
         },
         async markEnded() {},
+        async updateTitle() {},
       },
       realtimeSessionsRepository: {
         async create() {

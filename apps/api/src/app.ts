@@ -9,12 +9,17 @@ import {
   prisma,
 } from "@yuni/db";
 import { ElevenLabsAgentProvider } from "@yuni/voice";
+import { createOpenAiConversationTitleGenerator } from "@yuni/ai";
 import { createLogger } from "@yuni/observability";
 import { createAuthController, type AuthControllerDependencies } from "./domains/auth/controller.js";
 import { passwordService } from "./domains/auth/password.js";
 import { createAuthRepository } from "./domains/auth/repository.js";
 import { createAvatarsController, type AvatarsControllerDependencies } from "./domains/avatars/controller.js";
 import { createAvatarsRepository } from "./domains/avatars/repository.js";
+import {
+  createConversationsController,
+  type ConversationsControllerDependencies,
+} from "./domains/conversations/controller.js";
 import {
   createLiveAvatarController,
   type LiveAvatarControllerDependencies,
@@ -33,6 +38,7 @@ import { internalServerError } from "./utils/errors.js";
 export type AppDependencies = {
   auth: AuthControllerDependencies;
   avatars: AvatarsControllerDependencies;
+  conversations?: ConversationsControllerDependencies;
   liveAvatar: LiveAvatarControllerDependencies;
   voiceSessions: VoiceSessionsControllerDependencies;
   voiceProviders?: VoiceProvidersControllerDependencies;
@@ -40,6 +46,7 @@ export type AppDependencies = {
 
 const liveAvatarProvider = new LiveAvatarProvider();
 const elevenLabsAgentProvider = new ElevenLabsAgentProvider();
+const conversationTitleGenerator = createOpenAiConversationTitleGenerator();
 
 const defaultDependencies: AppDependencies = {
   auth: {
@@ -56,6 +63,10 @@ const defaultDependencies: AppDependencies = {
   liveAvatar: {
     provider: liveAvatarProvider,
   },
+  conversations: {
+    avatarsRepository: createAvatarsRepository(prisma),
+    conversationsRepository: createConversationRepository(prisma),
+  },
   voiceSessions: {
     avatarsRepository: createAvatarsRepository(prisma),
     conversationsRepository: createConversationRepository(prisma),
@@ -63,6 +74,7 @@ const defaultDependencies: AppDependencies = {
     messagesRepository: createMessageRepository(prisma),
     liveAvatarProvider,
     elevenLabsAgentProvider,
+    conversationTitleGenerator,
   },
   voiceProviders: {
     elevenLabsVoiceProvider: elevenLabsAgentProvider,
@@ -112,6 +124,9 @@ export function createApp(dependencies: AppDependencies = defaultDependencies) {
 
   app.route("/", createAuthController(dependencies.auth));
   app.route("/", createAvatarsController(dependencies.avatars));
+  if (dependencies.conversations) {
+    app.route("/", createConversationsController(dependencies.conversations));
+  }
   app.route("/", createLiveAvatarController(dependencies.liveAvatar));
   app.route("/", createVoiceSessionsController(dependencies.voiceSessions));
 

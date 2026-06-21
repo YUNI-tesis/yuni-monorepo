@@ -2,7 +2,7 @@
 
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
-import { getPrivatePageMaxWidth, isPrivatePathname } from "./navigation";
+import { getPrivatePageLayoutVariant, getPrivatePageMaxWidth, isPrivatePathname } from "./navigation";
 import { PrivateAreaLayout } from "./PrivateAreaLayout";
 
 export function AppLayout({ children }: { children: ReactNode }) {
@@ -12,5 +12,12 @@ export function AppLayout({ children }: { children: ReactNode }) {
     return <>{children}</>;
   }
 
-  return <PrivateAreaLayout maxWidth={getPrivatePageMaxWidth(pathname)}>{children}</PrivateAreaLayout>;
+  return (
+    <PrivateAreaLayout
+      maxWidth={getPrivatePageMaxWidth(pathname)}
+      variant={getPrivatePageLayoutVariant(pathname)}
+    >
+      {children}
+    </PrivateAreaLayout>
+  );
 }

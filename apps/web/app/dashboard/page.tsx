@@ -23,15 +23,12 @@ export default function DashboardPage() {
       <PageHeader
         eyebrow="Dashboard"
         title="YUNI"
-        description="Administra avatares privados y entra a Interact desde un solo lugar."
+        description="Administra tus avatares privados y revisa el estado operativo de tu espacio."
         actions={
           <div className={styles.actions}>
             <Button onClick={() => router.push("/avatars/new")}>Crear avatar</Button>
             <Button variant="secondary" onClick={() => router.push("/avatars")}>
-              Ver avatares
-            </Button>
-            <Button variant="secondary" onClick={() => router.push("/interact")}>
-              Ir a Interact
+              Mis avatares
             </Button>
           </div>
         }
@@ -46,15 +43,15 @@ export default function DashboardPage() {
           <section className={styles.metrics} aria-label="Resumen de avatares">
             <MetricCard label="Avatares" value={String(summary.total)} delta="Total" />
             <MetricCard label="Activos" value={String(summary.active)} delta="Listos" tone="success" />
-            <MetricCard label="Sync pendiente" value={String(summary.needsSync)} delta="Revisar" tone="warning" />
-            <MetricCard label="Sync con error" value={String(summary.failedSync)} delta="Atencion" tone="danger" />
+            <MetricCard label="Procesando" value={String(summary.needsSync)} delta="Pendiente" tone="warning" />
+            <MetricCard label="Requiere revision" value={String(summary.failedSync)} delta="Atencion" tone="danger" />
           </section>
 
           {avatarList.avatars.length === 0 ? (
             <Card padding="lg">
               <EmptyState
                 title="Crea tu primer avatar"
-                description="Despues vas a poder verlo en Avatares y abrir una llamada privada desde Interact."
+                description="Despues vas a poder verlo en Mis avatares y abrir una llamada desde su perfil."
                 action={<Button onClick={() => router.push("/avatars/new")}>Crear avatar</Button>}
               />
             </Card>

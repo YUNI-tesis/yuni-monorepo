@@ -91,7 +91,7 @@ export function AvatarEdit({ avatarId }: { avatarId: string }) {
   return (
     <div className={styles.root}>
       <PageHeader
-        eyebrow="Avatares"
+        eyebrow="Mis avatares"
         title="Editar avatar"
         description={avatar.description || avatar.name}
         actions={

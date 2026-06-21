@@ -52,6 +52,10 @@ export type LiveAvatarSessionState = {
   diagnostics: LiveAvatarDiagnostics;
 };
 
+export type UseLiveAvatarSessionOptions = {
+  onEnded?: () => void | Promise<void>;
+};
+
 const initialDiagnostics: LiveAvatarDiagnostics = {
   voiceChatState: "INACTIVE",
   microphoneLevel: null,
@@ -75,16 +79,21 @@ const initialState: LiveAvatarSessionState = {
   diagnostics: initialDiagnostics,
 };
 
-export function useLiveAvatarSession(avatarId: string) {
+export function useLiveAvatarSession(avatarId: string, options: UseLiveAvatarSessionOptions = {}) {
   const [state, setState] = useState<LiveAvatarSessionState>(initialState);
   const sessionRef = useRef<LiveAvatarSession | null>(null);
   const mediaElementRef = useRef<HTMLMediaElement | null>(null);
   const voiceSessionRef = useRef<ApiVoiceSession | null>(null);
+  const optionsRef = useRef(options);
   const transcriptRef = useRef<LiveAvatarTranscriptEntry[]>([]);
   const eventIdsRef = useRef(new Set<string>());
   const endingRef = useRef(false);
   const diagnosticsCleanupRef = useRef<(() => void) | null>(null);
   const interruptionResetTimeoutRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    optionsRef.current = options;
+  }, [options]);
 
   const closeCurrentSession = useCallback(async (options: { includeTranscript: boolean }) => {
     const currentSession = sessionRef.current;
@@ -151,6 +160,7 @@ export function useLiveAvatarSession(avatarId: string) {
         conversationState: "idle",
         voiceSession: null,
       }));
+      void optionsRef.current.onEnded?.();
     } catch (error) {
       endingRef.current = false;
       setState((current) => ({

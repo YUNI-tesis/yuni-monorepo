@@ -1,5 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { endVoiceSession, listAvatars, startVoiceSession, syncAgentProvider } from "./lib/api/avatar-api";
+import {
+  endVoiceSession,
+  getConversation,
+  listAvatarConversations,
+  listAvatars,
+  startVoiceSession,
+  syncAgentProvider,
+} from "./lib/api/avatar-api";
 
 describe("interact API helpers", () => {
   afterEach(() => {
@@ -73,6 +80,38 @@ describe("interact API helpers", () => {
         credentials: "include",
         body: JSON.stringify({ transcript: [{ role: "user", content: "Hola" }] }),
       })
+    );
+  });
+
+  it("loads avatar conversation history and conversation details", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ conversations: [] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ conversation: { id: "conversation-1", messages: [] } }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await listAvatarConversations("avatar-1");
+    await getConversation("conversation-1");
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "http://localhost:4000/avatars/avatar-1/conversations",
+      expect.objectContaining({ credentials: "include" })
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "http://localhost:4000/conversations/conversation-1",
+      expect.objectContaining({ credentials: "include" })
     );
   });
 });

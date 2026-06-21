@@ -8,6 +8,12 @@
   color: var(--yuni-color-text);
 }
 
+.layoutFocus {
+  background:
+    linear-gradient(180deg, rgba(8, 3, 15, 0.92), rgba(8, 3, 15, 0.99)),
+    var(--yuni-color-bg);
+}
+
 .skipLink {
   position: fixed;
   z-index: calc(var(--yuni-z-dropdown) + 2);
@@ -226,6 +232,13 @@
   padding: clamp(24px, 3vw, 44px) 0 56px;
 }
 
+.contentFocus {
+  width: 100%;
+  min-height: 100dvh;
+  margin: 0;
+  padding: 0;
+}
+
 .content:focus {
   outline: none;
 }
@@ -281,6 +294,11 @@
   .content {
     width: min(var(--yuni-private-page-width, 1280px), calc(100% - 24px));
     padding-top: var(--yuni-space-6);
+  }
+
+  .contentFocus {
+    width: 100%;
+    padding-top: 0;
   }
 }
 

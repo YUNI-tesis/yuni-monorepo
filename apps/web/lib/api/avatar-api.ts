@@ -80,6 +80,33 @@ export type VoiceSessionTranscriptEntry = {
   metadata?: Record<string, unknown>;
 };
 
+export type ApiConversationMode = "text" | "voice";
+export type ApiConversationStatus = "active" | "ended";
+export type ApiConversationMessageRole = "user" | "assistant" | "system";
+
+export type ApiConversationSummary = {
+  id: string;
+  avatarAgentId: string;
+  title: string | null;
+  mode: ApiConversationMode;
+  status: ApiConversationStatus;
+  lastMessageAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ApiConversationMessage = {
+  id: string;
+  role: ApiConversationMessageRole;
+  content: string;
+  metadata: unknown | null;
+  createdAt: string;
+};
+
+export type ApiConversationDetail = ApiConversationSummary & {
+  messages: ApiConversationMessage[];
+};
+
 export function listAvatars() {
   return apiRequest<{ avatars: ApiAvatar[] }>("/avatars");
 }
@@ -93,6 +120,14 @@ export function createAvatar(input: CreateAvatarRequest) {
 
 export function getAvatar(avatarId: string) {
   return apiRequest<{ avatar: ApiAvatar }>(`/avatars/${avatarId}`);
+}
+
+export function listAvatarConversations(avatarId: string) {
+  return apiRequest<{ conversations: ApiConversationSummary[] }>(`/avatars/${avatarId}/conversations`);
+}
+
+export function getConversation(conversationId: string) {
+  return apiRequest<{ conversation: ApiConversationDetail }>(`/conversations/${conversationId}`);
 }
 
 export function updateAvatar(avatarId: string, input: UpdateAvatarRequest) {

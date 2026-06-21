@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  avatarListFilters,
+  filterAvatarsByOwnership,
   formatAvatarStatusLabel,
   formatProviderSyncLabel,
   getAvatarDashboardSummary,
@@ -62,5 +64,17 @@ describe("avatar dashboard helpers", () => {
     expect(formatProviderSyncLabel("synced")).toBe("Sincronizado");
     expect(formatProviderSyncLabel("failed")).toBe("Requiere revision");
     expect(formatProviderSyncLabel("not_synced")).toBe("Pendiente");
+  });
+
+  it("filters the current avatar list for owned and future shared views", () => {
+    const avatars = [createAvatar({ id: "avatar-1" }), createAvatar({ id: "avatar-2" })];
+
+    expect(filterAvatarsByOwnership(avatars, "all").map((avatar) => avatar.id)).toEqual(["avatar-1", "avatar-2"]);
+    expect(filterAvatarsByOwnership(avatars, "owned").map((avatar) => avatar.id)).toEqual(["avatar-1", "avatar-2"]);
+    expect(filterAvatarsByOwnership(avatars, "shared")).toEqual([]);
+  });
+
+  it("exposes the Mis avatares filter labels", () => {
+    expect(avatarListFilters.map((filter) => filter.label)).toEqual(["Todos", "Propios", "Compartidos conmigo"]);
   });
 });

@@ -8,12 +8,14 @@ import { YuniLogo } from "../brand/YuniLogo";
 import { getMe, logout, type ApiUser } from "../../lib/api/auth-api";
 import { ApiClientError } from "../../lib/api/http-client";
 import { PrivateNavigation } from "./PrivateNavigation";
+import type { PrivatePageLayoutVariant } from "./navigation";
 import styles from "./PrivateAreaLayout.module.css";
 
 export type PrivateAreaLayoutProps = {
   children: ReactNode;
   maxWidth?: string;
   contentClassName?: string;
+  variant?: PrivatePageLayoutVariant;
 };
 
 type SessionState =
@@ -46,7 +48,12 @@ function clearSessionUserCache() {
   sessionUserRequest = null;
 }
 
-export function PrivateAreaLayout({ children, maxWidth, contentClassName }: PrivateAreaLayoutProps) {
+export function PrivateAreaLayout({
+  children,
+  maxWidth,
+  contentClassName,
+  variant = "standard",
+}: PrivateAreaLayoutProps) {
   const pathname = usePathname();
   const router = useRouter();
   const contentStyle = {
@@ -111,41 +118,47 @@ export function PrivateAreaLayout({ children, maxWidth, contentClassName }: Priv
   }
 
   return (
-    <div className={styles.layout}>
+    <div className={`${styles.layout} ${variant === "focus" ? styles.layoutFocus : ""}`}>
       <a className={styles.skipLink} href="#private-page-content">
         Saltar al contenido
       </a>
 
-      <header className={styles.header}>
-        <div className={styles.headerInner}>
-          <Link className={styles.brandLink} href="/dashboard" aria-label="YUNI dashboard">
-            <YuniLogo className={styles.logo} aria-hidden="true" focusable="false" />
-            <span className={styles.brandText}>YUNI</span>
-          </Link>
+      {variant === "standard" ? (
+        <header className={styles.header}>
+          <div className={styles.headerInner}>
+            <Link className={styles.brandLink} href="/dashboard" aria-label="Ir al dashboard de YUNI">
+              <YuniLogo className={styles.logo} aria-hidden="true" focusable="false" />
+              <span className={styles.brandText}>YUNI</span>
+            </Link>
 
-          <PrivateNavigation pathname={pathname} />
+            <PrivateNavigation pathname={pathname} />
 
-          <div className={styles.session}>
-            <div className={styles.userBlock}>
-              {session.status === "ready" ? (
-                <>
-                  <span className={styles.userName}>{session.user.name ?? session.user.email}</span>
-                  <span className={styles.userEmail}>{session.user.email}</span>
-                </>
-              ) : session.status === "error" ? (
-                <p className={styles.sessionError}>{session.error}</p>
-              ) : (
-                <p className={styles.sessionMeta}>Verificando sesion...</p>
-              )}
+            <div className={styles.session}>
+              <div className={styles.userBlock}>
+                {session.status === "ready" ? (
+                  <>
+                    <span className={styles.userName}>{session.user.name ?? session.user.email}</span>
+                    <span className={styles.userEmail}>{session.user.email}</span>
+                  </>
+                ) : session.status === "error" ? (
+                  <p className={styles.sessionError}>{session.error}</p>
+                ) : (
+                  <p className={styles.sessionMeta}>Verificando sesion...</p>
+                )}
+              </div>
+              <button className={styles.logout} type="button" onClick={onLogout} disabled={isLoggingOut}>
+                {isLoggingOut ? "Saliendo..." : "Cerrar sesion"}
+              </button>
             </div>
-            <button className={styles.logout} type="button" onClick={onLogout} disabled={isLoggingOut}>
-              {isLoggingOut ? "Saliendo..." : "Cerrar sesion"}
-            </button>
           </div>
-        </div>
-      </header>
+        </header>
+      ) : null}
 
-      <main id="private-page-content" className={`${styles.content} ${contentClassName ?? ""}`} style={contentStyle}>
+      <main
+        id="private-page-content"
+        className={`${styles.content} ${variant === "focus" ? styles.contentFocus : ""} ${contentClassName ?? ""}`}
+        style={contentStyle}
+      >
         {children}
       </main>
     </div>

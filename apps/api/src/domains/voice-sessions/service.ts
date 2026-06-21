@@ -7,6 +7,11 @@ import {
   type VoiceSessionTranscriptEntry,
 } from "@yuni/domain";
 import {
+  fallbackConversationTitle,
+  type ConversationTitleGenerator,
+  type ConversationTitleMessage,
+} from "@yuni/ai";
+import {
   AvatarProviderError,
   AvatarProviderTimeoutError,
   AvatarProviderUnavailableError,
@@ -64,6 +69,7 @@ export type VoiceSessionsServiceDependencies = {
   conversationsRepository: {
     createPrivate(ownerId: string, avatarAgentId: string, mode: "voice"): Promise<{ id: string }>;
     markEnded(id: string): Promise<unknown>;
+    updateTitle(id: string, title: string): Promise<unknown>;
   };
   realtimeSessionsRepository: {
     create(input: { avatarAgentId: string; conversationId: string }): Promise<{ id: string }>;
@@ -73,6 +79,7 @@ export type VoiceSessionsServiceDependencies = {
     ): Promise<{
       id: string;
       conversationId: string | null;
+      avatarAgentId: string;
       providerSessionId: string | null;
       status: string;
       endedAt: Date | null;
@@ -99,6 +106,7 @@ export type VoiceSessionsServiceDependencies = {
   };
   liveAvatarProvider: Pick<AvatarProvider, "createLiteSessionToken">;
   elevenLabsAgentProvider: Pick<ElevenLabsAgentProvider, "syncAvatarAgent">;
+  conversationTitleGenerator?: ConversationTitleGenerator;
 };
 
 export function createVoiceSessionsService(dependencies: VoiceSessionsServiceDependencies) {
@@ -181,6 +189,7 @@ export function createVoiceSessionsService(dependencies: VoiceSessionsServiceDep
       if (realtimeSession.conversationId) {
         await appendTranscript(dependencies, realtimeSession.conversationId, parsed.transcript);
         await dependencies.conversationsRepository.markEnded(realtimeSession.conversationId);
+        await updateEndedVoiceConversationTitle(dependencies, ownerId, realtimeSession, parsed.transcript);
       }
 
       return toVoiceSessionDto(await dependencies.realtimeSessionsRepository.markEnded(realtimeSession.id));
@@ -294,6 +303,56 @@ async function appendTranscript(
       },
     });
   }
+}
+
+async function updateEndedVoiceConversationTitle(
+  dependencies: VoiceSessionsServiceDependencies,
+  ownerId: string,
+  realtimeSession: { conversationId: string | null; avatarAgentId: string },
+  transcript: VoiceSessionTranscriptEntry[]
+) {
+  if (!realtimeSession.conversationId) {
+    return;
+  }
+
+  try {
+    const avatar = await dependencies.avatarsRepository.findByIdForOwner(ownerId, realtimeSession.avatarAgentId);
+    const titleInput = {
+      ...(avatar?.name ? { avatarName: avatar.name } : {}),
+      messages: transcript.map(toConversationTitleMessage),
+    };
+    const generatedTitle = await generateConversationTitle(dependencies.conversationTitleGenerator, titleInput);
+    const title = generatedTitle ?? fallbackConversationTitle(titleInput);
+
+    await dependencies.conversationsRepository.updateTitle(realtimeSession.conversationId, title);
+  } catch (error) {
+    logger.error("Failed to update voice conversation title", {
+      error: summarizeStructuredError(error),
+      conversationId: realtimeSession.conversationId,
+      avatarAgentId: realtimeSession.avatarAgentId,
+    });
+  }
+}
+
+async function generateConversationTitle(
+  generator: ConversationTitleGenerator | undefined,
+  input: { avatarName?: string; messages: ConversationTitleMessage[] }
+) {
+  try {
+    return (await generator?.generateTitle(input)) ?? null;
+  } catch (error) {
+    logger.error("OpenAI voice conversation title generation failed", {
+      error: summarizeStructuredError(error),
+    });
+    return null;
+  }
+}
+
+function toConversationTitleMessage(entry: VoiceSessionTranscriptEntry): ConversationTitleMessage {
+  return {
+    role: entry.role,
+    content: entry.content,
+  };
 }
 
 function toVoiceSessionDto(session: {
