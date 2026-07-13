@@ -13,11 +13,13 @@
   "dependencies": {
     "@hono/node-server": "^1.19.6",
     "@hono/zod-validator": "^0.8.0",
+    "@yuni/ai": "workspace:*",
+    "@yuni/avatars": "workspace:*",
     "@yuni/config": "workspace:*",
     "@yuni/db": "workspace:*",
     "@yuni/domain": "workspace:*",
     "@yuni/observability": "workspace:*",
-    "@yuni/avatars": "workspace:*",
+    "@yuni/voice": "workspace:*",
     "bcryptjs": "^3.0.3",
     "hono": "^4.10.7",
     "jose": "^6.2.3"

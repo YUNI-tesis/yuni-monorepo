@@ -57,6 +57,20 @@ export function createConversationRepository(db: Db) {
       });
     },
 
+    markEnded(id: string) {
+      return db.conversation.update({
+        where: { id },
+        data: { status: "ended" },
+      });
+    },
+
+    updateTitle(id: string, title: string) {
+      return db.conversation.update({
+        where: { id },
+        data: { title },
+      });
+    },
+
     findPublicBySession(publicSessionId: string) {
       return db.conversation.findFirst({
         where: { publicSessionId, visibility: "public" },

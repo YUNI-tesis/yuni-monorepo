@@ -3,8 +3,13 @@ import { ConfigError } from "./errors";
 import { createAuthConfig, requireAuthConfig } from "./auth";
 import { createClientEnv } from "./client";
 import { createDatabaseConfig } from "./database";
+import {
+  createElevenLabsConfig,
+  requireElevenLabsConfig,
+  requireElevenLabsDefaultVoice,
+} from "./elevenlabs";
 import { parseRawEnv } from "./env";
-import { createLiveAvatarConfig } from "./live-avatar";
+import { createLiveAvatarConfig, requireLiveAvatarElevenLabsConnectorConfig } from "./live-avatar";
 import { createOpenAiConfig, requireOpenAiConfig } from "./openai";
 import { createPricingConfig } from "./pricing";
 import { createRateLimitConfig } from "./rate-limits";
@@ -14,7 +19,10 @@ const productionEnv = {
   DATABASE_URL: "postgresql://yuni:yuni@localhost:5432/yuni_dev?schema=public",
   AUTH_SECRET: "production-secret",
   OPENAI_API_KEY: "openai-key",
+  ELEVENLABS_API_KEY: "elevenlabs-key",
+  ELEVENLABS_DEFAULT_VOICE_ID: "elevenlabs-voice",
   LIVEAVATAR_API_KEY: "liveavatar-key",
+  LIVEAVATAR_ELEVENLABS_SECRET_ID: "liveavatar-secret",
   LIVEAVATAR_BASE_URL: "https://api.liveavatar.example",
   LIVEAVATAR_SANDBOX: "true",
   LIVEAVATAR_MODE: "lite",
@@ -38,6 +46,7 @@ describe("@yuni/config", () => {
     expect(env.API_PORT).toBe(4000);
     expect(env.LIVEAVATAR_SANDBOX).toBe(true);
     expect(env.LIVEAVATAR_MODE).toBe("lite");
+    expect(env.ELEVENLABS_AGENT_TTS_MODEL).toBe("eleven_v3");
   });
 
   it("validates a complete production env", () => {
@@ -45,6 +54,13 @@ describe("@yuni/config", () => {
 
     expect(env.APP_ENV).toBe("production");
     expect(env.OPENAI_API_KEY).toBe("openai-key");
+  });
+
+  it("does not require ElevenLabs default voice in production", () => {
+    const env = parseRawEnv(withoutKey(productionEnv, "ELEVENLABS_DEFAULT_VOICE_ID"));
+
+    expect(env.APP_ENV).toBe("production");
+    expect(env.ELEVENLABS_DEFAULT_VOICE_ID).toBeUndefined();
   });
 
   it("fails when DATABASE_URL is missing in production", () => {
@@ -66,6 +82,38 @@ describe("@yuni/config", () => {
     expect(() => requireOpenAiConfig(config)).toThrow(ConfigError);
   });
 
+  it("fails when requiring ElevenLabs without API key", () => {
+    const env = parseRawEnv({});
+    const config = createElevenLabsConfig(env);
+
+    expect(() => requireElevenLabsConfig(config)).toThrow(ConfigError);
+  });
+
+  it("accepts ElevenLabs base config without a default voice", () => {
+    const env = parseRawEnv({ ELEVENLABS_API_KEY: "elevenlabs-key" });
+    const config = createElevenLabsConfig(env);
+
+    expect(requireElevenLabsConfig(config).apiKey).toBe("elevenlabs-key");
+    expect(() => requireElevenLabsDefaultVoice(config)).toThrow(ConfigError);
+  });
+
+  it("accepts configured ElevenLabs base URL, voice and timeout", () => {
+    const env = parseRawEnv({
+      ELEVENLABS_BASE_URL: "https://api.elevenlabs.example",
+      ELEVENLABS_DEFAULT_VOICE_ID: "voice-123",
+      ELEVENLABS_AGENT_LLM_MODEL: "gemini-2.0-flash-001",
+      ELEVENLABS_AGENT_TTS_MODEL: "eleven_turbo_v2_5",
+      ELEVENLABS_REQUEST_TIMEOUT_MS: "16000",
+    });
+    const config = createElevenLabsConfig(env);
+
+    expect(config.baseUrl).toBe("https://api.elevenlabs.example");
+    expect(config.defaultVoiceId).toBe("voice-123");
+    expect(config.agentLlmModel).toBe("gemini-2.0-flash-001");
+    expect(config.agentTtsModel).toBe("eleven_turbo_v2_5");
+    expect(config.requestTimeoutMs).toBe(16000);
+  });
+
   it("accepts configured Live Avatar mode, sandbox and timeout", () => {
     const env = parseRawEnv({
       LIVEAVATAR_MODE: "provider-specific-mode",
@@ -77,6 +125,13 @@ describe("@yuni/config", () => {
     expect(config.mode).toBe("provider-specific-mode");
     expect(config.sandbox).toBe(false);
     expect(config.requestTimeoutMs).toBe(15000);
+  });
+
+  it("requires Live Avatar ElevenLabs connector secret id", () => {
+    const env = parseRawEnv({ LIVEAVATAR_API_KEY: "liveavatar-key" });
+    const config = createLiveAvatarConfig(env);
+
+    expect(() => requireLiveAvatarElevenLabsConnectorConfig(config)).toThrow(ConfigError);
   });
 
   it("does not expose secrets in client env", () => {

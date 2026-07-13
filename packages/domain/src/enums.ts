@@ -3,6 +3,12 @@ import { z } from "zod";
 export const AvatarStatusSchema = z.enum(["draft", "active", "disabled"]);
 export type AvatarStatus = z.infer<typeof AvatarStatusSchema>;
 
+export const AgentProviderSchema = z.enum(["elevenlabs_agents", "openai_realtime", "none"]);
+export type AgentProvider = z.infer<typeof AgentProviderSchema>;
+
+export const ProviderSyncStatusSchema = z.enum(["not_synced", "synced", "failed"]);
+export type ProviderSyncStatus = z.infer<typeof ProviderSyncStatusSchema>;
+
 export const ShareLinkStatusSchema = z.enum(["enabled", "disabled"]);
 export type ShareLinkStatus = z.infer<typeof ShareLinkStatusSchema>;
 

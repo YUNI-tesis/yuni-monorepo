@@ -2,10 +2,12 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Button, Card, ErrorState, PageHeader, PageShell } from "@yuni/ui";
+import { Button, Card, ErrorState, PageHeader } from "@yuni/ui";
 import { createAvatar } from "../../lib/api/avatar-api";
 import { ApiClientError } from "../../lib/api/http-client";
 import { buildCreateAvatarRequest, useAvatarBuilder } from "../../hooks/useAvatarBuilder";
+import { useElevenLabsVoiceOptions } from "../../hooks/useElevenLabsVoiceOptions";
+import { invalidateAvatarListCache } from "../../hooks/useAvatarList";
 import { useLiveAvatarOptions } from "../../hooks/useLiveAvatarOptions";
 import { BuilderSteps } from "./BuilderSteps";
 import { ContextStep } from "./steps/ContextStep";
@@ -19,7 +21,8 @@ import styles from "./AvatarBuilder.module.css";
 export function AvatarBuilder() {
   const router = useRouter();
   const liveAvatarOptions = useLiveAvatarOptions();
-  const builder = useAvatarBuilder(liveAvatarOptions.options);
+  const voiceOptions = useElevenLabsVoiceOptions();
+  const builder = useAvatarBuilder(liveAvatarOptions.options, voiceOptions.options);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   async function saveAvatar() {
@@ -33,6 +36,7 @@ export function AvatarBuilder() {
       const { avatar } = await createAvatar(
         buildCreateAvatarRequest(builder.state, builder.selectedLiveAvatar, builder.selectedVoice)
       );
+      invalidateAvatarListCache();
       router.push(`/avatars/${avatar.id}`);
       router.refresh();
     } catch (caughtError) {
@@ -47,9 +51,9 @@ export function AvatarBuilder() {
   }
 
   return (
-    <PageShell maxWidth="980px">
+    <>
       <PageHeader
-        eyebrow="Avatares"
+        eyebrow="Mis avatares"
         title="Crear avatar"
         description="Configura la identidad, voz y contexto base para probarlo despues en conversaciones."
       />
@@ -62,7 +66,7 @@ export function AvatarBuilder() {
           {builder.currentStep === "Avatar" ? (
             <LiveAvatarStep builder={builder} liveAvatarOptions={liveAvatarOptions} />
           ) : null}
-          {builder.currentStep === "Voz" ? <VoiceStep builder={builder} /> : null}
+          {builder.currentStep === "Voz" ? <VoiceStep builder={builder} voiceOptions={voiceOptions} /> : null}
           {builder.currentStep === "Persona" ? <PersonaStep builder={builder} /> : null}
           {builder.currentStep === "Contexto" ? <ContextStep builder={builder} /> : null}
           {builder.currentStep === "Review" ? <ReviewStep builder={builder} /> : null}
@@ -83,6 +87,6 @@ export function AvatarBuilder() {
           )}
         </div>
       </Card>
-    </PageShell>
+    </>
   );
 }

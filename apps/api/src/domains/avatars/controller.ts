@@ -4,9 +4,20 @@ import {
   NotFoundError,
   UpdateAvatarAgentInputSchema,
 } from "@yuni/domain";
-import { notFoundError, unauthorizedError, validationError } from "../../utils/errors";
+import {
+  badGatewayError,
+  notFoundError,
+  serviceUnavailableError,
+  unauthorizedError,
+  validationError,
+} from "../../utils/errors";
+import {
+  ElevenLabsProviderError,
+  ElevenLabsProviderTimeoutError,
+  ElevenLabsProviderUnavailableError,
+} from "@yuni/voice";
 import { getSessionToken, verifySessionToken } from "../auth/session";
-import { createAvatarsService, type AvatarsServiceDependencies } from "./service";
+import { AvatarVoiceNotFoundError, createAvatarsService, type AvatarsServiceDependencies } from "./service";
 
 export type AvatarsControllerDependencies = AvatarsServiceDependencies;
 
@@ -52,7 +63,33 @@ export function createAvatarsController(dependencies: AvatarsControllerDependenc
       return context.json(validationError(parsed.error.issues), 400);
     }
 
-    return context.json({ avatar: await service.createAvatar(session.userId, parsed.data) }, 201);
+    try {
+      return context.json({ avatar: await service.createAvatar(session.userId, parsed.data) }, 201);
+    } catch (error) {
+      if (error instanceof AvatarVoiceNotFoundError) {
+        return context.json(
+          validationError(
+            [{ path: ["voiceConfig", "voiceId"], message: error.message }],
+            "Invalid voice config"
+          ),
+          400
+        );
+      }
+
+      if (error instanceof ElevenLabsProviderUnavailableError) {
+        return context.json(serviceUnavailableError("ElevenLabs is not configured"), 503);
+      }
+
+      if (error instanceof ElevenLabsProviderTimeoutError) {
+        return context.json(badGatewayError("ElevenLabs provider timed out"), 502);
+      }
+
+      if (error instanceof ElevenLabsProviderError) {
+        return context.json(badGatewayError("ElevenLabs provider failed"), 502);
+      }
+
+      throw error;
+    }
   });
 
   avatars.get("/avatars/:avatarId", async (context) => {
@@ -99,6 +136,28 @@ export function createAvatarsController(dependencies: AvatarsControllerDependenc
 
       return context.json({ avatar });
     } catch (error) {
+      if (error instanceof AvatarVoiceNotFoundError) {
+        return context.json(
+          validationError(
+            [{ path: ["voiceConfig", "voiceId"], message: error.message }],
+            "Invalid voice config"
+          ),
+          400
+        );
+      }
+
+      if (error instanceof ElevenLabsProviderUnavailableError) {
+        return context.json(serviceUnavailableError("ElevenLabs is not configured"), 503);
+      }
+
+      if (error instanceof ElevenLabsProviderTimeoutError) {
+        return context.json(badGatewayError("ElevenLabs provider timed out"), 502);
+      }
+
+      if (error instanceof ElevenLabsProviderError) {
+        return context.json(badGatewayError("ElevenLabs provider failed"), 502);
+      }
+
       if (error instanceof NotFoundError) {
         return context.json(notFoundError("Avatar not found"), 404);
       }

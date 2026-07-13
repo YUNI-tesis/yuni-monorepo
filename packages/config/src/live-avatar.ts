@@ -8,6 +8,7 @@ export type LiveAvatarConfig = {
   sandbox: boolean;
   mode: string;
   requestTimeoutMs: number;
+  elevenLabsSecretId: string;
 };
 
 export function createLiveAvatarConfig(env: RawEnv): LiveAvatarConfig {
@@ -17,6 +18,7 @@ export function createLiveAvatarConfig(env: RawEnv): LiveAvatarConfig {
     sandbox: env.LIVEAVATAR_SANDBOX,
     mode: env.LIVEAVATAR_MODE,
     requestTimeoutMs: env.LIVEAVATAR_REQUEST_TIMEOUT_MS,
+    elevenLabsSecretId: env.LIVEAVATAR_ELEVENLABS_SECRET_ID ?? "",
   };
 }
 
@@ -32,4 +34,18 @@ export function requireLiveAvatarConfig(config: LiveAvatarConfig = liveAvatarCon
   }
 
   return config;
+}
+
+export function requireLiveAvatarElevenLabsConnectorConfig(
+  config: LiveAvatarConfig = liveAvatarConfig
+): LiveAvatarConfig {
+  const liveAvatar = requireLiveAvatarConfig(config);
+
+  if (liveAvatar.elevenLabsSecretId.length === 0) {
+    throw new ConfigError("Live Avatar ElevenLabs connector is not configured", [
+      "LIVEAVATAR_ELEVENLABS_SECRET_ID is required",
+    ]);
+  }
+
+  return liveAvatar;
 }

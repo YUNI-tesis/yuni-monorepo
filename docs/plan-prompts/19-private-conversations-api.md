@@ -1,9 +1,9 @@
-# Prompt: Private Conversations API
+# Prompt: Conversations API
 
-Armame un plan específico para conversaciones privadas.
+Armame un plan especifico para conversaciones privadas y compartidas.
 
 Objetivo:
-Crear/listar/obtener conversaciones privadas entre creador y avatar.
+Crear/listar/obtener conversaciones entre un avatar y un owner, usuario compartido o participante publico identificado.
 
 Endpoints:
 
@@ -14,21 +14,34 @@ Endpoints:
 
 Debe incluir:
 
-- ownership
-- latest conversation
+- ownership para owner
+- acceso por grant para usuarios compartidos
+- acceso por public session token para participantes publicos cuando aplique
+- latest conversation por identidad efectiva
 - create if none flow
 - conversation mode text/voice
 - status active/ended
+- campos o metadata para:
+  - owner private
+  - shared authenticated user
+  - public participant email
+  - shareLink/accessGrant/publicSession
 
 Reglas:
 
-- conversación privada requiere ownerId
-- última conversación usa `lastMessageAt desc`, fallback `createdAt desc`
-- no mensajes/chat AI todavía si va en otro módulo
+- conversacion privada de owner requiere ownerId
+- conversacion compartida autenticada requiere grant activo
+- conversacion publica requiere public session activa con `participantEmail`
+- ultima conversacion usa `lastMessageAt desc`, fallback `createdAt desc`
+- no mensajes/chat AI todavia si va en otro modulo
+- usuario compartido solo accede a sus conversaciones
+- owner puede listar actividad agregada del avatar desde planes de Actividad
 
 Checklist:
 
-- crear conversación privada
-- obtener última conversación
-- listar historial
-- no acceder a conversación ajena
+- crear conversacion privada de owner
+- crear conversacion de usuario compartido
+- crear conversacion publica asociada a email/session
+- obtener ultima conversacion por identidad
+- listar historial permitido
+- no acceder a conversacion ajena

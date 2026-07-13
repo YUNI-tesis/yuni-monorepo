@@ -4,9 +4,12 @@ export type VoiceOption = {
   id: string;
   displayName: string;
   description: string;
-  provider: "openai";
+  provider: ApiVoiceConfig["provider"];
   toneLabel: string;
   recommendedFor: string;
+  previewUrl?: string | null;
+  category?: string | null;
+  labels?: Record<string, string>;
 };
 
 export const currentVoiceOptionName = "Voz actual";
@@ -41,6 +44,7 @@ export const voiceOptions: VoiceOption[] = [
 type VoiceConfigInput = {
   voiceId: string;
   selectedVoice?: VoiceOption | null | undefined;
+  fallbackProvider?: ApiVoiceConfig["provider"];
   fallbackDisplayName?: string;
   fallbackDescription?: string;
 };
@@ -48,6 +52,7 @@ type VoiceConfigInput = {
 export function createVoiceConfig({
   voiceId,
   selectedVoice,
+  fallbackProvider = "elevenlabs",
   fallbackDisplayName = "",
   fallbackDescription = "",
 }: VoiceConfigInput): ApiVoiceConfig {
@@ -55,7 +60,7 @@ export function createVoiceConfig({
   const displayName = isCurrentOption ? fallbackDisplayName : selectedVoice?.displayName ?? fallbackDisplayName;
   const description = isCurrentOption ? fallbackDescription : selectedVoice?.description ?? fallbackDescription;
   const config: ApiVoiceConfig = {
-    provider: "openai",
+    provider: selectedVoice?.provider ?? fallbackProvider,
     voiceId,
     speakingRate: 1,
   };

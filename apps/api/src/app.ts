@@ -2,7 +2,14 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { clientEnv, appConfig, liveAvatarConfig } from "@yuni/config";
 import { LiveAvatarProvider } from "@yuni/avatars";
-import { prisma } from "@yuni/db";
+import {
+  createConversationRepository,
+  createMessageRepository,
+  createRealtimeSessionRepository,
+  prisma,
+} from "@yuni/db";
+import { ElevenLabsAgentProvider } from "@yuni/voice";
+import { createOpenAiConversationTitleGenerator } from "@yuni/ai";
 import { createLogger } from "@yuni/observability";
 import { createAuthController, type AuthControllerDependencies } from "./domains/auth/controller.js";
 import { passwordService } from "./domains/auth/password.js";
@@ -10,19 +17,36 @@ import { createAuthRepository } from "./domains/auth/repository.js";
 import { createAvatarsController, type AvatarsControllerDependencies } from "./domains/avatars/controller.js";
 import { createAvatarsRepository } from "./domains/avatars/repository.js";
 import {
+  createConversationsController,
+  type ConversationsControllerDependencies,
+} from "./domains/conversations/controller.js";
+import {
   createLiveAvatarController,
   type LiveAvatarControllerDependencies,
 } from "./domains/live-avatar/controller.js";
+import {
+  createVoiceSessionsController,
+  type VoiceSessionsControllerDependencies,
+} from "./domains/voice-sessions/controller.js";
+import {
+  createVoiceProvidersController,
+  type VoiceProvidersControllerDependencies,
+} from "./domains/voice-providers/controller.js";
 import { requestLogger } from "./middleware/request-logger.js";
 import { internalServerError } from "./utils/errors.js";
 
 export type AppDependencies = {
   auth: AuthControllerDependencies;
   avatars: AvatarsControllerDependencies;
+  conversations?: ConversationsControllerDependencies;
   liveAvatar: LiveAvatarControllerDependencies;
+  voiceSessions: VoiceSessionsControllerDependencies;
+  voiceProviders?: VoiceProvidersControllerDependencies;
 };
 
 const liveAvatarProvider = new LiveAvatarProvider();
+const elevenLabsAgentProvider = new ElevenLabsAgentProvider();
+const conversationTitleGenerator = createOpenAiConversationTitleGenerator();
 
 const defaultDependencies: AppDependencies = {
   auth: {
@@ -33,9 +57,27 @@ const defaultDependencies: AppDependencies = {
     repository: createAvatarsRepository(prisma),
     liveAvatarConfig,
     avatarProvider: liveAvatarProvider,
+    elevenLabsVoiceProvider: elevenLabsAgentProvider,
+    elevenLabsAgentProvider,
   },
   liveAvatar: {
     provider: liveAvatarProvider,
+  },
+  conversations: {
+    avatarsRepository: createAvatarsRepository(prisma),
+    conversationsRepository: createConversationRepository(prisma),
+  },
+  voiceSessions: {
+    avatarsRepository: createAvatarsRepository(prisma),
+    conversationsRepository: createConversationRepository(prisma),
+    realtimeSessionsRepository: createRealtimeSessionRepository(prisma),
+    messagesRepository: createMessageRepository(prisma),
+    liveAvatarProvider,
+    elevenLabsAgentProvider,
+    conversationTitleGenerator,
+  },
+  voiceProviders: {
+    elevenLabsVoiceProvider: elevenLabsAgentProvider,
   },
 };
 
@@ -82,7 +124,15 @@ export function createApp(dependencies: AppDependencies = defaultDependencies) {
 
   app.route("/", createAuthController(dependencies.auth));
   app.route("/", createAvatarsController(dependencies.avatars));
+  if (dependencies.conversations) {
+    app.route("/", createConversationsController(dependencies.conversations));
+  }
   app.route("/", createLiveAvatarController(dependencies.liveAvatar));
+  app.route("/", createVoiceSessionsController(dependencies.voiceSessions));
+
+  if (dependencies.voiceProviders) {
+    app.route("/", createVoiceProvidersController(dependencies.voiceProviders));
+  }
 
   return app;
 }

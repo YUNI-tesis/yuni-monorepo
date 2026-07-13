@@ -1,13 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createAvatar } from "./lib/api/avatar-api";
 import { getLiveAvatarOptions } from "./lib/api/live-avatar-api";
+import { getElevenLabsVoiceOptions } from "./lib/api/voice-provider-api";
 import {
   buildCreateAvatarRequest,
   createInitialAvatarBuilderState,
   validateAvatarBuilderState,
 } from "./hooks/useAvatarBuilder";
 import type { ApiLiveAvatarOption } from "./lib/api/live-avatar-api";
-import { createVoiceConfig, voiceOptions } from "./lib/voice-config";
+import { createVoiceConfig, type VoiceOption } from "./lib/voice-config";
 
 const liveAvatarOption: ApiLiveAvatarOption = {
   id: "demo-guide",
@@ -16,6 +17,16 @@ const liveAvatarOption: ApiLiveAvatarOption = {
   provider: "liveavatar",
   mode: "lite",
   sandbox: true,
+};
+
+const voiceOption: VoiceOption = {
+  id: "voice-1",
+  displayName: "Agustin",
+  description: "Relaxed, warm and approachable.",
+  provider: "elevenlabs",
+  toneLabel: "Warm",
+  recommendedFor: "Conversaciones naturales.",
+  previewUrl: "https://cdn.elevenlabs.test/voice-1.mp3",
 };
 
 describe("avatar builder", () => {
@@ -27,7 +38,7 @@ describe("avatar builder", () => {
     const state = createInitialAvatarBuilderState();
 
     expect(state.liveAvatarId).toBe("");
-    expect(state.voiceId).toBeTruthy();
+    expect(state.voiceId).toBe("");
     expect(state.files).toEqual([]);
   });
 
@@ -45,12 +56,12 @@ describe("avatar builder", () => {
       ...createInitialAvatarBuilderState(),
       name: "YUNI Demo",
       description: "Avatar de prueba",
+      voiceId: "voice-1",
       instructions: "Responde claro.",
       context: "Contexto base",
     };
 
-    const selectedVoice = voiceOptions.find((option) => option.id === state.voiceId) ?? null;
-    const payload = buildCreateAvatarRequest(state, liveAvatarOption, selectedVoice);
+    const payload = buildCreateAvatarRequest(state, liveAvatarOption, voiceOption);
 
     expect(payload).toMatchObject({
       name: "YUNI Demo",
@@ -63,10 +74,10 @@ describe("avatar builder", () => {
         sandbox: true,
       },
       voiceConfig: {
-        provider: "openai",
-        voiceId: "alloy",
-        displayName: "Alloy",
-        description: "Voz equilibrada y natural para conversaciones generales.",
+        provider: "elevenlabs",
+        voiceId: "voice-1",
+        displayName: "Agustin",
+        description: "Relaxed, warm and approachable.",
         speakingRate: 1,
       },
     });
@@ -76,14 +87,14 @@ describe("avatar builder", () => {
   it("creates voice config with catalog metadata", () => {
     expect(
       createVoiceConfig({
-        voiceId: "verse",
-        selectedVoice: voiceOptions.find((option) => option.id === "verse"),
+        voiceId: "voice-1",
+        selectedVoice: voiceOption,
       })
     ).toEqual({
-      provider: "openai",
-      voiceId: "verse",
-      displayName: "Verse",
-      description: "Voz cálida con un ritmo más expresivo.",
+      provider: "elevenlabs",
+      voiceId: "voice-1",
+      displayName: "Agustin",
+      description: "Relaxed, warm and approachable.",
       speakingRate: 1,
     });
   });
@@ -114,8 +125,9 @@ describe("avatar builder", () => {
       buildCreateAvatarRequest({
         ...createInitialAvatarBuilderState(),
         name: "YUNI Demo",
+        voiceId: "voice-1",
         instructions: "Responde claro.",
-      })
+      }, undefined, voiceOption)
     );
 
     expect(fetchMock).toHaveBeenCalledWith(
@@ -140,6 +152,25 @@ describe("avatar builder", () => {
 
     expect(fetchMock).toHaveBeenCalledWith(
       "http://localhost:4000/live-avatar/avatars",
+      expect.objectContaining({
+        credentials: "include",
+      })
+    );
+  });
+
+  it("fetches ElevenLabs voice options with credentials included", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ voices: [] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await getElevenLabsVoiceOptions();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:4000/voice-providers/elevenlabs/voices",
       expect.objectContaining({
         credentials: "include",
       })

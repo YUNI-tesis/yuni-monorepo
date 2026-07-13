@@ -32,11 +32,19 @@ const RawEnvSchema = z.object({
   OPENAI_REALTIME_MODEL: z.string().min(1).default("gpt-4o-realtime-preview"),
   OPENAI_EMBEDDINGS_MODEL: z.string().min(1).default("text-embedding-3-small"),
 
+  ELEVENLABS_API_KEY: z.string().optional(),
+  ELEVENLABS_BASE_URL: z.url().default("https://api.elevenlabs.io"),
+  ELEVENLABS_DEFAULT_VOICE_ID: z.string().optional(),
+  ELEVENLABS_AGENT_LLM_MODEL: z.string().trim().min(1).default("gpt-4o-mini"),
+  ELEVENLABS_AGENT_TTS_MODEL: z.string().trim().min(1).default("eleven_v3"),
+  ELEVENLABS_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().default(30000),
+
   LIVEAVATAR_API_KEY: z.string().optional(),
   LIVEAVATAR_BASE_URL: z.url().default("https://api.liveavatar.com"),
   LIVEAVATAR_SANDBOX: BooleanStringSchema.default(true),
   LIVEAVATAR_MODE: z.string().trim().min(1).default("lite"),
   LIVEAVATAR_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().default(10000),
+  LIVEAVATAR_ELEVENLABS_SECRET_ID: z.string().optional(),
 
   S3_REGION: z.string().min(1).default("us-east-1"),
   S3_BUCKET: z.string().optional(),
@@ -81,7 +89,9 @@ export function parseRawEnv(input: NodeJS.ProcessEnv | Record<string, string | u
   requireWhenProduction(rawEnv, "DATABASE_URL", issues);
   requireWhenProduction(rawEnv, "AUTH_SECRET", issues);
   requireWhenProduction(rawEnv, "OPENAI_API_KEY", issues);
+  requireWhenProduction(rawEnv, "ELEVENLABS_API_KEY", issues);
   requireWhenProduction(rawEnv, "LIVEAVATAR_API_KEY", issues);
+  requireWhenProduction(rawEnv, "LIVEAVATAR_ELEVENLABS_SECRET_ID", issues);
   requireWhenProduction(rawEnv, "S3_BUCKET", issues);
   requireWhenProduction(rawEnv, "S3_ACCESS_KEY_ID", issues);
   requireWhenProduction(rawEnv, "S3_SECRET_ACCESS_KEY", issues);

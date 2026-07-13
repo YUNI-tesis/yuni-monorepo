@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { CreateAvatarRequest } from "../lib/api/avatar-api";
 import type { ApiLiveAvatarOption } from "../lib/api/live-avatar-api";
 import { createLiveAvatarConfig } from "../lib/avatar-config";
-import { createVoiceConfig, voiceOptions, type VoiceOption } from "../lib/voice-config";
+import { createVoiceConfig, type VoiceOption } from "../lib/voice-config";
 
 export const avatarBuilderSteps = ["Identidad", "Avatar", "Voz", "Persona", "Contexto", "Review"] as const;
 
@@ -29,7 +29,7 @@ export function createInitialAvatarBuilderState(): AvatarBuilderState {
     name: "",
     description: "",
     liveAvatarId: "",
-    voiceId: voiceOptions[0]?.id ?? "",
+    voiceId: "",
     instructions: "",
     context: "",
     files: [],
@@ -96,7 +96,7 @@ export function buildCreateAvatarRequest(
     context: state.context.trim(),
     voiceConfig: createVoiceConfig({
       voiceId: state.voiceId,
-      selectedVoice: selectedVoice ?? voiceOptions.find((option) => option.id === state.voiceId) ?? null,
+      selectedVoice: selectedVoice ?? null,
     }),
     liveAvatarConfig: createLiveAvatarConfig({
       avatarId: state.liveAvatarId,
@@ -106,7 +106,7 @@ export function buildCreateAvatarRequest(
   };
 }
 
-export function useAvatarBuilder(liveAvatarOptions: ApiLiveAvatarOption[] = []) {
+export function useAvatarBuilder(liveAvatarOptions: ApiLiveAvatarOption[] = [], voiceOptions: VoiceOption[] = []) {
   const [state, setState] = useState(createInitialAvatarBuilderState);
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [errors, setErrors] = useState<AvatarBuilderValidation>({});
@@ -119,7 +119,7 @@ export function useAvatarBuilder(liveAvatarOptions: ApiLiveAvatarOption[] = []) 
   );
   const selectedVoice = useMemo(
     () => voiceOptions.find((option) => option.id === state.voiceId) ?? null,
-    [state.voiceId]
+    [state.voiceId, voiceOptions]
   );
 
   useEffect(() => {
@@ -135,6 +135,20 @@ export function useAvatarBuilder(liveAvatarOptions: ApiLiveAvatarOption[] = []) 
       return { ...currentState, liveAvatarId: liveAvatarOptions[0]?.id ?? "" };
     });
   }, [liveAvatarOptions, state.liveAvatarId]);
+
+  useEffect(() => {
+    if (state.voiceId || voiceOptions.length === 0) {
+      return;
+    }
+
+    setState((currentState) => {
+      if (currentState.voiceId) {
+        return currentState;
+      }
+
+      return { ...currentState, voiceId: voiceOptions[0]?.id ?? "" };
+    });
+  }, [state.voiceId, voiceOptions]);
 
   function updateField<Field extends keyof AvatarBuilderState>(field: Field, value: AvatarBuilderState[Field]) {
     setState((currentState) => ({ ...currentState, [field]: value }));

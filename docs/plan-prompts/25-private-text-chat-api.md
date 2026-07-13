@@ -1,9 +1,9 @@
-# Prompt: Private Text Chat API
+# Prompt: Private And Shared Text Chat API
 
-Armame un plan específico para chat de texto privado.
+Armame un plan especifico para chat de texto autenticado.
 
 Objetivo:
-Permitir que el creador mande mensajes privados a un avatar y reciba respuesta AI.
+Permitir que el owner o un usuario con acceso compartido mande mensajes a un avatar y reciba respuesta AI.
 
 Endpoint:
 
@@ -11,23 +11,30 @@ Endpoint:
 
 Debe incluir:
 
-- validar ownership
+- validar ownership o grant activo
 - append user message
 - generar assistant response
 - append assistant message
 - actualizar `lastMessageAt`
-- registrar usage privado
+- registrar usage privado o compartido
 - streaming SSE si corresponde
+- atribucion a:
+  - `ownerId` para owner
+  - `participantUserId` y/o `participantEmail` para usuario compartido
+  - `accessGrantId` si aplica
 
 Reglas:
 
 - mensajes append-only
-- ownerId sale de sesión
-- no chat público aquí
+- ownerId sale de sesion
+- usuario compartido no ve prompts/contexto/documentos internos
+- no chat publico por link aqui; eso vive en `26`
+- no permitir mensajes si el grant fue revocado
 
 Checklist:
 
-- manda mensaje privado
-- recibe respuesta
+- owner manda mensaje privado
+- usuario compartido manda mensaje si tiene grant activo
+- respuesta se guarda
 - ambos mensajes se guardan
-- usage queda registrado
+- usage queda registrado con identidad correcta

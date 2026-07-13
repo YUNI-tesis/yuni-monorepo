@@ -35,6 +35,12 @@ model AvatarAgent {
   context          String
   voiceConfig      Json
   liveAvatarConfig Json
+  agentProvider    AgentProvider     @default(elevenlabs_agents)
+  providerAgentId  String?
+  providerSyncStatus ProviderSyncStatus @default(not_synced)
+  providerSyncError String?
+  providerSyncedAt DateTime?
+  providerSyncFingerprint String?
   status           AvatarStatus      @default(draft)
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
@@ -51,6 +57,7 @@ model AvatarAgent {
 
   @@index([ownerId])
   @@index([ownerId, status])
+  @@index([agentProvider, providerSyncStatus])
   @@index([updatedAt])
 }
 
@@ -87,6 +94,7 @@ model Conversation {
   visibility       ConversationVisibility
   mode             ConversationMode
   status           ConversationStatus     @default(active)
+  title            String?
   lastMessageAt    DateTime?
   createdAt        DateTime               @default(now())
   updatedAt        DateTime               @updatedAt
@@ -261,6 +269,18 @@ enum AvatarStatus {
   draft
   active
   disabled
+}
+
+enum AgentProvider {
+  elevenlabs_agents
+  openai_realtime
+  none
+}
+
+enum ProviderSyncStatus {
+  not_synced
+  synced
+  failed
 }
 
 enum ConversationVisibility {

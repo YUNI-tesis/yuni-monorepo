@@ -1,0 +1,111 @@
+.layout {
+  display: grid;
+  gap: var(--yuni-space-4);
+}
+
+.filterBar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--yuni-space-2);
+  margin-top: calc(var(--yuni-space-2) * -1);
+}
+
+.filterButton {
+  min-height: 44px;
+  border: 1px solid var(--yuni-color-border);
+  border-radius: 999px;
+  padding: 0 var(--yuni-space-4);
+  background: var(--yuni-color-surface-soft);
+  color: var(--yuni-color-text-muted);
+  font: inherit;
+  font-size: var(--yuni-font-sm);
+  font-weight: 850;
+  cursor: pointer;
+  transition:
+    border-color 160ms ease,
+    background-color 160ms ease,
+    box-shadow 160ms ease,
+    color 160ms ease;
+}
+
+.filterButton:hover {
+  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.075);
+  color: var(--yuni-color-text);
+}
+
+.filterButton:focus-visible {
+  outline: none;
+  box-shadow: var(--yuni-focus-ring);
+}
+
+.filterButtonActive {
+  border-color: rgba(100, 195, 215, 0.34);
+  background:
+    linear-gradient(135deg, rgba(100, 195, 215, 0.18), rgba(190, 106, 220, 0.09)),
+    rgba(255, 255, 255, 0.06);
+  color: var(--yuni-color-text);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+  gap: var(--yuni-space-4);
+}
+
+.card {
+  display: grid;
+  min-height: 230px;
+  align-content: space-between;
+  gap: var(--yuni-space-5);
+}
+
+.meta {
+  display: grid;
+  gap: var(--yuni-space-3);
+}
+
+.badges,
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--yuni-space-2);
+}
+
+.title {
+  margin: 0;
+  font-size: var(--yuni-font-lg);
+  line-height: 1.2;
+}
+
+.description {
+  margin: 0;
+  color: var(--yuni-color-text-muted);
+  line-height: 1.55;
+}
+
+.emptyCard {
+  display: grid;
+  gap: var(--yuni-space-4);
+}
+
+@media (max-width: 520px) {
+  .filterBar {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .actions {
+    display: grid;
+  }
+
+  .actions button {
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .filterButton {
+    transition: none;
+  }
+}

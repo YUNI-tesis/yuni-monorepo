@@ -12,6 +12,7 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@heygen/liveavatar-web-sdk": "0.0.17",
     "@yuni/config": "workspace:*",
     "@yuni/ui": "workspace:*",
     "next": "16.1.1",

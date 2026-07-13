@@ -17,6 +17,21 @@ export function createRealtimeSessionRepository(db: Db) {
       });
     },
 
+    findPrivateForOwner(ownerId: string, realtimeSessionId: string) {
+      return db.realtimeSession.findFirst({
+        where: {
+          id: realtimeSessionId,
+          conversation: {
+            ownerId,
+            visibility: "private",
+          },
+        },
+        include: {
+          conversation: true,
+        },
+      });
+    },
+
     markActive(id: string, providerSessionId?: string) {
       return db.realtimeSession.update({
         where: { id },

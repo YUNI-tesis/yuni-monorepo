@@ -1,25 +1,47 @@
-import type { CreateAvatarAgentInput, UpdateAvatarAgentInput } from "@yuni/domain";
+import { VoiceConfigSchema, type CreateAvatarAgentInput, type UpdateAvatarAgentInput } from "@yuni/domain";
 import { NotFoundError, OwnershipError } from "@yuni/domain";
 import type { LiveAvatarConfig } from "@yuni/config";
 import type { AvatarProvider } from "@yuni/avatars";
+import {
+  ElevenLabsProviderError,
+  ElevenLabsProviderTimeoutError,
+  ElevenLabsProviderUnavailableError,
+  summarizeProviderError,
+  type ElevenLabsAgentProvider,
+  type ElevenLabsVoiceOption,
+} from "@yuni/voice";
 import type { AvatarAgentDto, AvatarAgentRecord, AvatarsRepository } from "./repository";
 import { toAvatarAgentDto } from "./repository";
+
+export class AvatarVoiceNotFoundError extends Error {
+  constructor(message = "Voice not found in ElevenLabs My Voices") {
+    super(message);
+    this.name = "AvatarVoiceNotFoundError";
+  }
+}
 
 export type AvatarsServiceDependencies = {
   repository: AvatarsRepository;
   liveAvatarConfig: Pick<LiveAvatarConfig, "mode" | "sandbox">;
   avatarProvider?: Pick<AvatarProvider, "listAvatars">;
+  elevenLabsVoiceProvider?: Pick<ElevenLabsAgentProvider, "listVoices">;
+  elevenLabsAgentProvider?: Pick<ElevenLabsAgentProvider, "syncAvatarAgent">;
 };
 
-export function createAvatarsService({ repository, liveAvatarConfig, avatarProvider }: AvatarsServiceDependencies) {
+export function createAvatarsService(dependencies: AvatarsServiceDependencies) {
+  const { repository, liveAvatarConfig, avatarProvider, elevenLabsVoiceProvider } = dependencies;
+
   return {
     async createAvatar(ownerId: string, input: CreateAvatarAgentInput): Promise<AvatarAgentDto> {
-      return toAvatarAgentDto(
-        await repository.create(
-          ownerId,
-          await withEffectiveLiveAvatarConfig(input, liveAvatarConfig, avatarProvider)
+      const avatar = await repository.create(
+        ownerId,
+        await withEffectiveVoiceConfig(
+          await withEffectiveLiveAvatarConfig(input, liveAvatarConfig, avatarProvider),
+          elevenLabsVoiceProvider
         )
       );
+
+      return toAvatarAgentDto(await syncAgentAfterSave(dependencies, ownerId, avatar));
     },
 
     async listAvatars(ownerId: string): Promise<AvatarAgentDto[]> {
@@ -50,13 +72,17 @@ export function createAvatarsService({ repository, liveAvatarConfig, avatarProvi
           throw new NotFoundError("Avatar not found");
         }
 
-        return toAvatarAgentDto(
-          await repository.updateForOwner(
-            ownerId,
-            avatarId,
-            await withEffectiveLiveAvatarConfig(input, liveAvatarConfig, avatarProvider, currentAvatar)
+        const updatedAvatar = await repository.updateForOwner(
+          ownerId,
+          avatarId,
+          await withEffectiveVoiceConfig(
+            await withEffectiveLiveAvatarConfig(input, liveAvatarConfig, avatarProvider, currentAvatar),
+            elevenLabsVoiceProvider,
+            currentAvatar
           )
         );
+
+        return toAvatarAgentDto(await syncAgentAfterSave(dependencies, ownerId, updatedAvatar));
       } catch (error) {
         if (error instanceof OwnershipError) {
           throw new NotFoundError("Avatar not found");
@@ -113,6 +139,125 @@ async function withEffectiveLiveAvatarConfig<Input extends CreateAvatarAgentInpu
   };
 }
 
+async function withEffectiveVoiceConfig<Input extends CreateAvatarAgentInput | UpdateAvatarAgentInput>(
+  input: Input,
+  voiceProvider?: Pick<ElevenLabsAgentProvider, "listVoices">,
+  currentAvatar?: AvatarAgentRecord
+): Promise<Input> {
+  if (!input.voiceConfig || input.voiceConfig.provider !== "elevenlabs" || !voiceProvider) {
+    return input;
+  }
+
+  let voices: ElevenLabsVoiceOption[];
+
+  try {
+    voices = await voiceProvider.listVoices();
+  } catch (error) {
+    if (isElevenLabsProviderError(error)) {
+      const trustedFallback = readReusableVoiceSnapshot(input.voiceConfig.voiceId, currentAvatar?.voiceConfig);
+
+      if (trustedFallback) {
+        return {
+          ...input,
+          voiceConfig: {
+            provider: "elevenlabs",
+            voiceId: input.voiceConfig.voiceId,
+            speakingRate: input.voiceConfig.speakingRate,
+            displayName: trustedFallback.displayName,
+            ...(trustedFallback.description ? { description: trustedFallback.description } : {}),
+          },
+        };
+      }
+
+      throw error;
+    }
+
+    throw error;
+  }
+
+  const providerVoice = voices.find((voice) => voice.id === input.voiceConfig?.voiceId) ?? null;
+  const trustedFallback = providerVoice
+    ? null
+    : readReusableVoiceSnapshot(input.voiceConfig.voiceId, currentAvatar?.voiceConfig);
+
+  if (!providerVoice && !trustedFallback) {
+    throw new AvatarVoiceNotFoundError();
+  }
+
+  const displayName = providerVoice?.displayName ?? trustedFallback?.displayName;
+  const description = providerVoice?.description || trustedFallback?.description;
+
+  return {
+    ...input,
+    voiceConfig: {
+      provider: "elevenlabs",
+      voiceId: input.voiceConfig.voiceId,
+      speakingRate: input.voiceConfig.speakingRate,
+      ...(displayName ? { displayName } : {}),
+      ...(description ? { description } : {}),
+    },
+  };
+}
+
+function isElevenLabsProviderError(error: unknown): error is ElevenLabsProviderError {
+  return (
+    error instanceof ElevenLabsProviderUnavailableError ||
+    error instanceof ElevenLabsProviderTimeoutError ||
+    error instanceof ElevenLabsProviderError
+  );
+}
+
+async function syncAgentAfterSave(
+  dependencies: AvatarsServiceDependencies,
+  ownerId: string,
+  avatar: AvatarAgentRecord
+): Promise<AvatarAgentRecord> {
+  if (!dependencies.elevenLabsAgentProvider) {
+    return avatar;
+  }
+
+  const parsedVoiceConfig = VoiceConfigSchema.safeParse(avatar.voiceConfig);
+
+  if (!parsedVoiceConfig.success) {
+    return dependencies.repository.updateProviderSync(ownerId, avatar.id, {
+      agentProvider: "elevenlabs_agents",
+      providerSyncStatus: "failed",
+      providerSyncError: "Avatar voice config is invalid",
+      providerSyncedAt: null,
+    });
+  }
+
+  try {
+    const sync = await dependencies.elevenLabsAgentProvider.syncAvatarAgent({
+      id: avatar.id,
+      name: avatar.name,
+      description: avatar.description,
+      instructions: avatar.instructions,
+      context: avatar.context,
+      voiceConfig: parsedVoiceConfig.data,
+      providerAgentId: avatar.providerAgentId,
+      providerSyncFingerprint:
+        avatar.providerSyncStatus === "synced" ? avatar.providerSyncFingerprint : null,
+    });
+
+    return dependencies.repository.updateProviderSync(ownerId, avatar.id, {
+      agentProvider: "elevenlabs_agents",
+      providerAgentId: sync.providerAgentId,
+      providerSyncStatus: "synced",
+      providerSyncError: null,
+      providerSyncedAt: sync.synced ? new Date() : avatar.providerSyncedAt,
+      providerSyncFingerprint: sync.providerSyncFingerprint,
+    });
+  } catch (error) {
+    return dependencies.repository.updateProviderSync(ownerId, avatar.id, {
+      agentProvider: "elevenlabs_agents",
+      providerSyncStatus: "failed",
+      providerSyncError: summarizeProviderError(error),
+      providerSyncedAt: null,
+    });
+  }
+}
+
 function readReusableLiveAvatarSnapshot(avatarId: string, currentConfig: unknown) {
   if (!isRecord(currentConfig) || currentConfig.provider !== "liveavatar" || currentConfig.avatarId !== avatarId) {
     return null;
@@ -127,6 +272,23 @@ function readReusableLiveAvatarSnapshot(avatarId: string, currentConfig: unknown
   return {
     displayName,
     thumbnailUrl: readString(currentConfig.thumbnailUrl),
+  };
+}
+
+function readReusableVoiceSnapshot(voiceId: string, currentConfig: unknown) {
+  if (!isRecord(currentConfig) || currentConfig.provider !== "elevenlabs" || currentConfig.voiceId !== voiceId) {
+    return null;
+  }
+
+  const displayName = readString(currentConfig.displayName);
+
+  if (!displayName) {
+    return null;
+  }
+
+  return {
+    displayName,
+    description: readString(currentConfig.description),
   };
 }
 
