@@ -14,14 +14,9 @@ import {
   type ApiVoiceSession,
   type VoiceSessionTranscriptEntry,
 } from "../lib/api/avatar-api";
+import { ApiClientError } from "../lib/api/http-client";
 
-export type LiveAvatarSessionStatus =
-  | "idle"
-  | "starting"
-  | "active"
-  | "ending"
-  | "ended"
-  | "error";
+export type LiveAvatarSessionStatus = "idle" | "starting" | "active" | "ending" | "ended" | "error";
 
 export type LiveAvatarConversationState = "idle" | "listening" | "thinking" | "speaking" | "interrupted";
 
@@ -436,7 +431,9 @@ function registerSessionEvents(session: LiveAvatarSession, options: RegisterSess
 function markEvent(
   options: RegisterSessionEventsOptions,
   eventType: string,
-  diagnostics: Partial<Pick<LiveAvatarDiagnostics, "lastElevenLabsEventType" | "elevenLabsConversationId">> = {}
+  diagnostics: Partial<
+    Pick<LiveAvatarDiagnostics, "lastElevenLabsEventType" | "elevenLabsConversationId">
+  > = {}
 ) {
   options.setState((current) => ({
     ...current,
@@ -565,16 +562,18 @@ async function sendElevenLabsCommand(
   elevenlabsEventType: "user_message" | "contextual_update",
   data: Record<string, string>
 ) {
-  const room = (session as unknown as {
-    room?: {
-      localParticipant?: {
-        publishData?: (
-          data: Uint8Array,
-          options: { reliable: boolean; topic: string }
-        ) => Promise<void> | void;
+  const room = (
+    session as unknown as {
+      room?: {
+        localParticipant?: {
+          publishData?: (
+            data: Uint8Array,
+            options: { reliable: boolean; topic: string }
+          ) => Promise<void> | void;
+        };
       };
-    };
-  }).room;
+    }
+  ).room;
   const publishData = room?.localParticipant?.publishData;
 
   if (!publishData) {
@@ -600,7 +599,9 @@ function readElevenLabsConversationId(data: Record<string, unknown>): string | n
 }
 
 function readRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
 }
 
 function readString(value: unknown): string | null {
@@ -614,6 +615,14 @@ function formatVoiceSessionStartError(error: unknown): string {
 
   if (error instanceof DOMException && error.name === "NotFoundError") {
     return "No encontramos un microfono disponible. Conecta o selecciona un microfono y vuelve a iniciar la llamada.";
+  }
+
+  if (error instanceof ApiClientError && error.reason === "AVATAR_NOT_READY") {
+    return "Este avatar todavía no está disponible para interactuar. Avisale al creador.";
+  }
+
+  if (error instanceof ApiClientError && error.status === 404) {
+    return "Ya no tenés acceso a este avatar. Volvé a Mis avatares para actualizar la lista.";
   }
 
   return error instanceof Error ? error.message : "No pudimos iniciar la llamada.";

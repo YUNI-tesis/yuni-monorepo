@@ -1,7 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  createAvatarConversation,
   endVoiceSession,
+  getAvatarInteractionContext,
   getConversation,
+  getLatestAvatarConversation,
   listAvatarConversations,
   listAvatars,
   startVoiceSession,
@@ -25,7 +28,7 @@ describe("interact API helpers", () => {
     await listAvatars();
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "http://localhost:4000/avatars",
+      "http://localhost:4000/avatars?scope=all",
       expect.objectContaining({ credentials: "include" })
     );
   });
@@ -113,5 +116,52 @@ describe("interact API helpers", () => {
       "http://localhost:4000/conversations/conversation-1",
       expect.objectContaining({ credentials: "include" })
     );
+  });
+
+  it("loads safe interaction context and completes the conversation contract", async () => {
+    const fetchMock = vi.fn().mockImplementation(() =>
+      Promise.resolve(
+        new Response(JSON.stringify({ interactionContext: {}, conversation: null, conversations: [] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })
+      )
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await getAvatarInteractionContext("avatar-1");
+    await createAvatarConversation("avatar-1", "voice");
+    await getLatestAvatarConversation("avatar-1");
+
+    expect(fetchMock.mock.calls.map(([url, init]) => [url, init.method ?? "GET"])).toEqual([
+      ["http://localhost:4000/avatars/avatar-1/interaction-context", "GET"],
+      ["http://localhost:4000/avatars/avatar-1/conversations", "POST"],
+      ["http://localhost:4000/avatars/avatar-1/conversations/latest", "GET"],
+    ]);
+    expect(fetchMock.mock.calls[1]?.[1].body).toBe(JSON.stringify({ mode: "voice" }));
+  });
+
+  it("preserves stable API error reasons", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            error: {
+              code: "SERVICE_UNAVAILABLE",
+              reason: "AVATAR_NOT_READY",
+              message: "Shared avatar is not ready",
+            },
+          }),
+          { status: 503, headers: { "Content-Type": "application/json" } }
+        )
+      )
+    );
+
+    await expect(startVoiceSession("avatar-1")).rejects.toMatchObject({
+      status: 503,
+      code: "SERVICE_UNAVAILABLE",
+      reason: "AVATAR_NOT_READY",
+    });
   });
 });

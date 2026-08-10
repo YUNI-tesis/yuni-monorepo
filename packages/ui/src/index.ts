@@ -20,5 +20,10 @@ export { SidebarLayout, type SidebarLayoutProps } from "./layout/SidebarLayout";
 export { EmptyState, type EmptyStateProps } from "./feedback/EmptyState";
 export { ErrorState, type ErrorStateProps } from "./feedback/ErrorState";
 export { LoadingState, type LoadingStateProps } from "./feedback/LoadingState";
-export { DataList, type DataListColumn, type DataListProps } from "./data-display/DataList";
+export {
+  DataList,
+  type DataListColumn,
+  type DataListColumnAlign,
+  type DataListProps,
+} from "./data-display/DataList";
 export { MetricCard, type MetricCardProps } from "./data-display/MetricCard";

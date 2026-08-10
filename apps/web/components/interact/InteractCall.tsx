@@ -1,27 +1,25 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import React, { useCallback, useEffect, useState } from "react";
-import { Badge, Button, ErrorState, LoadingState, type BadgeTone } from "@yuni/ui";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { Badge, Button, Dialog, ErrorState, LoadingState, type BadgeTone } from "@yuni/ui";
+import { useLiveAvatarSession, type LiveAvatarDiagnostics } from "../../hooks/useLiveAvatarSession";
 import {
-  useLiveAvatarSession,
-  type LiveAvatarDiagnostics,
-} from "../../hooks/useLiveAvatarSession";
-import {
-  getAvatar,
+  getAvatarInteractionContext,
   getConversation,
   listAvatarConversations,
-  type ApiAvatar,
+  type ApiInteractionContext,
   type ApiConversationDetail,
   type ApiConversationMessage,
   type ApiConversationSummary,
 } from "../../lib/api/avatar-api";
+import { getMe } from "../../lib/api/auth-api";
 import { ApiClientError } from "../../lib/api/http-client";
 import styles from "./Interact.module.css";
 
 type AvatarState =
   | { status: "loading"; avatar: null; error: null }
-  | { status: "ready"; avatar: ApiAvatar; error: null }
+  | { status: "ready"; avatar: ApiInteractionContext; error: null }
   | { status: "error"; avatar: null; error: string }
   | { status: "not-found"; avatar: null; error: string };
 
@@ -49,6 +47,7 @@ const initialHistoryState: ConversationHistoryState = {
 
 export function InteractCall({ avatarId }: { avatarId: string }) {
   const router = useRouter();
+  const privacyDialog = useRef<HTMLDialogElement>(null);
   const [avatarState, setAvatarState] = useState<AvatarState>({
     status: "loading",
     avatar: null,
@@ -56,6 +55,8 @@ export function InteractCall({ avatarId }: { avatarId: string }) {
   });
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [historyState, setHistoryState] = useState<ConversationHistoryState>(initialHistoryState);
+  const [rememberPrivacyChoice, setRememberPrivacyChoice] = useState(false);
+  const [privacyStorageKey, setPrivacyStorageKey] = useState<string | null>(null);
 
   const loadConversation = useCallback(
     async (conversationId: string) => {
@@ -110,7 +111,9 @@ export function InteractCall({ avatarId }: { avatarId: string }) {
           summariesStatus: "ready",
           summaries: conversations,
           summariesError: null,
-          selectedConversationId: conversations.some((conversation) => conversation.id === current.selectedConversationId)
+          selectedConversationId: conversations.some(
+            (conversation) => conversation.id === current.selectedConversationId
+          )
             ? current.selectedConversationId
             : null,
           detail:
@@ -145,10 +148,10 @@ export function InteractCall({ avatarId }: { avatarId: string }) {
   useEffect(() => {
     let isMounted = true;
 
-    getAvatar(avatarId)
-      .then(({ avatar }) => {
+    getAvatarInteractionContext(avatarId)
+      .then(({ interactionContext }) => {
         if (isMounted) {
-          setAvatarState({ status: "ready", avatar, error: null });
+          setAvatarState({ status: "ready", avatar: interactionContext, error: null });
         }
       })
       .catch((error) => {
@@ -189,10 +192,57 @@ export function InteractCall({ avatarId }: { avatarId: string }) {
     return <ErrorState title="No pudimos cargar la llamada" description={avatarState.error} />;
   }
 
-  const avatar = avatarState.avatar;
-  const canStart = call.status === "idle" || call.status === "ended" || call.status === "error";
+  const interactionContext = avatarState.avatar;
+  const avatar = interactionContext.avatar;
+  const canStart =
+    interactionContext.voiceAvailability === "ready" &&
+    (call.status === "idle" || call.status === "ended" || call.status === "error");
   const isInCall = call.status === "active" || call.status === "starting" || call.status === "ending";
-  const contextNotice = getContextStatusDescription(avatar.providerSyncStatus);
+  const contextNotice =
+    interactionContext.access.type === "shared" && interactionContext.voiceAvailability !== "ready"
+      ? null
+      : getContextStatusDescription(interactionContext.contextStatus);
+
+  async function requestCallStart() {
+    if (!canStart) return;
+
+    if (interactionContext.access.type === "owner") {
+      call.start();
+      return;
+    }
+
+    try {
+      const { user } = await getMe();
+      const storageKey = getSharedCallConsentStorageKey(user.id, avatar.id);
+
+      if (readRememberedPrivacyChoice(storageKey)) {
+        call.start();
+        return;
+      }
+
+      setPrivacyStorageKey(storageKey);
+      setRememberPrivacyChoice(false);
+      privacyDialog.current?.showModal();
+    } catch (error) {
+      if (error instanceof ApiClientError && error.status === 401) {
+        router.push("/auth/login");
+        return;
+      }
+
+      setPrivacyStorageKey(null);
+      setRememberPrivacyChoice(false);
+      privacyDialog.current?.showModal();
+    }
+  }
+
+  function confirmCallStart() {
+    if (rememberPrivacyChoice && privacyStorageKey) {
+      rememberPrivacyChoiceForAvatar(privacyStorageKey);
+    }
+
+    privacyDialog.current?.close();
+    call.start();
+  }
 
   function toggleHistory() {
     setIsHistoryOpen((current) => !current);
@@ -210,7 +260,9 @@ export function InteractCall({ avatarId }: { avatarId: string }) {
         </Button>
 
         <div className={styles.focusTitle}>
-          <span className="yuni-eyebrow">Llamada privada</span>
+          <span className="yuni-eyebrow">
+            {interactionContext.access.type === "shared" ? "Llamada compartida" : "Llamada privada"}
+          </span>
           <h1>{avatar.name}</h1>
           {avatar.description ? <p>{avatar.description}</p> : null}
         </div>
@@ -225,9 +277,15 @@ export function InteractCall({ avatarId }: { avatarId: string }) {
           >
             Historial
           </Button>
-          <Button variant="ghost" icon={<IconProfile />} onClick={() => router.push(`/avatars/${avatar.id}`)}>
-            Perfil
-          </Button>
+          {interactionContext.access.type === "owner" ? (
+            <Button
+              variant="ghost"
+              icon={<IconProfile />}
+              onClick={() => router.push(`/avatars/${avatar.id}`)}
+            >
+              Perfil
+            </Button>
+          ) : null}
         </div>
       </header>
 
@@ -237,12 +295,14 @@ export function InteractCall({ avatarId }: { avatarId: string }) {
             <video ref={call.attachMediaElement} autoPlay playsInline />
             <div className={styles.videoShade} aria-hidden="true" />
             <div className={styles.videoStatus} aria-live="polite">
-              <Badge tone={call.status === "active" ? "success" : "neutral"}>{formatCallStatus(call.status)}</Badge>
+              <Badge tone={call.status === "active" ? "success" : "neutral"}>
+                {formatCallStatus(call.status)}
+              </Badge>
               <Badge tone={conversationTone(call.conversationState)}>
                 {formatConversationState(call.conversationState)}
               </Badge>
-              <Badge tone={formatContextStatusTone(avatar.providerSyncStatus)}>
-                {formatContextStatusLabel(avatar.providerSyncStatus)}
+              <Badge tone={formatContextStatusTone(interactionContext.contextStatus)}>
+                {formatContextStatusLabel(interactionContext.contextStatus)}
               </Badge>
             </div>
 
@@ -251,7 +311,9 @@ export function InteractCall({ avatarId }: { avatarId: string }) {
                 <div className={styles.avatarHalo} aria-hidden="true">
                   <span>{avatar.name.slice(0, 1).toUpperCase()}</span>
                 </div>
-                <strong>{call.status === "starting" ? "Conectando con el avatar" : "Listo para llamar"}</strong>
+                <strong>
+                  {call.status === "starting" ? "Conectando con el avatar" : "Listo para llamar"}
+                </strong>
                 <span>
                   {call.status === "starting"
                     ? "Estamos abriendo la sesion de voz."
@@ -262,14 +324,23 @@ export function InteractCall({ avatarId }: { avatarId: string }) {
 
             <div className={styles.floatingDock}>
               {contextNotice ? (
-                <p className={styles.contextNotice} role={avatar.providerSyncStatus === "failed" ? "alert" : undefined}>
+                <p
+                  className={styles.contextNotice}
+                  role={interactionContext.contextStatus === "failed" ? "alert" : undefined}
+                >
                   {contextNotice}
+                </p>
+              ) : null}
+              {interactionContext.access.type === "shared" &&
+              interactionContext.voiceAvailability !== "ready" ? (
+                <p className={styles.contextNotice} role="status">
+                  Este avatar todavía no está disponible para interactuar. Avisale al creador.
                 </p>
               ) : null}
               {call.error ? (
                 <div className={styles.inlineError} role="alert">
                   <span>{call.error}</span>
-                  <Button variant="secondary" onClick={call.start} disabled={!canStart}>
+                  <Button variant="secondary" onClick={() => void requestCallStart()} disabled={!canStart}>
                     Reintentar
                   </Button>
                 </div>
@@ -279,7 +350,7 @@ export function InteractCall({ avatarId }: { avatarId: string }) {
                 isMuted={call.isMuted}
                 canStart={canStart}
                 isInCall={isInCall}
-                onStart={call.start}
+                onStart={() => void requestCallStart()}
                 onToggleMute={call.toggleMute}
                 onEnd={call.end}
               />
@@ -288,11 +359,7 @@ export function InteractCall({ avatarId }: { avatarId: string }) {
         </section>
 
         {isHistoryOpen ? (
-          <aside
-            id="call-history-panel"
-            className={styles.historySidePanel}
-            aria-labelledby="history-title"
-          >
+          <aside id="call-history-panel" className={styles.historySidePanel} aria-labelledby="history-title">
             <div className={styles.historyHeader}>
               <div>
                 <p className="yuni-eyebrow">Chats de llamada</p>
@@ -322,9 +389,32 @@ export function InteractCall({ avatarId }: { avatarId: string }) {
         isVisible={shouldShowInteractDiagnostics()}
         diagnostics={call.diagnostics}
         callStatus={call.status}
-        providerSyncError={avatar.providerSyncError}
+        providerSyncError={null}
         onSendTextProbe={call.sendTextProbe}
       />
+
+      {interactionContext.access.type === "shared" ? (
+        <Dialog
+          ref={privacyDialog}
+          title="Antes de iniciar la llamada"
+          description="La llamada y su transcripción se guardarán. El creador del avatar podrá consultar esta actividad cuando la sección Actividad esté disponible."
+          closeLabel="Cancelar"
+          footer={<Button onClick={confirmCallStart}>Iniciar llamada</Button>}
+          onClose={() => {
+            setRememberPrivacyChoice(false);
+            setPrivacyStorageKey(null);
+          }}
+        >
+          <label className={styles.privacyChoice}>
+            <input
+              type="checkbox"
+              checked={rememberPrivacyChoice}
+              onChange={(event) => setRememberPrivacyChoice(event.target.checked)}
+            />
+            <span>No volver a mostrar para este avatar</span>
+          </label>
+        </Dialog>
+      ) : null}
     </div>
   );
 }
@@ -522,14 +612,14 @@ function ConversationDetail({
   );
 }
 
-export function formatContextStatusLabel(status: ApiAvatar["providerSyncStatus"]) {
-  if (status === "synced") return "Listo";
+export function formatContextStatusLabel(status: ApiInteractionContext["contextStatus"]) {
+  if (status === "ready") return "Listo";
   if (status === "failed") return "No se pudo actualizar";
   return "Procesando";
 }
 
-export function formatContextStatusTone(status: ApiAvatar["providerSyncStatus"]): BadgeTone {
-  if (status === "synced") return "success";
+export function formatContextStatusTone(status: ApiInteractionContext["contextStatus"]): BadgeTone {
+  if (status === "ready") return "success";
   if (status === "failed") return "danger";
   return "warning";
 }
@@ -683,16 +773,36 @@ export function InteractDebugPanel({
   );
 }
 
-function getContextStatusDescription(status: ApiAvatar["providerSyncStatus"]) {
+function getContextStatusDescription(status: ApiInteractionContext["contextStatus"]) {
   if (status === "failed") {
     return "El contexto no se pudo actualizar. Si hay una version anterior valida, podes intentar iniciar la llamada.";
   }
 
-  if (status === "not_synced") {
+  if (status === "processing") {
     return "El contexto se esta preparando. La llamada solo se inicia si el avatar ya tiene una version valida.";
   }
 
   return null;
+}
+
+export function getSharedCallConsentStorageKey(userId: string, avatarId: string) {
+  return `yuni:shared-call-consent:v1:${userId}:${avatarId}`;
+}
+
+export function readRememberedPrivacyChoice(storageKey: string) {
+  try {
+    return window.localStorage.getItem(storageKey) === "true";
+  } catch {
+    return false;
+  }
+}
+
+export function rememberPrivacyChoiceForAvatar(storageKey: string) {
+  try {
+    window.localStorage.setItem(storageKey, "true");
+  } catch {
+    // The preference is optional; storage failures must never block a call.
+  }
 }
 
 function formatCallStatus(status: ReturnType<typeof useLiveAvatarSession>["status"]) {

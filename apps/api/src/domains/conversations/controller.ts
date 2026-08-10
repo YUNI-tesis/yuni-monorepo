@@ -1,11 +1,8 @@
 import { Hono, type Context } from "hono";
-import { NotFoundError } from "@yuni/domain";
-import { notFoundError, unauthorizedError } from "../../utils/errors";
+import { CreateConversationInputSchema, NotFoundError } from "@yuni/domain";
+import { notFoundError, unauthorizedError, validationError } from "../../utils/errors";
 import { getSessionToken, verifySessionToken } from "../auth/session";
-import {
-  createConversationsService,
-  type ConversationsServiceDependencies,
-} from "./service";
+import { createConversationsService, type ConversationsServiceDependencies } from "./service";
 
 export type ConversationsControllerDependencies = ConversationsServiceDependencies;
 
@@ -33,6 +30,55 @@ export function createConversationsController(dependencies: ConversationsControl
     try {
       return context.json({
         conversations: await service.listAvatarConversations(session.userId, context.req.param("avatarId")),
+      });
+    } catch (error) {
+      return toConversationsError(context, error);
+    }
+  });
+
+  conversations.post("/avatars/:avatarId/conversations", async (context) => {
+    const session = await getCurrentSession(context);
+
+    if (!session) {
+      return context.json(unauthorizedError(), 401);
+    }
+
+    const body: unknown = await context.req.json().catch(() => ({}));
+    const parsed = CreateConversationInputSchema.safeParse(body);
+
+    if (!parsed.success) {
+      return context.json(validationError(parsed.error.issues), 400);
+    }
+
+    try {
+      return context.json(
+        {
+          conversation: await service.createAvatarConversation(
+            session.userId,
+            context.req.param("avatarId"),
+            parsed.data
+          ),
+        },
+        201
+      );
+    } catch (error) {
+      return toConversationsError(context, error);
+    }
+  });
+
+  conversations.get("/avatars/:avatarId/conversations/latest", async (context) => {
+    const session = await getCurrentSession(context);
+
+    if (!session) {
+      return context.json(unauthorizedError(), 401);
+    }
+
+    try {
+      return context.json({
+        conversation: await service.getLatestAvatarConversation(
+          session.userId,
+          context.req.param("avatarId")
+        ),
       });
     } catch (error) {
       return toConversationsError(context, error);

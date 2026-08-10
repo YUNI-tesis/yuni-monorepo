@@ -64,6 +64,14 @@
   gap: var(--yuni-space-2);
 }
 
+.sharedNotice {
+  margin: 0;
+  border-left: 3px solid var(--yuni-color-warning);
+  padding-left: var(--yuni-space-3);
+  color: var(--yuni-color-text-muted);
+  line-height: 1.5;
+}
+
 @media (max-width: 560px) {
   .sectionHeader {
     display: grid;

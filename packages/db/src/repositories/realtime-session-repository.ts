@@ -17,12 +17,12 @@ export function createRealtimeSessionRepository(db: Db) {
       });
     },
 
-    findPrivateForOwner(ownerId: string, realtimeSessionId: string) {
+    findPrivateForParticipant(participantUserId: string, realtimeSessionId: string) {
       return db.realtimeSession.findFirst({
         where: {
           id: realtimeSessionId,
           conversation: {
-            ownerId,
+            ownerId: participantUserId,
             visibility: "private",
           },
         },

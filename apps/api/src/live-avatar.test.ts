@@ -73,6 +73,9 @@ function createTestDependencies(providerError?: Error): AppDependencies {
     async findByIdForOwner() {
       return null;
     },
+    async findAccessibleForUser() {
+      return null;
+    },
     async updateProviderSync(): Promise<AvatarAgentRecord> {
       throw new Error("Avatar repository is not used in live avatar tests");
     },
@@ -122,7 +125,7 @@ function createTestDependencies(providerError?: Error): AppDependencies {
     voiceSessions: {
       avatarsRepository: avatarRepository,
       conversationsRepository: {
-        async createPrivate() {
+        async createPrivateForParticipant() {
           return { id: "conversation-1" };
         },
         async markEnded() {},
@@ -132,7 +135,7 @@ function createTestDependencies(providerError?: Error): AppDependencies {
         async create() {
           return { id: "realtime-1" };
         },
-        async findPrivateForOwner() {
+        async findPrivateForParticipant() {
           return null;
         },
         async markActive() {

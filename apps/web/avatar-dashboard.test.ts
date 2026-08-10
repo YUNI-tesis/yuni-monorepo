@@ -7,26 +7,23 @@ import {
   getAvatarDashboardSummary,
   getRecentAvatars,
 } from "./lib/avatar-dashboard";
-import type { ApiAvatar } from "./lib/api/avatar-api";
+import type { ApiAvatarSummary } from "./lib/api/avatar-api";
 
-function createAvatar(overrides: Partial<ApiAvatar>): ApiAvatar {
+function createAvatar(overrides: Partial<ApiAvatarSummary>): ApiAvatarSummary {
   return {
     id: "avatar-1",
     name: "Avatar",
     description: "",
-    instructions: "",
-    context: "",
-    voiceConfig: {},
-    liveAvatarConfig: {},
-    agentProvider: "elevenlabs_agents",
-    providerAgentId: null,
     providerSyncStatus: "not_synced",
-    providerSyncError: null,
-    providerSyncedAt: null,
-    providerSyncFingerprint: null,
     status: "active",
     createdAt: "2026-06-01T00:00:00.000Z",
     updatedAt: "2026-06-01T00:00:00.000Z",
+    access: {
+      type: "owner",
+      canEdit: true,
+      canShare: true,
+      canInteract: true,
+    },
     ...overrides,
   };
 }
@@ -67,14 +64,32 @@ describe("avatar dashboard helpers", () => {
   });
 
   it("filters the current avatar list for owned and future shared views", () => {
-    const avatars = [createAvatar({ id: "avatar-1" }), createAvatar({ id: "avatar-2" })];
+    const avatars = [
+      createAvatar({ id: "avatar-1" }),
+      createAvatar({
+        id: "avatar-2",
+        access: {
+          type: "shared",
+          canEdit: false,
+          canShare: false,
+          canInteract: true,
+        },
+      }),
+    ];
 
-    expect(filterAvatarsByOwnership(avatars, "all").map((avatar) => avatar.id)).toEqual(["avatar-1", "avatar-2"]);
-    expect(filterAvatarsByOwnership(avatars, "owned").map((avatar) => avatar.id)).toEqual(["avatar-1", "avatar-2"]);
-    expect(filterAvatarsByOwnership(avatars, "shared")).toEqual([]);
+    expect(filterAvatarsByOwnership(avatars, "all").map((avatar) => avatar.id)).toEqual([
+      "avatar-1",
+      "avatar-2",
+    ]);
+    expect(filterAvatarsByOwnership(avatars, "owned").map((avatar) => avatar.id)).toEqual(["avatar-1"]);
+    expect(filterAvatarsByOwnership(avatars, "shared").map((avatar) => avatar.id)).toEqual(["avatar-2"]);
   });
 
   it("exposes the Mis avatares filter labels", () => {
-    expect(avatarListFilters.map((filter) => filter.label)).toEqual(["Todos", "Propios", "Compartidos conmigo"]);
+    expect(avatarListFilters.map((filter) => filter.label)).toEqual([
+      "Todos",
+      "Propios",
+      "Compartidos conmigo",
+    ]);
   });
 });

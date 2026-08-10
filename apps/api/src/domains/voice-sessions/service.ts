@@ -36,6 +36,13 @@ export class VoiceSessionConfigurationError extends Error {
   }
 }
 
+export class SharedAvatarNotReadyError extends Error {
+  constructor(message = "Shared avatar is not ready") {
+    super(message);
+    this.name = "SharedAvatarNotReadyError";
+  }
+}
+
 export class VoiceProviderServiceError extends Error {
   constructor(message = "Voice provider failed") {
     super(message);
@@ -65,16 +72,25 @@ export class LiveAvatarSessionTimeoutServiceError extends Error {
 }
 
 export type VoiceSessionsServiceDependencies = {
-  avatarsRepository: Pick<AvatarsRepository, "findByIdForOwner" | "updateProviderSync">;
+  avatarsRepository: Pick<
+    AvatarsRepository,
+    "findByIdForOwner" | "findAccessibleForUser" | "updateProviderSync"
+  >;
   conversationsRepository: {
-    createPrivate(ownerId: string, avatarAgentId: string, mode: "voice"): Promise<{ id: string }>;
+    createPrivateForParticipant(input: {
+      ownerId: string;
+      avatarAgentId: string;
+      mode: "voice";
+      accessGrantId?: string;
+      participantEmail?: string;
+    }): Promise<{ id: string }>;
     markEnded(id: string): Promise<unknown>;
     updateTitle(id: string, title: string): Promise<unknown>;
   };
   realtimeSessionsRepository: {
     create(input: { avatarAgentId: string; conversationId: string }): Promise<{ id: string }>;
-    findPrivateForOwner(
-      ownerId: string,
+    findPrivateForParticipant(
+      participantUserId: string,
       realtimeSessionId: string
     ): Promise<{
       id: string;
@@ -85,7 +101,10 @@ export type VoiceSessionsServiceDependencies = {
       endedAt: Date | null;
       conversation: { id: string; status: string } | null;
     } | null>;
-    markActive(id: string, providerSessionId?: string): Promise<{
+    markActive(
+      id: string,
+      providerSessionId?: string
+    ): Promise<{
       id: string;
       conversationId: string | null;
       providerSessionId: string | null;
@@ -102,7 +121,10 @@ export type VoiceSessionsServiceDependencies = {
     markErrored(id: string, errorMessage: string): Promise<unknown>;
   };
   messagesRepository: {
-    append(conversationId: string, input: { role: "user" | "assistant"; content: string; metadata?: Record<string, unknown> }): Promise<unknown>;
+    append(
+      conversationId: string,
+      input: { role: "user" | "assistant"; content: string; metadata?: Record<string, unknown> }
+    ): Promise<unknown>;
   };
   liveAvatarProvider: Pick<AvatarProvider, "createLiteSessionToken">;
   elevenLabsAgentProvider: Pick<ElevenLabsAgentProvider, "syncAvatarAgent">;
@@ -117,11 +139,31 @@ export function createVoiceSessionsService(dependencies: VoiceSessionsServiceDep
       return syncAvatarAgent(dependencies, ownerId, avatar, { force: true });
     },
 
-    async startVoiceSession(ownerId: string, avatarId: string) {
-      const avatar = await findOwnedAvatar(dependencies.avatarsRepository, ownerId, avatarId);
-      const liveAvatarConfig = parseLiveAvatarConfig(avatar);
-      const sync = await syncAvatarAgent(dependencies, ownerId, avatar, { force: false });
-      const conversation = await dependencies.conversationsRepository.createPrivate(ownerId, avatar.id, "voice");
+    async startVoiceSession(userId: string, avatarId: string) {
+      const access = await dependencies.avatarsRepository.findAccessibleForUser(userId, avatarId);
+
+      if (!access) {
+        throw new NotFoundError("Avatar not found");
+      }
+
+      const avatar = access.avatar;
+      const liveAvatarConfig =
+        access.type === "shared" ? parseSharedLiveAvatarConfig(avatar) : parseLiveAvatarConfig(avatar);
+      const providerAgentId =
+        access.type === "owner"
+          ? (await syncAvatarAgent(dependencies, userId, avatar, { force: false })).providerAgentId
+          : getReadySharedProviderAgentId(avatar);
+      const conversation = await dependencies.conversationsRepository.createPrivateForParticipant({
+        ownerId: userId,
+        avatarAgentId: avatar.id,
+        mode: "voice",
+        ...(access.type === "shared"
+          ? {
+              accessGrantId: access.accessGrant.id,
+              participantEmail: access.accessGrant.participantEmail,
+            }
+          : {}),
+      });
       const realtimeSession = await dependencies.realtimeSessionsRepository.create({
         avatarAgentId: avatar.id,
         conversationId: conversation.id,
@@ -130,7 +172,7 @@ export function createVoiceSessionsService(dependencies: VoiceSessionsServiceDep
       try {
         const liveAvatarSession = await dependencies.liveAvatarProvider.createLiteSessionToken({
           avatarId: liveAvatarConfig.avatarId,
-          elevenLabsAgentId: sync.providerAgentId,
+          elevenLabsAgentId: providerAgentId,
         });
         const activeSession = await dependencies.realtimeSessionsRepository.markActive(
           realtimeSession.id,
@@ -140,7 +182,7 @@ export function createVoiceSessionsService(dependencies: VoiceSessionsServiceDep
         return {
           conversationId: conversation.id,
           realtimeSessionId: activeSession.id,
-          providerAgentId: sync.providerAgentId,
+          providerAgentId,
           sessionToken: liveAvatarSession.sessionToken,
           sessionId: liveAvatarSession.sessionId,
         };
@@ -151,7 +193,7 @@ export function createVoiceSessionsService(dependencies: VoiceSessionsServiceDep
           error: summarizeStructuredError(error),
           avatarId: avatar.id,
           liveAvatarAvatarId: liveAvatarConfig.avatarId,
-          providerAgentId: sync.providerAgentId,
+          providerAgentId,
           realtimeSessionId: realtimeSession.id,
         });
 
@@ -171,10 +213,10 @@ export function createVoiceSessionsService(dependencies: VoiceSessionsServiceDep
       }
     },
 
-    async endVoiceSession(ownerId: string, realtimeSessionId: string, input: EndVoiceSessionInput) {
+    async endVoiceSession(userId: string, realtimeSessionId: string, input: EndVoiceSessionInput) {
       const parsed = EndVoiceSessionInputSchema.parse(input);
-      const realtimeSession = await dependencies.realtimeSessionsRepository.findPrivateForOwner(
-        ownerId,
+      const realtimeSession = await dependencies.realtimeSessionsRepository.findPrivateForParticipant(
+        userId,
         realtimeSessionId
       );
 
@@ -189,12 +231,32 @@ export function createVoiceSessionsService(dependencies: VoiceSessionsServiceDep
       if (realtimeSession.conversationId) {
         await appendTranscript(dependencies, realtimeSession.conversationId, parsed.transcript);
         await dependencies.conversationsRepository.markEnded(realtimeSession.conversationId);
-        await updateEndedVoiceConversationTitle(dependencies, ownerId, realtimeSession, parsed.transcript);
+        await updateEndedVoiceConversationTitle(dependencies, userId, realtimeSession, parsed.transcript);
       }
 
       return toVoiceSessionDto(await dependencies.realtimeSessionsRepository.markEnded(realtimeSession.id));
     },
   };
+}
+
+function getReadySharedProviderAgentId(avatar: AvatarAgentRecord): string {
+  const parsedVoiceConfig = VoiceConfigSchema.safeParse(avatar.voiceConfig);
+
+  if (!parsedVoiceConfig.success || avatar.providerSyncStatus !== "synced" || !avatar.providerAgentId) {
+    throw new SharedAvatarNotReadyError();
+  }
+
+  return avatar.providerAgentId;
+}
+
+function parseSharedLiveAvatarConfig(avatar: AvatarAgentRecord) {
+  const parsed = LiveAvatarConfigSchema.safeParse(avatar.liveAvatarConfig);
+
+  if (!parsed.success) {
+    throw new SharedAvatarNotReadyError();
+  }
+
+  return parsed.data;
 }
 
 export type VoiceSessionsService = ReturnType<typeof createVoiceSessionsService>;
@@ -316,12 +378,18 @@ async function updateEndedVoiceConversationTitle(
   }
 
   try {
-    const avatar = await dependencies.avatarsRepository.findByIdForOwner(ownerId, realtimeSession.avatarAgentId);
+    const avatar = await dependencies.avatarsRepository.findByIdForOwner(
+      ownerId,
+      realtimeSession.avatarAgentId
+    );
     const titleInput = {
       ...(avatar?.name ? { avatarName: avatar.name } : {}),
       messages: transcript.map(toConversationTitleMessage),
     };
-    const generatedTitle = await generateConversationTitle(dependencies.conversationTitleGenerator, titleInput);
+    const generatedTitle = await generateConversationTitle(
+      dependencies.conversationTitleGenerator,
+      titleInput
+    );
     const title = generatedTitle ?? fallbackConversationTitle(titleInput);
 
     await dependencies.conversationsRepository.updateTitle(realtimeSession.conversationId, title);

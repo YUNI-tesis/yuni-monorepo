@@ -19,6 +19,25 @@ export function createConversationRepository(db: Db) {
       });
     },
 
+    createPrivateForParticipant(input: {
+      ownerId: string;
+      avatarAgentId: string;
+      mode: ConversationMode;
+      accessGrantId?: string;
+      participantEmail?: string;
+    }) {
+      return db.conversation.create({
+        data: {
+          ownerId: input.ownerId,
+          avatarAgentId: input.avatarAgentId,
+          visibility: "private",
+          mode: input.mode,
+          ...(input.accessGrantId ? { accessGrantId: input.accessGrantId } : {}),
+          ...(input.participantEmail ? { participantEmail: input.participantEmail } : {}),
+        },
+      });
+    },
+
     createPublic(
       shareLinkId: string,
       avatarAgentId: string,
@@ -43,6 +62,18 @@ export function createConversationRepository(db: Db) {
       });
     },
 
+    findLatestPrivateForAccess(ownerId: string, avatarAgentId: string, accessGrantId: string | null) {
+      return db.conversation.findFirst({
+        where: {
+          ownerId,
+          avatarAgentId,
+          visibility: "private",
+          accessGrantId,
+        },
+        orderBy: [{ lastMessageAt: "desc" }, { createdAt: "desc" }],
+      });
+    },
+
     listPrivateForAvatar(ownerId: string, avatarAgentId: string) {
       return db.conversation.findMany({
         where: { ownerId, avatarAgentId, visibility: "private" },
@@ -50,9 +81,45 @@ export function createConversationRepository(db: Db) {
       });
     },
 
+    listPrivateForAccess(ownerId: string, avatarAgentId: string, accessGrantId: string | null) {
+      return db.conversation.findMany({
+        where: {
+          ownerId,
+          avatarAgentId,
+          visibility: "private",
+          accessGrantId,
+        },
+        orderBy: [{ lastMessageAt: "desc" }, { createdAt: "desc" }],
+      });
+    },
+
+    findPrivateIdentityById(conversationId: string) {
+      return db.conversation.findFirst({
+        where: { id: conversationId, visibility: "private" },
+        select: {
+          id: true,
+          ownerId: true,
+          avatarAgentId: true,
+          accessGrantId: true,
+        },
+      });
+    },
+
     findPrivateById(ownerId: string, conversationId: string) {
       return db.conversation.findFirst({
         where: { id: conversationId, ownerId, visibility: "private" },
+        include: { messages: { orderBy: { createdAt: "asc" } } },
+      });
+    },
+
+    findPrivateByIdForAccess(ownerId: string, conversationId: string, accessGrantId: string | null) {
+      return db.conversation.findFirst({
+        where: {
+          id: conversationId,
+          ownerId,
+          visibility: "private",
+          accessGrantId,
+        },
         include: { messages: { orderBy: { createdAt: "asc" } } },
       });
     },

@@ -77,6 +77,7 @@
 
 .brandLink:focus-visible,
 .navLink:focus-visible,
+.profileTrigger:focus-visible,
 .logout:focus-visible {
   outline: none;
   box-shadow: var(--yuni-focus-ring);
@@ -152,11 +153,55 @@
 }
 
 .session {
+  position: relative;
   display: flex;
   min-width: 0;
   align-items: center;
   justify-content: flex-end;
+}
+
+.profileTrigger {
+  display: flex;
+  min-width: 0;
+  min-height: 50px;
+  align-items: center;
   gap: var(--yuni-space-3);
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 4px 10px 4px 4px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 160ms ease,
+    background-color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.profileTrigger:hover,
+.profileTrigger[aria-expanded="true"] {
+  border-color: rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.065);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.035);
+}
+
+.avatar {
+  display: inline-flex;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--yuni-color-accent), var(--yuni-color-primary-deep));
+  color: #fff;
+  font-size: 0.875rem;
+  font-weight: 900;
+  letter-spacing: 0.035em;
+  box-shadow: 0 6px 18px rgba(100, 195, 215, 0.16);
 }
 
 .userBlock {
@@ -164,7 +209,7 @@
   min-width: 0;
   max-width: 220px;
   gap: 2px;
-  text-align: right;
+  text-align: left;
 }
 
 .userName {
@@ -194,14 +239,57 @@
   white-space: normal;
 }
 
-.logout {
-  min-height: 40px;
+.chevron {
+  width: 18px;
+  height: 18px;
   flex: 0 0 auto;
+  fill: none;
+  stroke: var(--yuni-color-text-muted);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition:
+    stroke 160ms ease,
+    transform 160ms ease;
+}
+
+.profileTrigger:hover .chevron,
+.profileTrigger[aria-expanded="true"] .chevron {
+  stroke: var(--yuni-color-text);
+}
+
+.chevronOpen {
+  transform: rotate(180deg);
+}
+
+.profileMenu {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  z-index: calc(var(--yuni-z-dropdown) + 1);
+  width: max-content;
+  min-width: 230px;
   border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: var(--yuni-radius-md);
-  padding: 8px 12px;
-  background: rgba(255, 255, 255, 0.055);
-  color: var(--yuni-color-text);
+  padding: 6px;
+  background: rgba(23, 16, 33, 0.98);
+  box-shadow: var(--yuni-shadow-md);
+  backdrop-filter: blur(18px);
+  transform-origin: top right;
+  animation: profile-menu-in 140ms ease-out;
+}
+
+.logout {
+  display: flex;
+  width: 100%;
+  min-height: 44px;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid transparent;
+  border-radius: var(--yuni-radius-sm);
+  padding: 10px 12px;
+  background: transparent;
+  color: var(--yuni-color-danger);
   font: inherit;
   font-size: var(--yuni-font-sm);
   font-weight: 850;
@@ -215,14 +303,37 @@
 }
 
 .logout:hover:not(:disabled) {
-  border-color: rgba(100, 195, 215, 0.34);
-  background: rgba(100, 195, 215, 0.1);
-  box-shadow: inset 0 0 0 1px rgba(100, 195, 215, 0.08);
+  border-color: rgba(255, 114, 114, 0.2);
+  background: var(--yuni-color-danger-soft);
+  box-shadow: inset 0 0 0 1px rgba(255, 114, 114, 0.04);
 }
 
 .logout:disabled {
   cursor: not-allowed;
   opacity: 0.62;
+}
+
+.logoutIcon {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+@keyframes profile-menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 .content {
@@ -287,8 +398,9 @@
     height: 38px;
   }
 
-  .logout {
-    min-height: 44px;
+  .profileTrigger {
+    gap: var(--yuni-space-2);
+    padding-right: 8px;
   }
 
   .content {
@@ -316,8 +428,13 @@
 @media (prefers-reduced-motion: reduce) {
   .skipLink,
   .navLink,
+  .profileTrigger,
+  .chevron,
   .logout {
     transition: none;
   }
 
+  .profileMenu {
+    animation: none;
+  }
 }

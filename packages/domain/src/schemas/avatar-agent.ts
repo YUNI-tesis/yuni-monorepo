@@ -1,6 +1,9 @@
 import { z } from "zod";
 import { AvatarStatusSchema } from "../enums";
 
+export const AvatarListScopeSchema = z.enum(["all", "owned", "shared"]);
+export type AvatarListScope = z.infer<typeof AvatarListScopeSchema>;
+
 export const VoiceConfigSchema = z.strictObject({
   provider: z.enum(["openai", "elevenlabs"]),
   voiceId: z.string().min(1),
@@ -37,17 +40,16 @@ export const CreateAvatarAgentInputSchema = AvatarAgentEditableFieldsSchema.exte
 
 export type CreateAvatarAgentInput = z.infer<typeof CreateAvatarAgentInputSchema>;
 
-export const UpdateAvatarAgentInputSchema = z.strictObject({
-  name: z.string().trim().min(1).optional(),
-  description: z.string().trim().optional(),
-  instructions: z.string().trim().min(1).optional(),
-  context: z.string().trim().optional(),
-  voiceConfig: VoiceConfigSchema.optional(),
-  liveAvatarConfig: LiveAvatarConfigSchema.optional(),
-  status: AvatarStatusSchema.optional(),
-}).refine(
-  (value) => Object.keys(value).length > 0,
-  "At least one avatar field must be provided"
-);
+export const UpdateAvatarAgentInputSchema = z
+  .strictObject({
+    name: z.string().trim().min(1).optional(),
+    description: z.string().trim().optional(),
+    instructions: z.string().trim().min(1).optional(),
+    context: z.string().trim().optional(),
+    voiceConfig: VoiceConfigSchema.optional(),
+    liveAvatarConfig: LiveAvatarConfigSchema.optional(),
+    status: AvatarStatusSchema.optional(),
+  })
+  .refine((value) => Object.keys(value).length > 0, "At least one avatar field must be provided");
 
 export type UpdateAvatarAgentInput = z.infer<typeof UpdateAvatarAgentInputSchema>;

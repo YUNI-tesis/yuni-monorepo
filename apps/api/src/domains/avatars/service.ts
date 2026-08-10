@@ -1,4 +1,10 @@
-import { VoiceConfigSchema, type CreateAvatarAgentInput, type UpdateAvatarAgentInput } from "@yuni/domain";
+import {
+  LiveAvatarConfigSchema,
+  VoiceConfigSchema,
+  type AvatarListScope,
+  type CreateAvatarAgentInput,
+  type UpdateAvatarAgentInput,
+} from "@yuni/domain";
 import { NotFoundError, OwnershipError } from "@yuni/domain";
 import type { LiveAvatarConfig } from "@yuni/config";
 import type { AvatarProvider } from "@yuni/avatars";
@@ -10,7 +16,7 @@ import {
   type ElevenLabsAgentProvider,
   type ElevenLabsVoiceOption,
 } from "@yuni/voice";
-import type { AvatarAgentDto, AvatarAgentRecord, AvatarsRepository } from "./repository";
+import type { AvatarAgentDto, AvatarAgentRecord, AvatarListItemDto, AvatarsRepository } from "./repository";
 import { toAvatarAgentDto } from "./repository";
 
 export class AvatarVoiceNotFoundError extends Error {
@@ -44,10 +50,18 @@ export function createAvatarsService(dependencies: AvatarsServiceDependencies) {
       return toAvatarAgentDto(await syncAgentAfterSave(dependencies, ownerId, avatar));
     },
 
-    async listAvatars(ownerId: string): Promise<AvatarAgentDto[]> {
-      const avatars = await repository.listByOwner(ownerId);
+    async listAvatars(ownerId: string, scope: AvatarListScope = "all"): Promise<AvatarListItemDto[]> {
+      const [owned, shared] = await Promise.all([
+        scope === "shared" ? Promise.resolve([]) : repository.listByOwner(ownerId),
+        scope === "owned" || !repository.listSharedByUser
+          ? Promise.resolve([])
+          : repository.listSharedByUser(ownerId),
+      ]);
 
-      return avatars.map(toAvatarAgentDto);
+      return [
+        ...owned.map((avatar) => toAvatarListItemDto(avatar, "owner")),
+        ...shared.map((avatar) => toAvatarListItemDto(avatar, "shared")),
+      ].sort((left, right) => new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime());
     },
 
     async getAvatar(ownerId: string, avatarId: string): Promise<AvatarAgentDto> {
@@ -58,6 +72,49 @@ export function createAvatarsService(dependencies: AvatarsServiceDependencies) {
       }
 
       return toAvatarAgentDto(avatar);
+    },
+
+    async getInteractionContext(userId: string, avatarId: string) {
+      const access = await repository.findAccessibleForUser(userId, avatarId);
+
+      if (!access) {
+        throw new NotFoundError("Avatar not found");
+      }
+
+      const contextStatus =
+        access.avatar.providerSyncStatus === "synced"
+          ? "ready"
+          : access.avatar.providerSyncStatus === "failed"
+            ? "failed"
+            : "processing";
+      const hasValidConfiguration =
+        VoiceConfigSchema.safeParse(access.avatar.voiceConfig).success &&
+        LiveAvatarConfigSchema.safeParse(access.avatar.liveAvatarConfig).success;
+      const voiceAvailability =
+        access.type === "owner"
+          ? hasValidConfiguration
+            ? "ready"
+            : "unavailable"
+          : !hasValidConfiguration || access.avatar.providerSyncStatus === "failed"
+            ? "unavailable"
+            : access.avatar.providerSyncStatus === "synced" && access.avatar.providerAgentId
+              ? "ready"
+              : "processing";
+
+      return {
+        avatar: {
+          id: access.avatar.id,
+          name: access.avatar.name,
+          description: access.avatar.description,
+          status: access.avatar.status,
+        },
+        access: {
+          type: access.type,
+          canInteract: true,
+        },
+        contextStatus,
+        voiceAvailability,
+      } as const;
     },
 
     async updateAvatar(
@@ -102,6 +159,26 @@ export function createAvatarsService(dependencies: AvatarsServiceDependencies) {
 
         throw error;
       }
+    },
+  };
+}
+
+function toAvatarListItemDto(avatar: AvatarAgentRecord, accessType: "owner" | "shared"): AvatarListItemDto {
+  const isOwner = accessType === "owner";
+
+  return {
+    id: avatar.id,
+    name: avatar.name,
+    description: avatar.description,
+    status: avatar.status,
+    providerSyncStatus: avatar.providerSyncStatus,
+    createdAt: avatar.createdAt.toISOString(),
+    updatedAt: avatar.updatedAt.toISOString(),
+    access: {
+      type: accessType,
+      canEdit: isOwner,
+      canShare: isOwner,
+      canInteract: true,
     },
   };
 }
@@ -154,7 +231,10 @@ async function withEffectiveVoiceConfig<Input extends CreateAvatarAgentInput | U
     voices = await voiceProvider.listVoices();
   } catch (error) {
     if (isElevenLabsProviderError(error)) {
-      const trustedFallback = readReusableVoiceSnapshot(input.voiceConfig.voiceId, currentAvatar?.voiceConfig);
+      const trustedFallback = readReusableVoiceSnapshot(
+        input.voiceConfig.voiceId,
+        currentAvatar?.voiceConfig
+      );
 
       if (trustedFallback) {
         return {
@@ -236,8 +316,7 @@ async function syncAgentAfterSave(
       context: avatar.context,
       voiceConfig: parsedVoiceConfig.data,
       providerAgentId: avatar.providerAgentId,
-      providerSyncFingerprint:
-        avatar.providerSyncStatus === "synced" ? avatar.providerSyncFingerprint : null,
+      providerSyncFingerprint: avatar.providerSyncStatus === "synced" ? avatar.providerSyncFingerprint : null,
     });
 
     return dependencies.repository.updateProviderSync(ownerId, avatar.id, {
@@ -259,7 +338,11 @@ async function syncAgentAfterSave(
 }
 
 function readReusableLiveAvatarSnapshot(avatarId: string, currentConfig: unknown) {
-  if (!isRecord(currentConfig) || currentConfig.provider !== "liveavatar" || currentConfig.avatarId !== avatarId) {
+  if (
+    !isRecord(currentConfig) ||
+    currentConfig.provider !== "liveavatar" ||
+    currentConfig.avatarId !== avatarId
+  ) {
     return null;
   }
 
@@ -276,7 +359,11 @@ function readReusableLiveAvatarSnapshot(avatarId: string, currentConfig: unknown
 }
 
 function readReusableVoiceSnapshot(voiceId: string, currentConfig: unknown) {
-  if (!isRecord(currentConfig) || currentConfig.provider !== "elevenlabs" || currentConfig.voiceId !== voiceId) {
+  if (
+    !isRecord(currentConfig) ||
+    currentConfig.provider !== "elevenlabs" ||
+    currentConfig.voiceId !== voiceId
+  ) {
     return null;
   }
 

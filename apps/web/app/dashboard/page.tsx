@@ -6,10 +6,11 @@ import { useAvatarList } from "../../hooks/useAvatarList";
 import {
   formatAvatarStatusLabel,
   formatProviderSyncLabel,
+  getAvatarCardActionMode,
   getAvatarDashboardSummary,
   getRecentAvatars,
 } from "../../lib/avatar-dashboard";
-import type { ApiAvatar } from "../../lib/api/avatar-api";
+import type { ApiAvatarSummary } from "../../lib/api/avatar-api";
 import styles from "./Dashboard.module.css";
 
 export default function DashboardPage() {
@@ -43,8 +44,18 @@ export default function DashboardPage() {
           <section className={styles.metrics} aria-label="Resumen de avatares">
             <MetricCard label="Avatares" value={String(summary.total)} delta="Total" />
             <MetricCard label="Activos" value={String(summary.active)} delta="Listos" tone="success" />
-            <MetricCard label="Procesando" value={String(summary.needsSync)} delta="Pendiente" tone="warning" />
-            <MetricCard label="Requiere revision" value={String(summary.failedSync)} delta="Atencion" tone="danger" />
+            <MetricCard
+              label="Procesando"
+              value={String(summary.needsSync)}
+              delta="Pendiente"
+              tone="warning"
+            />
+            <MetricCard
+              label="Requiere revision"
+              value={String(summary.failedSync)}
+              delta="Atencion"
+              tone="danger"
+            />
           </section>
 
           {avatarList.avatars.length === 0 ? (
@@ -80,15 +91,27 @@ export default function DashboardPage() {
   );
 }
 
-function RecentAvatarCard({ avatar }: { avatar: ApiAvatar }) {
+function RecentAvatarCard({ avatar }: { avatar: ApiAvatarSummary }) {
   const router = useRouter();
+  const isOwner = getAvatarCardActionMode(avatar.access.type) === "owner-actions";
 
   return (
     <Card className={styles.avatarCard} padding="md">
       <div className={styles.avatarMeta}>
         <div className={styles.badges}>
-          <Badge tone={avatar.status === "active" ? "success" : "neutral"}>{formatAvatarStatusLabel(avatar.status)}</Badge>
-          <Badge tone={avatar.providerSyncStatus === "failed" ? "danger" : avatar.providerSyncStatus === "synced" ? "success" : "warning"}>
+          <Badge tone={isOwner ? "neutral" : "warning"}>{isOwner ? "Propio" : "Compartido"}</Badge>
+          <Badge tone={avatar.status === "active" ? "success" : "neutral"}>
+            {formatAvatarStatusLabel(avatar.status)}
+          </Badge>
+          <Badge
+            tone={
+              avatar.providerSyncStatus === "failed"
+                ? "danger"
+                : avatar.providerSyncStatus === "synced"
+                  ? "success"
+                  : "warning"
+            }
+          >
             {formatProviderSyncLabel(avatar.providerSyncStatus)}
           </Badge>
         </div>
@@ -96,12 +119,20 @@ function RecentAvatarCard({ avatar }: { avatar: ApiAvatar }) {
         <p className="yuni-text-muted">{avatar.description || "Sin descripcion."}</p>
       </div>
 
-      <div className={styles.cardActions}>
-        <Button variant="secondary" onClick={() => router.push(`/avatars/${avatar.id}`)}>
-          Perfil
-        </Button>
-        <Button onClick={() => router.push(`/interact/${avatar.id}`)}>Interactuar</Button>
-      </div>
+      {isOwner ? (
+        <div className={styles.cardActions}>
+          <Button variant="secondary" onClick={() => router.push(`/avatars/${avatar.id}`)}>
+            Perfil
+          </Button>
+          <Button onClick={() => router.push(`/interact/${avatar.id}`)}>Interactuar</Button>
+        </div>
+      ) : avatar.access.canInteract ? (
+        <div className={styles.cardActions}>
+          <Button onClick={() => router.push(`/interact/${avatar.id}`)}>Interactuar</Button>
+        </div>
+      ) : (
+        <p className={styles.sharedNotice}>Este avatar compartido no está disponible para interactuar.</p>
+      )}
     </Card>
   );
 }

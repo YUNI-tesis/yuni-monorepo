@@ -7,8 +7,8 @@ function createRequest(pathname: string, cookie?: string) {
 }
 
 describe("web auth proxy", () => {
-  it("does not protect the public home route", () => {
-    const response = proxy(createRequest("/"));
+  it.each(["/", "/a/demo-link"])("does not protect the public route %s", (pathname) => {
+    const response = proxy(createRequest(pathname));
 
     expect(response.headers.get("location")).toBeNull();
   });

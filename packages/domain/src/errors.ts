@@ -32,3 +32,10 @@ export class NotFoundError extends DomainError {
     this.name = "NotFoundError";
   }
 }
+
+export class SelfAccessGrantError extends DomainError {
+  constructor(message = "Owners cannot grant access to themselves") {
+    super(message);
+    this.name = "SelfAccessGrantError";
+  }
+}

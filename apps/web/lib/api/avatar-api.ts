@@ -40,6 +40,39 @@ export type ApiAvatar = {
   updatedAt: string;
 };
 
+export type ApiAvatarSummary = {
+  id: string;
+  name: string;
+  description: string;
+  status: ApiAvatarStatus;
+  providerSyncStatus: "not_synced" | "synced" | "failed";
+  createdAt: string;
+  updatedAt: string;
+  access: {
+    type: "owner" | "shared";
+    canEdit: boolean;
+    canShare: boolean;
+    canInteract: boolean;
+  };
+};
+
+export type ApiInteractionContext = {
+  avatar: {
+    id: string;
+    name: string;
+    description: string;
+    status: ApiAvatarStatus;
+  };
+  access: {
+    type: "owner" | "shared";
+    canInteract: boolean;
+  };
+  contextStatus: "ready" | "processing" | "failed";
+  voiceAvailability: "ready" | "processing" | "unavailable";
+};
+
+export type AvatarListScope = "all" | "owned" | "shared";
+
 export type CreateAvatarRequest = {
   name: string;
   description: string;
@@ -107,8 +140,8 @@ export type ApiConversationDetail = ApiConversationSummary & {
   messages: ApiConversationMessage[];
 };
 
-export function listAvatars() {
-  return apiRequest<{ avatars: ApiAvatar[] }>("/avatars");
+export function listAvatars(scope: AvatarListScope = "all") {
+  return apiRequest<{ avatars: ApiAvatarSummary[] }>(`/avatars?scope=${scope}`);
 }
 
 export function createAvatar(input: CreateAvatarRequest) {
@@ -122,8 +155,27 @@ export function getAvatar(avatarId: string) {
   return apiRequest<{ avatar: ApiAvatar }>(`/avatars/${avatarId}`);
 }
 
+export function getAvatarInteractionContext(avatarId: string) {
+  return apiRequest<{ interactionContext: ApiInteractionContext }>(
+    `/avatars/${avatarId}/interaction-context`
+  );
+}
+
 export function listAvatarConversations(avatarId: string) {
   return apiRequest<{ conversations: ApiConversationSummary[] }>(`/avatars/${avatarId}/conversations`);
+}
+
+export function createAvatarConversation(avatarId: string, mode: ApiConversationMode = "text") {
+  return apiRequest<{ conversation: ApiConversationSummary }>(`/avatars/${avatarId}/conversations`, {
+    method: "POST",
+    body: JSON.stringify({ mode }),
+  });
+}
+
+export function getLatestAvatarConversation(avatarId: string) {
+  return apiRequest<{ conversation: ApiConversationSummary | null }>(
+    `/avatars/${avatarId}/conversations/latest`
+  );
 }
 
 export function getConversation(conversationId: string) {

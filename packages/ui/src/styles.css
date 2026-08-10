@@ -34,8 +34,8 @@
   --yuni-space-8: 32px;
   --yuni-space-10: 40px;
   --yuni-space-12: 48px;
-  --yuni-font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
-    sans-serif;
+  --yuni-font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --yuni-font-xs: 0.75rem;
   --yuni-font-sm: 0.875rem;
   --yuni-font-md: 1rem;
@@ -55,8 +55,7 @@
   min-height: 100vh;
   background:
     radial-gradient(circle at 16% 12%, rgba(190, 106, 220, 0.2), transparent 30%),
-    radial-gradient(circle at 82% 0%, rgba(100, 195, 215, 0.16), transparent 28%),
-    var(--yuni-color-bg);
+    radial-gradient(circle at 82% 0%, rgba(100, 195, 215, 0.16), transparent 28%), var(--yuni-color-bg);
   color: var(--yuni-color-text);
 }
 
@@ -275,6 +274,7 @@
   display: inline-flex;
   width: fit-content;
   align-items: center;
+  white-space: nowrap;
   border-radius: 999px;
   border: 1px solid var(--yuni-color-border);
   padding: 4px 9px;
@@ -561,6 +561,32 @@
   padding: var(--yuni-space-6);
 }
 
+.yuni-dialog__header {
+  display: grid;
+  gap: var(--yuni-space-3);
+  padding-right: var(--yuni-space-8);
+}
+
+.yuni-dialog__header p {
+  margin: 0;
+}
+
+.yuni-dialog__title {
+  margin: 0;
+  font-size: var(--yuni-font-xl);
+  line-height: 1.25;
+}
+
+.yuni-dialog__footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--yuni-space-2);
+  border-top: 1px solid var(--yuni-color-border);
+  padding-top: var(--yuni-space-4);
+}
+
 .yuni-dialog__close-form {
   position: absolute;
   top: var(--yuni-space-3);
@@ -603,11 +629,21 @@
   user-select: none;
 }
 
+.yuni-dropdown__summary--compact {
+  width: 34px;
+  min-height: 34px;
+  padding: 0;
+}
+
+.yuni-dropdown__summary--compact svg {
+  width: 18px;
+  height: 18px;
+}
+
 .yuni-dropdown__menu {
-  position: absolute;
+  position: fixed;
   z-index: var(--yuni-z-dropdown);
-  top: calc(100% + var(--yuni-space-2));
-  min-width: max(180px, 100%);
+  min-width: 180px;
   max-width: calc(100vw - 24px);
   border: 1px solid var(--yuni-color-border);
   border-radius: var(--yuni-radius-md);
@@ -616,16 +652,10 @@
   box-shadow: var(--yuni-shadow-sm);
 }
 
-.yuni-dropdown__menu--start {
-  left: 0;
-}
-
-.yuni-dropdown__menu--end {
-  right: 0;
-}
-
 .yuni-dropdown__item {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: var(--yuni-space-2);
   width: 100%;
   border: 0;
   border-radius: var(--yuni-radius-sm);
@@ -639,6 +669,32 @@
 
 .yuni-dropdown__item:hover {
   background: var(--yuni-color-surface-muted);
+}
+
+.yuni-dropdown__item:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.yuni-dropdown__item--danger {
+  color: #ffdada;
+}
+
+.yuni-dropdown__item--danger:hover:not(:disabled) {
+  background: var(--yuni-color-danger-soft);
+}
+
+.yuni-dropdown__item-icon {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+}
+
+.yuni-dropdown__item-icon svg {
+  width: 18px;
+  height: 18px;
 }
 
 .yuni-tooltip {
@@ -753,8 +809,7 @@
 .yuni-file-drop--dragging {
   border-color: rgba(100, 195, 215, 0.72);
   background:
-    linear-gradient(180deg, rgba(100, 195, 215, 0.09), rgba(190, 106, 220, 0.045)),
-    rgba(255, 255, 255, 0.03);
+    linear-gradient(180deg, rgba(100, 195, 215, 0.09), rgba(190, 106, 220, 0.045)), rgba(255, 255, 255, 0.03);
   box-shadow: inset 0 0 0 1px rgba(100, 195, 215, 0.16);
 }
 
@@ -927,7 +982,15 @@
   border-bottom: 1px solid var(--yuni-color-border);
   padding: 12px 10px;
   text-align: left;
-  vertical-align: top;
+  vertical-align: middle;
+}
+
+.yuni-data-list [data-align="center"] {
+  text-align: center;
+}
+
+.yuni-data-list [data-align="end"] {
+  text-align: right;
 }
 
 .yuni-data-list th {

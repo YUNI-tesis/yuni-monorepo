@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import type { CSSProperties, ReactNode } from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { YuniLogo } from "../brand/YuniLogo";
 import { getMe, logout, type ApiUser } from "../../lib/api/auth-api";
 import { ApiClientError } from "../../lib/api/http-client";
@@ -48,6 +48,26 @@ function clearSessionUserCache() {
   sessionUserRequest = null;
 }
 
+export function getUserInitials(user: Pick<ApiUser, "name" | "email">) {
+  const nameParts = user.name?.trim().split(/\s+/).filter(Boolean) ?? [];
+
+  if (nameParts.length > 1) {
+    return `${nameParts[0]?.[0] ?? ""}${nameParts.at(-1)?.[0] ?? ""}`.toLocaleUpperCase("es");
+  }
+
+  if (nameParts.length === 1) {
+    return nameParts[0]!.slice(0, 2).toLocaleUpperCase("es");
+  }
+
+  const emailParts = (user.email.split("@")[0] ?? "").split(/[._\-\s]+/).filter(Boolean);
+
+  if (emailParts.length > 1) {
+    return `${emailParts[0]?.[0] ?? ""}${emailParts.at(-1)?.[0] ?? ""}`.toLocaleUpperCase("es");
+  }
+
+  return (emailParts[0]?.slice(0, 2) || "U").toLocaleUpperCase("es");
+}
+
 export function PrivateAreaLayout({
   children,
   maxWidth,
@@ -69,6 +89,10 @@ export function PrivateAreaLayout({
         }
   );
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
+  const profileMenuId = useId();
+  const sessionRef = useRef<HTMLDivElement>(null);
+  const profileButtonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -100,12 +124,44 @@ export function PrivateAreaLayout({
     };
   }, [router]);
 
+  useEffect(() => {
+    setIsProfileMenuOpen(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    if (!isProfileMenuOpen) {
+      return;
+    }
+
+    function onPointerDown(event: PointerEvent) {
+      if (!sessionRef.current?.contains(event.target as Node)) {
+        setIsProfileMenuOpen(false);
+      }
+    }
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setIsProfileMenuOpen(false);
+        profileButtonRef.current?.focus();
+      }
+    }
+
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [isProfileMenuOpen]);
+
   async function onLogout() {
     if (isLoggingOut) {
       return;
     }
 
     setIsLoggingOut(true);
+    setIsProfileMenuOpen(false);
 
     try {
       clearSessionUserCache();
@@ -133,22 +189,58 @@ export function PrivateAreaLayout({
 
             <PrivateNavigation pathname={pathname} />
 
-            <div className={styles.session}>
-              <div className={styles.userBlock}>
-                {session.status === "ready" ? (
-                  <>
-                    <span className={styles.userName}>{session.user.name ?? session.user.email}</span>
-                    <span className={styles.userEmail}>{session.user.email}</span>
-                  </>
-                ) : session.status === "error" ? (
-                  <p className={styles.sessionError}>{session.error}</p>
-                ) : (
-                  <p className={styles.sessionMeta}>Verificando sesion...</p>
-                )}
-              </div>
-              <button className={styles.logout} type="button" onClick={onLogout} disabled={isLoggingOut}>
-                {isLoggingOut ? "Saliendo..." : "Cerrar sesion"}
-              </button>
+            <div className={styles.session} ref={sessionRef}>
+              {session.status === "ready" ? (
+                <>
+                  <button
+                    ref={profileButtonRef}
+                    className={styles.profileTrigger}
+                    type="button"
+                    aria-label={`Abrir menú de perfil de ${session.user.name ?? session.user.email}`}
+                    aria-expanded={isProfileMenuOpen}
+                    aria-controls={profileMenuId}
+                    aria-haspopup="menu"
+                    onClick={() => setIsProfileMenuOpen((isOpen) => !isOpen)}
+                  >
+                    <span className={styles.avatar} aria-hidden="true">
+                      {getUserInitials(session.user)}
+                    </span>
+                    <span className={styles.userBlock}>
+                      <span className={styles.userName}>{session.user.name ?? session.user.email}</span>
+                      <span className={styles.userEmail}>{session.user.email}</span>
+                    </span>
+                    <svg
+                      className={`${styles.chevron} ${isProfileMenuOpen ? styles.chevronOpen : ""}`}
+                      viewBox="0 0 20 20"
+                      aria-hidden="true"
+                    >
+                      <path d="m5 7.5 5 5 5-5" />
+                    </svg>
+                  </button>
+
+                  {isProfileMenuOpen ? (
+                    <div className={styles.profileMenu} id={profileMenuId} role="menu">
+                      <button
+                        className={styles.logout}
+                        type="button"
+                        role="menuitem"
+                        onClick={onLogout}
+                        disabled={isLoggingOut}
+                      >
+                        <svg className={styles.logoutIcon} viewBox="0 0 20 20" aria-hidden="true">
+                          <path d="M8 3H4.75A1.75 1.75 0 0 0 3 4.75v10.5C3 16.22 3.78 17 4.75 17H8" />
+                          <path d="M13 6.5 16.5 10 13 13.5M7 10h9" />
+                        </svg>
+                        {isLoggingOut ? "Saliendo..." : "Cerrar sesión"}
+                      </button>
+                    </div>
+                  ) : null}
+                </>
+              ) : session.status === "error" ? (
+                <p className={styles.sessionError}>{session.error}</p>
+              ) : (
+                <p className={styles.sessionMeta}>Verificando sesión...</p>
+              )}
             </div>
           </div>
         </header>

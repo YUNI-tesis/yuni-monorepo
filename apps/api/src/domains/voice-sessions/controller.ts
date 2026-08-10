@@ -12,6 +12,7 @@ import {
   createVoiceSessionsService,
   LiveAvatarSessionServiceError,
   LiveAvatarSessionTimeoutServiceError,
+  SharedAvatarNotReadyError,
   VoiceProviderServiceError,
   VoiceProviderTimeoutServiceError,
   VoiceSessionConfigurationError,
@@ -105,7 +106,14 @@ function toVoiceSessionError(context: Context, error: unknown) {
     return context.json(serviceUnavailableError(error.message), 503);
   }
 
-  if (error instanceof VoiceProviderTimeoutServiceError || error instanceof LiveAvatarSessionTimeoutServiceError) {
+  if (error instanceof SharedAvatarNotReadyError) {
+    return context.json(serviceUnavailableError(error.message, "AVATAR_NOT_READY"), 503);
+  }
+
+  if (
+    error instanceof VoiceProviderTimeoutServiceError ||
+    error instanceof LiveAvatarSessionTimeoutServiceError
+  ) {
     return context.json(badGatewayError(error.message), 502);
   }
 

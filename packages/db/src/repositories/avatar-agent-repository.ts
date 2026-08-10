@@ -32,6 +32,41 @@ export function createAvatarAgentRepository(db: Db) {
       });
     },
 
+    async findAccessibleForUser(userId: string, avatarAgentId: string) {
+      const avatar = await db.avatarAgent.findUnique({
+        where: { id: avatarAgentId },
+        include: {
+          accessGrants: {
+            where: {
+              participantUserId: userId,
+              status: "active",
+            },
+            take: 1,
+          },
+        },
+      });
+
+      if (!avatar) return null;
+
+      const { accessGrants, ...avatarRecord } = avatar;
+
+      if (avatar.ownerId === userId) {
+        return { type: "owner" as const, avatar: avatarRecord };
+      }
+
+      const accessGrant = accessGrants[0];
+
+      if (avatar.status !== "active" || !accessGrant) {
+        return null;
+      }
+
+      return {
+        type: "shared" as const,
+        avatar: avatarRecord,
+        accessGrant,
+      };
+    },
+
     async updateProviderSync(
       ownerId: string,
       avatarAgentId: string,
@@ -68,6 +103,21 @@ export function createAvatarAgentRepository(db: Db) {
     listByOwner(ownerId: string) {
       return db.avatarAgent.findMany({
         where: { ownerId },
+        orderBy: { updatedAt: "desc" },
+      });
+    },
+
+    listSharedByUser(participantUserId: string) {
+      return db.avatarAgent.findMany({
+        where: {
+          status: "active",
+          accessGrants: {
+            some: {
+              participantUserId,
+              status: "active",
+            },
+          },
+        },
         orderBy: { updatedAt: "desc" },
       });
     },

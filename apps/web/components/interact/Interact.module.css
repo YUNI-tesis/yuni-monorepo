@@ -132,9 +132,7 @@
   height: calc(100dvh - 132px);
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 28px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02)),
-    #060913;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02)), #060913;
   box-shadow: 0 28px 90px rgba(0, 0, 0, 0.42);
 }
 
@@ -616,6 +614,21 @@
   .historyDetailPane {
     min-height: 280px;
   }
+}
+
+.privacyChoice {
+  display: flex;
+  align-items: center;
+  gap: var(--yuni-space-3);
+  color: var(--yuni-color-text);
+  cursor: pointer;
+}
+
+.privacyChoice input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--yuni-color-primary);
 }
 
 @media (max-width: 560px) {

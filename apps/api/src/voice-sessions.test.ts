@@ -69,13 +69,15 @@ function avatarRecord(ownerId: string, input: CreateAvatarAgentInput): AvatarAge
   };
 }
 
-function createTestDependencies(options: {
-  users?: UserWithPassword[];
-  providerError?: Error;
-  liveAvatarError?: Error;
-  generatedTitle?: string | null;
-  titleError?: Error;
-} = {}) {
+function createTestDependencies(
+  options: {
+    users?: UserWithPassword[];
+    providerError?: Error;
+    liveAvatarError?: Error;
+    generatedTitle?: string | null;
+    titleError?: Error;
+  } = {}
+) {
   const users = new Map((options.users ?? [createUser()]).map((user) => [user.email, user]));
   const avatars = new Map<string, AvatarAgentRecord>();
   const conversations = new Map<
@@ -84,6 +86,8 @@ function createTestDependencies(options: {
       id: string;
       ownerId: string;
       avatarAgentId: string;
+      accessGrantId?: string | null;
+      participantEmail?: string | null;
       title: string | null;
       mode: "text" | "voice";
       status: "active" | "ended";
@@ -91,6 +95,17 @@ function createTestDependencies(options: {
       lastMessageAt: Date | null;
       createdAt: Date;
       updatedAt: Date;
+    }
+  >();
+  const accessGrants = new Map<
+    string,
+    {
+      id: string;
+      avatarAgentId: string;
+      ownerId: string;
+      participantEmail: string;
+      participantUserId: string | null;
+      status: "active" | "revoked";
     }
   >();
   const realtimeSessions = new Map<
@@ -112,6 +127,7 @@ function createTestDependencies(options: {
     metadata: Record<string, unknown> | null;
     createdAt: Date;
   }> = [];
+  const providerSyncCalls: string[] = [];
   const initialAvatar = avatarRecord("user-1", avatarInput());
   avatars.set(initialAvatar.id, initialAvatar);
 
@@ -145,6 +161,21 @@ function createTestDependencies(options: {
       const avatar = avatars.get(avatarId);
 
       return avatar?.ownerId === ownerId ? avatar : null;
+    },
+    async findAccessibleForUser(userId, avatarId) {
+      const avatar = avatars.get(avatarId);
+
+      if (!avatar) return null;
+      if (avatar.ownerId === userId) return { type: "owner" as const, avatar };
+
+      const accessGrant = Array.from(accessGrants.values()).find(
+        (grant) =>
+          grant.avatarAgentId === avatarId && grant.participantUserId === userId && grant.status === "active"
+      );
+
+      return avatar.status === "active" && accessGrant
+        ? { type: "shared" as const, avatar, accessGrant }
+        : null;
     },
     async updateProviderSync(ownerId, avatarId, input) {
       const avatar = avatars.get(avatarId);
@@ -218,13 +249,15 @@ function createTestDependencies(options: {
     voiceSessions: {
       avatarsRepository: avatarRepository,
       conversationsRepository: {
-        async createPrivate(ownerId, avatarAgentId) {
+        async createPrivateForParticipant(input) {
           const id = `conversation-${conversations.size + 1}`;
           const now = new Date("2026-06-08T00:00:00.000Z");
           conversations.set(id, {
             id,
-            ownerId,
-            avatarAgentId,
+            ownerId: input.ownerId,
+            avatarAgentId: input.avatarAgentId,
+            accessGrantId: input.accessGrantId ?? null,
+            participantEmail: input.participantEmail ?? null,
             title: null,
             mode: "voice",
             status: "active",
@@ -265,11 +298,11 @@ function createTestDependencies(options: {
 
           return { id };
         },
-        async findPrivateForOwner(ownerId, realtimeSessionId) {
+        async findPrivateForParticipant(participantUserId, realtimeSessionId) {
           const realtimeSession = realtimeSessions.get(realtimeSessionId);
           const conversation = realtimeSession ? conversations.get(realtimeSession.conversationId) : null;
 
-          if (!realtimeSession || !conversation || conversation.ownerId !== ownerId) {
+          if (!realtimeSession || !conversation || conversation.ownerId !== participantUserId) {
             return null;
           }
 
@@ -317,7 +350,8 @@ function createTestDependencies(options: {
       },
       liveAvatarProvider,
       elevenLabsAgentProvider: {
-        async syncAvatarAgent() {
+        async syncAvatarAgent(input) {
+          providerSyncCalls.push(input.id);
           if (options.providerError) {
             throw options.providerError;
           }
@@ -342,12 +376,33 @@ function createTestDependencies(options: {
     conversations: {
       avatarsRepository: avatarRepository,
       conversationsRepository: {
-        async listPrivateForAvatar(ownerId, avatarAgentId) {
+        async createPrivateForParticipant(input) {
+          const id = `conversation-${conversations.size + 1}`;
+          const now = new Date("2026-06-08T00:00:00.000Z");
+          const conversation = {
+            id,
+            ownerId: input.ownerId,
+            avatarAgentId: input.avatarAgentId,
+            accessGrantId: input.accessGrantId ?? null,
+            participantEmail: input.participantEmail ?? null,
+            title: null,
+            mode: input.mode,
+            status: "active" as const,
+            visibility: "private" as const,
+            lastMessageAt: null,
+            createdAt: now,
+            updatedAt: now,
+          };
+          conversations.set(id, conversation);
+          return conversation;
+        },
+        async listPrivateForAccess(ownerId, avatarAgentId, accessGrantId) {
           return Array.from(conversations.values())
             .filter(
               (conversation) =>
                 conversation.ownerId === ownerId &&
                 conversation.avatarAgentId === avatarAgentId &&
+                conversation.accessGrantId === accessGrantId &&
                 conversation.visibility === "private"
             )
             .sort((left, right) => {
@@ -357,10 +412,43 @@ function createTestDependencies(options: {
               return rightTime - leftTime || right.createdAt.getTime() - left.createdAt.getTime();
             });
         },
-        async findPrivateById(ownerId, conversationId) {
+        async findLatestPrivateForAccess(ownerId, avatarAgentId, accessGrantId) {
+          return (
+            Array.from(conversations.values())
+              .filter(
+                (conversation) =>
+                  conversation.ownerId === ownerId &&
+                  conversation.avatarAgentId === avatarAgentId &&
+                  conversation.accessGrantId === accessGrantId &&
+                  conversation.visibility === "private"
+              )
+              .sort((left, right) => {
+                const leftTime = (left.lastMessageAt ?? left.createdAt).getTime();
+                const rightTime = (right.lastMessageAt ?? right.createdAt).getTime();
+                return rightTime - leftTime || right.createdAt.getTime() - left.createdAt.getTime();
+              })[0] ?? null
+          );
+        },
+        async findPrivateIdentityById(conversationId) {
+          const conversation = conversations.get(conversationId);
+          return conversation
+            ? {
+                id: conversation.id,
+                ownerId: conversation.ownerId,
+                avatarAgentId: conversation.avatarAgentId,
+                accessGrantId: conversation.accessGrantId ?? null,
+              }
+            : null;
+        },
+        async findPrivateByIdForAccess(ownerId, conversationId, accessGrantId) {
           const conversation = conversations.get(conversationId);
 
-          if (!conversation || conversation.ownerId !== ownerId || conversation.visibility !== "private") {
+          if (
+            !conversation ||
+            conversation.ownerId !== ownerId ||
+            conversation.accessGrantId !== accessGrantId ||
+            conversation.visibility !== "private"
+          ) {
             return null;
           }
 
@@ -375,14 +463,26 @@ function createTestDependencies(options: {
     },
   };
 
-  return { dependencies, avatars, conversations, realtimeSessions, messages };
+  return {
+    dependencies,
+    avatars,
+    accessGrants,
+    conversations,
+    realtimeSessions,
+    messages,
+    providerSyncCalls,
+  };
 }
 
-async function login(app: ReturnType<typeof createApp>) {
+async function login(
+  app: ReturnType<typeof createApp>,
+  email = "demo@yuni.local",
+  password = "demo-password"
+) {
   const response = await app.request("/auth/login", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email: "demo@yuni.local", password: "demo-password" }),
+    body: JSON.stringify({ email, password }),
   });
 
   return response.headers.get("set-cookie")?.split(";")[0] ?? "";
@@ -446,6 +546,207 @@ describe("@yuni/api voice sessions", () => {
     expect(response.status).toBe(404);
   });
 
+  it("exposes a safe interaction context and starts an attributed shared voice session", async () => {
+    const participant = createUser({
+      id: "user-2",
+      email: "participant@yuni.local",
+      name: "Participant",
+    });
+    const state = createTestDependencies({ users: [createUser(), participant] });
+    const avatar = state.avatars.get("avatar-1")!;
+    state.avatars.set("avatar-1", {
+      ...avatar,
+      status: "active",
+      providerSyncStatus: "synced",
+      providerAgentId: "agent-shared",
+    });
+    state.accessGrants.set("grant-1", {
+      id: "grant-1",
+      avatarAgentId: "avatar-1",
+      ownerId: "user-1",
+      participantEmail: participant.email,
+      participantUserId: participant.id,
+      status: "active",
+    });
+    const app = createApp(state.dependencies);
+    const participantCookie = await login(app, participant.email);
+
+    const contextResponse = await app.request("/avatars/avatar-1/interaction-context", {
+      headers: { Cookie: participantCookie },
+    });
+    const contextBody = (await json(contextResponse)) as {
+      interactionContext: Record<string, unknown> & { access: { type: string } };
+    };
+
+    expect(contextResponse.status).toBe(200);
+    expect(contextBody.interactionContext).toMatchObject({
+      avatar: { id: "avatar-1", name: "Tutor Demo", status: "active" },
+      access: { type: "shared", canInteract: true },
+      contextStatus: "ready",
+      voiceAvailability: "ready",
+    });
+    expect(JSON.stringify(contextBody)).not.toMatch(
+      /instructions|voiceConfig|liveAvatarConfig|providerAgentId|providerSyncFingerprint/
+    );
+
+    const startResponse = await app.request("/avatars/avatar-1/voice-sessions", {
+      method: "POST",
+      headers: { Cookie: participantCookie },
+    });
+
+    expect(startResponse.status).toBe(201);
+    expect(state.providerSyncCalls).toEqual([]);
+    expect(state.conversations.get("conversation-1")).toMatchObject({
+      ownerId: participant.id,
+      accessGrantId: "grant-1",
+      participantEmail: participant.email,
+      mode: "voice",
+    });
+  });
+
+  it("blocks an unready shared avatar without syncing or creating session records", async () => {
+    const participant = createUser({ id: "user-2", email: "participant@yuni.local" });
+    const state = createTestDependencies({ users: [createUser(), participant] });
+    const avatar = state.avatars.get("avatar-1")!;
+    state.avatars.set("avatar-1", { ...avatar, status: "active" });
+    state.accessGrants.set("grant-1", {
+      id: "grant-1",
+      avatarAgentId: "avatar-1",
+      ownerId: "user-1",
+      participantEmail: participant.email,
+      participantUserId: participant.id,
+      status: "active",
+    });
+    const app = createApp(state.dependencies);
+    const cookie = await login(app, participant.email);
+    const response = await app.request("/avatars/avatar-1/voice-sessions", {
+      method: "POST",
+      headers: { Cookie: cookie },
+    });
+    const body = (await json(response)) as { error: { code: string; reason: string } };
+
+    expect(response.status).toBe(503);
+    expect(body.error).toMatchObject({
+      code: "SERVICE_UNAVAILABLE",
+      reason: "AVATAR_NOT_READY",
+    });
+    expect(state.providerSyncCalls).toEqual([]);
+    expect(state.conversations.size).toBe(0);
+    expect(state.realtimeSessions.size).toBe(0);
+  });
+
+  it("isolates shared conversation APIs and restores history when the same grant is reactivated", async () => {
+    const participant = createUser({ id: "user-2", email: "participant@yuni.local" });
+    const state = createTestDependencies({ users: [createUser(), participant] });
+    const avatar = state.avatars.get("avatar-1")!;
+    state.avatars.set("avatar-1", {
+      ...avatar,
+      status: "active",
+      providerSyncStatus: "synced",
+      providerAgentId: "agent-shared",
+    });
+    const grant = {
+      id: "grant-1",
+      avatarAgentId: "avatar-1",
+      ownerId: "user-1",
+      participantEmail: participant.email,
+      participantUserId: participant.id,
+      status: "active" as const,
+    };
+    state.accessGrants.set(grant.id, grant);
+    const app = createApp(state.dependencies);
+    const participantCookie = await login(app, participant.email);
+    const ownerCookie = await login(app);
+
+    const createResponse = await app.request("/avatars/avatar-1/conversations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: participantCookie },
+      body: JSON.stringify({ mode: "text" }),
+    });
+    const latestResponse = await app.request("/avatars/avatar-1/conversations/latest", {
+      headers: { Cookie: participantCookie },
+    });
+    const latestBody = (await json(latestResponse)) as { conversation: { id: string } | null };
+    const ownerListResponse = await app.request("/avatars/avatar-1/conversations", {
+      headers: { Cookie: ownerCookie },
+    });
+    const ownerListBody = (await json(ownerListResponse)) as { conversations: unknown[] };
+
+    expect(createResponse.status).toBe(201);
+    expect(latestResponse.status).toBe(200);
+    expect(latestBody.conversation?.id).toBe("conversation-1");
+    expect(ownerListBody.conversations).toEqual([]);
+
+    state.accessGrants.set(grant.id, { ...grant, status: "revoked" });
+    expect(
+      (
+        await app.request("/avatars/avatar-1/conversations", {
+          headers: { Cookie: participantCookie },
+        })
+      ).status
+    ).toBe(404);
+    expect(
+      (
+        await app.request("/conversations/conversation-1", {
+          headers: { Cookie: participantCookie },
+        })
+      ).status
+    ).toBe(404);
+
+    state.accessGrants.set(grant.id, grant);
+    const restored = await app.request("/conversations/conversation-1", {
+      headers: { Cookie: participantCookie },
+    });
+    expect(restored.status).toBe(200);
+  });
+
+  it("allows a participant to finish an in-flight call after grant revocation", async () => {
+    const participant = createUser({ id: "user-2", email: "participant@yuni.local" });
+    const state = createTestDependencies({ users: [createUser(), participant] });
+    const avatar = state.avatars.get("avatar-1")!;
+    state.avatars.set("avatar-1", {
+      ...avatar,
+      status: "active",
+      providerSyncStatus: "synced",
+      providerAgentId: "agent-shared",
+    });
+    state.accessGrants.set("grant-1", {
+      id: "grant-1",
+      avatarAgentId: "avatar-1",
+      ownerId: "user-1",
+      participantEmail: participant.email,
+      participantUserId: participant.id,
+      status: "active",
+    });
+    const app = createApp(state.dependencies);
+    const cookie = await login(app, participant.email);
+    await app.request("/avatars/avatar-1/voice-sessions", {
+      method: "POST",
+      headers: { Cookie: cookie },
+    });
+
+    state.accessGrants.set("grant-1", {
+      ...state.accessGrants.get("grant-1")!,
+      status: "revoked",
+    });
+    const endResponse = await app.request("/voice-sessions/realtime-1/end", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify({ transcript: [{ role: "user", content: "Hola" }] }),
+    });
+
+    expect(endResponse.status).toBe(200);
+    expect(state.messages).toEqual([expect.objectContaining({ content: "Hola" })]);
+    expect(
+      (
+        await app.request("/avatars/avatar-1/voice-sessions", {
+          method: "POST",
+          headers: { Cookie: cookie },
+        })
+      ).status
+    ).toBe(404);
+  });
+
   it("returns provider errors and stores sync failure state", async () => {
     const state = createTestDependencies({ providerError: new ElevenLabsProviderError("provider exploded") });
     const app = createApp(state.dependencies);
@@ -507,7 +808,9 @@ describe("@yuni/api voice sessions", () => {
     expect(response.status).toBe(200);
     expect(body.voiceSession.status).toBe("ended");
     expect(body.voiceSession.endedAt).toBe("2026-06-08T00:02:00.000Z");
-    expect(state.messages.map(({ conversationId, role, content }) => ({ conversationId, role, content }))).toEqual([
+    expect(
+      state.messages.map(({ conversationId, role, content }) => ({ conversationId, role, content }))
+    ).toEqual([
       { conversationId: "conversation-1", role: "user", content: "Hola" },
       { conversationId: "conversation-1", role: "assistant", content: "Hola, soy Tutor Demo." },
     ]);
@@ -533,7 +836,9 @@ describe("@yuni/api voice sessions", () => {
     });
 
     expect(response.status).toBe(200);
-    expect(state.conversations.get("conversation-1")?.title).toBe("Necesito practicar derivadas para el parcial");
+    expect(state.conversations.get("conversation-1")?.title).toBe(
+      "Necesito practicar derivadas para el parcial"
+    );
   });
 
   it("lists private voice conversations for an owned avatar", async () => {
@@ -556,7 +861,12 @@ describe("@yuni/api voice sessions", () => {
       headers: { Cookie: cookie },
     });
     const body = (await json(response)) as {
-      conversations: Array<{ id: string; title: string | null; status: string; lastMessageAt: string | null }>;
+      conversations: Array<{
+        id: string;
+        title: string | null;
+        status: string;
+        lastMessageAt: string | null;
+      }>;
     };
 
     expect(response.status).toBe(200);

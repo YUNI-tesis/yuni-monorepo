@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   AppendMessageInputSchema,
+  CreateAccessGrantInputSchema,
   CreateAvatarAgentInputSchema,
   EndVoiceSessionInputSchema,
   CreateShareLinkInputSchema,
@@ -9,6 +10,7 @@ import {
   MessageRoleSchema,
   RegisterInputSchema,
   UpdateAvatarAgentInputSchema,
+  UpdateAccessGrantInputSchema,
   VoiceConfigSchema,
 } from "./index";
 
@@ -117,6 +119,27 @@ describe("@yuni/domain", () => {
 
     expect(parsed.slug).toBe("demo-link");
     expect(parsed.isEnabled).toBe(true);
+  });
+
+  it("normalizes access grant email and validates status updates", () => {
+    const created = CreateAccessGrantInputSchema.parse({
+      email: "  PARTICIPANT@EXAMPLE.COM ",
+    });
+    const updated = UpdateAccessGrantInputSchema.parse({ status: "revoked" });
+
+    expect(created.email).toBe("participant@example.com");
+    expect(updated.status).toBe("revoked");
+  });
+
+  it("rejects invalid access grants and oversized share link names", () => {
+    expect(() => CreateAccessGrantInputSchema.parse({ email: "not-an-email" })).toThrow();
+    expect(() => UpdateAccessGrantInputSchema.parse({ status: "pending" })).toThrow();
+    expect(() =>
+      CreateShareLinkInputSchema.parse({
+        slug: "demo-link",
+        name: "a".repeat(121),
+      })
+    ).toThrow();
   });
 
   it("rejects invalid message roles", () => {

@@ -1,5 +1,6 @@
 import {
   NotFoundError,
+  type CreateConversationInput,
   type ConversationMode,
   type ConversationStatus,
   type MessageRole,
@@ -29,38 +30,122 @@ type ConversationDetailRecord = ConversationSummaryRecord & {
   messages: ConversationMessageRecord[];
 };
 
+type ConversationIdentityRecord = {
+  id: string;
+  ownerId: string | null;
+  avatarAgentId: string;
+  accessGrantId: string | null;
+};
+
 export type ConversationsServiceDependencies = {
-  avatarsRepository: Pick<AvatarsRepository, "findByIdForOwner">;
+  avatarsRepository: Pick<AvatarsRepository, "findAccessibleForUser">;
   conversationsRepository: {
-    listPrivateForAvatar(ownerId: string, avatarAgentId: string): Promise<ConversationSummaryRecord[]>;
-    findPrivateById(ownerId: string, conversationId: string): Promise<ConversationDetailRecord | null>;
+    createPrivateForParticipant(input: {
+      ownerId: string;
+      avatarAgentId: string;
+      mode: ConversationMode;
+      accessGrantId?: string;
+      participantEmail?: string;
+    }): Promise<ConversationSummaryRecord>;
+    listPrivateForAccess(
+      ownerId: string,
+      avatarAgentId: string,
+      accessGrantId: string | null
+    ): Promise<ConversationSummaryRecord[]>;
+    findLatestPrivateForAccess(
+      ownerId: string,
+      avatarAgentId: string,
+      accessGrantId: string | null
+    ): Promise<ConversationSummaryRecord | null>;
+    findPrivateIdentityById(conversationId: string): Promise<ConversationIdentityRecord | null>;
+    findPrivateByIdForAccess(
+      ownerId: string,
+      conversationId: string,
+      accessGrantId: string | null
+    ): Promise<ConversationDetailRecord | null>;
   };
 };
 
 export function createConversationsService(dependencies: ConversationsServiceDependencies) {
   return {
-    async listAvatarConversations(ownerId: string, avatarId: string) {
-      const avatar = await dependencies.avatarsRepository.findByIdForOwner(ownerId, avatarId);
+    async createAvatarConversation(userId: string, avatarId: string, input: CreateConversationInput) {
+      const access = await findAvatarAccess(dependencies, userId, avatarId);
+      const conversation = await dependencies.conversationsRepository.createPrivateForParticipant({
+        ownerId: userId,
+        avatarAgentId: access.avatar.id,
+        mode: input.mode,
+        ...(access.type === "shared"
+          ? {
+              accessGrantId: access.accessGrant.id,
+              participantEmail: access.accessGrant.participantEmail,
+            }
+          : {}),
+      });
 
-      if (!avatar) {
-        throw new NotFoundError("Avatar not found");
-      }
+      return toConversationSummaryDto(conversation);
+    },
 
-      const conversations = await dependencies.conversationsRepository.listPrivateForAvatar(ownerId, avatar.id);
+    async listAvatarConversations(userId: string, avatarId: string) {
+      const access = await findAvatarAccess(dependencies, userId, avatarId);
+      const conversations = await dependencies.conversationsRepository.listPrivateForAccess(
+        userId,
+        access.avatar.id,
+        access.type === "shared" ? access.accessGrant.id : null
+      );
 
       return conversations.map(toConversationSummaryDto);
     },
 
-    async getConversation(ownerId: string, conversationId: string) {
-      const conversation = await dependencies.conversationsRepository.findPrivateById(ownerId, conversationId);
+    async getLatestAvatarConversation(userId: string, avatarId: string) {
+      const access = await findAvatarAccess(dependencies, userId, avatarId);
+      const conversation = await dependencies.conversationsRepository.findLatestPrivateForAccess(
+        userId,
+        access.avatar.id,
+        access.type === "shared" ? access.accessGrant.id : null
+      );
 
-      if (!conversation) {
+      return conversation ? toConversationSummaryDto(conversation) : null;
+    },
+
+    async getConversation(userId: string, conversationId: string) {
+      const identity = await dependencies.conversationsRepository.findPrivateIdentityById(conversationId);
+
+      if (!identity || identity.ownerId !== userId) {
         throw new NotFoundError("Conversation not found");
       }
+
+      const access = await findAvatarAccess(dependencies, userId, identity.avatarAgentId);
+      const accessGrantId = access.type === "shared" ? access.accessGrant.id : null;
+
+      if (identity.accessGrantId !== accessGrantId) {
+        throw new NotFoundError("Conversation not found");
+      }
+
+      const conversation = await dependencies.conversationsRepository.findPrivateByIdForAccess(
+        userId,
+        conversationId,
+        accessGrantId
+      );
+
+      if (!conversation) throw new NotFoundError("Conversation not found");
 
       return toConversationDetailDto(conversation);
     },
   };
+}
+
+async function findAvatarAccess(
+  dependencies: ConversationsServiceDependencies,
+  userId: string,
+  avatarId: string
+) {
+  const access = await dependencies.avatarsRepository.findAccessibleForUser(userId, avatarId);
+
+  if (!access) {
+    throw new NotFoundError("Avatar not found");
+  }
+
+  return access;
 }
 
 function toConversationSummaryDto(conversation: ConversationSummaryRecord) {

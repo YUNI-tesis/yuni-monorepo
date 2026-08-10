@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { Badge, Button, Card, ErrorState, LoadingState, PageHeader, Tabs } from "@yuni/ui";
 import { useAvatarProfile } from "../../hooks/useAvatarProfile";
 import { AvatarInfoTab } from "./AvatarInfoTab";
-import { AvatarSharePlaceholder } from "./AvatarSharePlaceholder";
+import { AvatarShareTab } from "./AvatarShareTab";
 import { formatAvatarStatus, getAvatarStatusTone } from "./formatters";
 import styles from "./AvatarProfile.module.css";
 
@@ -72,7 +72,7 @@ export function AvatarProfile({ avatarId }: { avatarId: string }) {
             {
               value: "share",
               label: "Compartir",
-              content: <AvatarSharePlaceholder />,
+              content: <AvatarShareTab avatar={avatar} />,
             },
           ]}
         />

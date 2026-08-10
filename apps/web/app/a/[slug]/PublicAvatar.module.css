@@ -1,0 +1,86 @@
+.page {
+  min-height: 100vh;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--yuni-space-3);
+  margin-bottom: var(--yuni-space-5);
+  font-weight: 900;
+  letter-spacing: 0.14em;
+}
+
+.logo {
+  width: 46px;
+  height: auto;
+}
+
+.card {
+  min-height: 460px;
+  display: grid;
+  align-content: center;
+}
+
+.content {
+  display: grid;
+  justify-items: center;
+  gap: var(--yuni-space-4);
+  text-align: center;
+}
+
+.content h1 {
+  margin: 0;
+  font-size: clamp(2rem, 7vw, 3.5rem);
+  line-height: 1.05;
+}
+
+.visual {
+  display: grid;
+  width: min(240px, 65vw);
+  aspect-ratio: 1;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid var(--yuni-color-border);
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 35% 25%, rgba(100, 195, 215, 0.22), transparent 48%),
+    var(--yuni-color-surface-soft);
+}
+
+.visual img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.visual svg {
+  width: 45%;
+  height: auto;
+}
+
+.description {
+  max-width: 620px;
+  margin: 0;
+  color: var(--yuni-color-text-muted);
+  font-size: var(--yuni-font-lg);
+  line-height: 1.65;
+}
+
+.comingSoon {
+  display: grid;
+  max-width: 620px;
+  gap: var(--yuni-space-2);
+  margin-top: var(--yuni-space-3);
+  border: 1px solid rgba(100, 195, 215, 0.3);
+  border-radius: var(--yuni-radius-md);
+  padding: var(--yuni-space-4);
+  background: rgba(100, 195, 215, 0.08);
+}
+
+.comingSoon p {
+  margin: 0;
+  color: var(--yuni-color-text-muted);
+  line-height: 1.55;
+}

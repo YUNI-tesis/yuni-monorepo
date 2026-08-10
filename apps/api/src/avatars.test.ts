@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { OwnershipError, type CreateAvatarAgentInput, type UpdateAvatarAgentInput } from "@yuni/domain";
 import type { AvatarOption } from "@yuni/avatars";
-import { ElevenLabsProviderError, ElevenLabsProviderUnavailableError, type ElevenLabsVoiceOption } from "@yuni/voice";
+import {
+  ElevenLabsProviderError,
+  ElevenLabsProviderUnavailableError,
+  type ElevenLabsVoiceOption,
+} from "@yuni/voice";
 import type { PublicUser, UserWithPassword } from "./domains/auth/repository";
 import type { AvatarAgentRecord } from "./domains/avatars/repository";
 import { createApp, type AppDependencies } from "./app";
@@ -149,7 +153,18 @@ function createTestDependencies(
 
       return avatar?.ownerId === ownerId ? avatar : null;
     },
-    async updateProviderSync(ownerId: string, avatarId: string, input: Parameters<AppDependencies["voiceSessions"]["avatarsRepository"]["updateProviderSync"]>[2]) {
+    async findAccessibleForUser(userId: string, avatarId: string) {
+      const avatar = avatars.get(avatarId);
+
+      return avatar?.ownerId === userId ? { type: "owner" as const, avatar } : null;
+    },
+    async updateProviderSync(
+      ownerId: string,
+      avatarId: string,
+      input: Parameters<
+        NonNullable<AppDependencies["voiceSessions"]>["avatarsRepository"]["updateProviderSync"]
+      >[2]
+    ) {
       const avatar = avatars.get(avatarId);
 
       if (!avatar || avatar.ownerId !== ownerId) {
@@ -254,7 +269,7 @@ function createTestDependencies(
     voiceSessions: {
       avatarsRepository: avatarRepository,
       conversationsRepository: {
-        async createPrivate() {
+        async createPrivateForParticipant() {
           return { id: "conversation-1" };
         },
         async markEnded() {},
@@ -264,7 +279,7 @@ function createTestDependencies(
         async create() {
           return { id: "realtime-1" };
         },
-        async findPrivateForOwner() {
+        async findPrivateForParticipant() {
           return null;
         },
         async markActive() {
@@ -518,7 +533,9 @@ describe("@yuni/api avatars", () => {
     } = {
       elevenLabsVoices: [elevenLabsVoice()],
     };
-    const app = createApp(createTestDependencies([createUser()], { mode: "lite", sandbox: true }, [], providerOptions));
+    const app = createApp(
+      createTestDependencies([createUser()], { mode: "lite", sandbox: true }, [], providerOptions)
+    );
     const cookie = await login(app);
     const createResponse = await app.request("/avatars", {
       method: "POST",
@@ -570,7 +587,9 @@ describe("@yuni/api avatars", () => {
     } = {
       elevenLabsVoices: [elevenLabsVoice()],
     };
-    const app = createApp(createTestDependencies([createUser()], { mode: "lite", sandbox: true }, [], providerOptions));
+    const app = createApp(
+      createTestDependencies([createUser()], { mode: "lite", sandbox: true }, [], providerOptions)
+    );
     const cookie = await login(app);
     const createResponse = await app.request("/avatars", {
       method: "POST",
@@ -603,7 +622,9 @@ describe("@yuni/api avatars", () => {
         },
       }),
     });
-    const getResponse = await app.request(`/avatars/${createBody.avatar.id}`, { headers: { Cookie: cookie } });
+    const getResponse = await app.request(`/avatars/${createBody.avatar.id}`, {
+      headers: { Cookie: cookie },
+    });
     const getBody = (await json(getResponse)) as { avatar: { voiceConfig: { voiceId?: string } } };
 
     expect(updateResponse.status).toBe(502);
@@ -649,7 +670,9 @@ describe("@yuni/api avatars", () => {
     });
     const createBody = (await json(createResponse)) as { avatar: { id: string } };
 
-    const getResponse = await app.request(`/avatars/${createBody.avatar.id}`, { headers: { Cookie: cookie } });
+    const getResponse = await app.request(`/avatars/${createBody.avatar.id}`, {
+      headers: { Cookie: cookie },
+    });
     expect(getResponse.status).toBe(200);
 
     const updateResponse = await app.request(`/avatars/${createBody.avatar.id}`, {
@@ -667,7 +690,9 @@ describe("@yuni/api avatars", () => {
     });
     expect(deleteResponse.status).toBe(200);
 
-    const deletedGetResponse = await app.request(`/avatars/${createBody.avatar.id}`, { headers: { Cookie: cookie } });
+    const deletedGetResponse = await app.request(`/avatars/${createBody.avatar.id}`, {
+      headers: { Cookie: cookie },
+    });
     expect(deletedGetResponse.status).toBe(404);
   });
 
@@ -710,20 +735,16 @@ describe("@yuni/api avatars", () => {
 
   it("persists trusted Live Avatar visual metadata resolved from the provider", async () => {
     const app = createApp(
-      createTestDependencies(
-        [createUser()],
-        { mode: "lite", sandbox: true },
-        [
-          {
-            id: "demo",
-            displayName: "Trusted Demo Avatar",
-            thumbnailUrl: "https://cdn.liveavatar.test/trusted-demo.png",
-            provider: "liveavatar",
-            mode: "lite",
-            sandbox: true,
-          },
-        ]
-      )
+      createTestDependencies([createUser()], { mode: "lite", sandbox: true }, [
+        {
+          id: "demo",
+          displayName: "Trusted Demo Avatar",
+          thumbnailUrl: "https://cdn.liveavatar.test/trusted-demo.png",
+          provider: "liveavatar",
+          mode: "lite",
+          sandbox: true,
+        },
+      ])
     );
     const cookie = await login(app);
     const response = await app.request("/avatars", {
@@ -800,7 +821,9 @@ describe("@yuni/api avatars", () => {
         sandbox: true,
       },
     ];
-    const app = createApp(createTestDependencies([createUser()], { mode: "lite", sandbox: true }, providerAvatars));
+    const app = createApp(
+      createTestDependencies([createUser()], { mode: "lite", sandbox: true }, providerAvatars)
+    );
     const cookie = await login(app);
     const createResponse = await app.request("/avatars", {
       method: "POST",
@@ -854,7 +877,9 @@ describe("@yuni/api avatars", () => {
     });
     const createBody = (await json(createResponse)) as { avatar: { id: string } };
 
-    const getResponse = await app.request(`/avatars/${createBody.avatar.id}`, { headers: { Cookie: ownCookie } });
+    const getResponse = await app.request(`/avatars/${createBody.avatar.id}`, {
+      headers: { Cookie: ownCookie },
+    });
     const patchResponse = await app.request(`/avatars/${createBody.avatar.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json", Cookie: ownCookie },
@@ -910,7 +935,10 @@ describe("@yuni/api avatars", () => {
     expect(invalidCreateResponse.status).toBe(400);
     expect(invalidPatchResponse.status).toBe(400);
     expect(overriddenRuntimeConfigResponse.status).toBe(201);
-    expect(overriddenRuntimeConfigBody.avatar.liveAvatarConfig).toMatchObject({ mode: "lite", sandbox: true });
+    expect(overriddenRuntimeConfigBody.avatar.liveAvatarConfig).toMatchObject({
+      mode: "lite",
+      sandbox: true,
+    });
     expect(overriddenSandboxResponse.status).toBe(201);
     expect(overriddenSandboxBody.avatar.liveAvatarConfig).toMatchObject({ mode: "lite", sandbox: true });
   });

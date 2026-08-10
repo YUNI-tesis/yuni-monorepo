@@ -9,7 +9,7 @@ export const PublicSlugSchema = z
 
 export const CreateShareLinkInputSchema = z.strictObject({
   slug: PublicSlugSchema,
-  name: z.string().trim().min(1),
+  name: z.string().trim().min(1).max(120),
   isEnabled: z.boolean().default(true),
 });
 
@@ -17,7 +17,7 @@ export type CreateShareLinkInput = z.infer<typeof CreateShareLinkInputSchema>;
 
 export const UpdateShareLinkInputSchema = z
   .strictObject({
-    name: z.string().trim().min(1).optional(),
+    name: z.string().trim().min(1).max(120).optional(),
     isEnabled: z.boolean().optional(),
   })
   .refine((value) => Object.keys(value).length > 0, "At least one share link field must be provided");

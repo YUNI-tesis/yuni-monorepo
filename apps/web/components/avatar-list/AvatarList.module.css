@@ -42,8 +42,7 @@
 .filterButtonActive {
   border-color: rgba(100, 195, 215, 0.34);
   background:
-    linear-gradient(135deg, rgba(100, 195, 215, 0.18), rgba(190, 106, 220, 0.09)),
-    rgba(255, 255, 255, 0.06);
+    linear-gradient(135deg, rgba(100, 195, 215, 0.18), rgba(190, 106, 220, 0.09)), rgba(255, 255, 255, 0.06);
   color: var(--yuni-color-text);
 }
 
@@ -82,6 +81,14 @@
   margin: 0;
   color: var(--yuni-color-text-muted);
   line-height: 1.55;
+}
+
+.sharedNotice {
+  margin: 0;
+  border-left: 3px solid var(--yuni-color-warning);
+  padding-left: var(--yuni-space-3);
+  color: var(--yuni-color-text-muted);
+  line-height: 1.5;
 }
 
 .emptyCard {

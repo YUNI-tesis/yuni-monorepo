@@ -12,6 +12,9 @@ export type ProviderSyncStatus = z.infer<typeof ProviderSyncStatusSchema>;
 export const ShareLinkStatusSchema = z.enum(["enabled", "disabled"]);
 export type ShareLinkStatus = z.infer<typeof ShareLinkStatusSchema>;
 
+export const AccessGrantStatusSchema = z.enum(["active", "revoked"]);
+export type AccessGrantStatus = z.infer<typeof AccessGrantStatusSchema>;
+
 export const ConversationVisibilitySchema = z.enum(["private", "public"]);
 export type ConversationVisibility = z.infer<typeof ConversationVisibilitySchema>;
 

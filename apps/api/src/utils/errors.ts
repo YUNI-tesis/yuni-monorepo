@@ -12,15 +12,22 @@ export type ApiErrorBody = {
     code: ApiErrorCode;
     message: string;
     issues?: unknown;
+    reason?: string;
   };
 };
 
-export function apiError(code: ApiErrorCode, message: string, issues?: unknown): ApiErrorBody {
+export function apiError(
+  code: ApiErrorCode,
+  message: string,
+  issues?: unknown,
+  reason?: string
+): ApiErrorBody {
   return {
     error: {
       code,
       message,
       ...(issues !== undefined ? { issues } : {}),
+      ...(reason ? { reason } : {}),
     },
   };
 }
@@ -49,6 +56,6 @@ export function badGatewayError(message = "Bad gateway") {
   return apiError("BAD_GATEWAY", message);
 }
 
-export function serviceUnavailableError(message = "Service unavailable") {
-  return apiError("SERVICE_UNAVAILABLE", message);
+export function serviceUnavailableError(message = "Service unavailable", reason?: string) {
+  return apiError("SERVICE_UNAVAILABLE", message, undefined, reason);
 }

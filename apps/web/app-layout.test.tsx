@@ -2,6 +2,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { YuniLogo } from "./components/brand/YuniLogo";
+import { getUserInitials } from "./components/app-layout/PrivateAreaLayout";
 import { PrivateNavigation } from "./components/app-layout/PrivateNavigation";
 import {
   getActivePrivateNavItem,
@@ -72,5 +73,14 @@ describe("private app navigation", () => {
 
     expect(html).toContain("viewBox=\"0 0 95 81\"");
     expect(html).toContain("<ellipse");
+  });
+
+  it.each([
+    [{ name: "Diagnostico Maipú", email: "d.maipu@example.com" }, "DM"],
+    [{ name: "Santiago", email: "santiago@example.com" }, "SA"],
+    [{ name: null, email: "d.maipu@example.com" }, "DM"],
+    [{ name: null, email: "usuario@example.com" }, "US"],
+  ])("builds user initials from the available profile data", (user, expectedInitials) => {
+    expect(getUserInitials(user)).toBe(expectedInitials);
   });
 });

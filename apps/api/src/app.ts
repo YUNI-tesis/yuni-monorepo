@@ -3,6 +3,7 @@ import { cors } from "hono/cors";
 import { clientEnv, appConfig, liveAvatarConfig } from "@yuni/config";
 import { LiveAvatarProvider } from "@yuni/avatars";
 import {
+  createAccessGrantRepository,
   createConversationRepository,
   createMessageRepository,
   createRealtimeSessionRepository,
@@ -32,6 +33,16 @@ import {
   createVoiceProvidersController,
   type VoiceProvidersControllerDependencies,
 } from "./domains/voice-providers/controller.js";
+import {
+  createShareLinksController,
+  type ShareLinksControllerDependencies,
+} from "./domains/share/controller.js";
+import { createShareLinksRepository } from "./domains/share/repository.js";
+import {
+  createAccessGrantsController,
+  type AccessGrantsControllerDependencies,
+} from "./domains/share/access-grant-controller.js";
+import { createAccessGrantsRepository } from "./domains/share/access-grant-repository.js";
 import { requestLogger } from "./middleware/request-logger.js";
 import { internalServerError } from "./utils/errors.js";
 
@@ -40,8 +51,10 @@ export type AppDependencies = {
   avatars: AvatarsControllerDependencies;
   conversations?: ConversationsControllerDependencies;
   liveAvatar: LiveAvatarControllerDependencies;
-  voiceSessions: VoiceSessionsControllerDependencies;
+  voiceSessions?: VoiceSessionsControllerDependencies;
   voiceProviders?: VoiceProvidersControllerDependencies;
+  share?: ShareLinksControllerDependencies;
+  accessGrants?: AccessGrantsControllerDependencies;
 };
 
 const liveAvatarProvider = new LiveAvatarProvider();
@@ -52,6 +65,7 @@ const defaultDependencies: AppDependencies = {
   auth: {
     repository: createAuthRepository(prisma),
     passwords: passwordService,
+    accessGrantLinker: createAccessGrantRepository(prisma),
   },
   avatars: {
     repository: createAvatarsRepository(prisma),
@@ -78,6 +92,13 @@ const defaultDependencies: AppDependencies = {
   },
   voiceProviders: {
     elevenLabsVoiceProvider: elevenLabsAgentProvider,
+  },
+  share: {
+    repository: createShareLinksRepository(prisma),
+    publicBaseUrl: clientEnv.NEXT_PUBLIC_WEB_URL,
+  },
+  accessGrants: {
+    repository: createAccessGrantsRepository(prisma),
   },
 };
 
@@ -128,10 +149,18 @@ export function createApp(dependencies: AppDependencies = defaultDependencies) {
     app.route("/", createConversationsController(dependencies.conversations));
   }
   app.route("/", createLiveAvatarController(dependencies.liveAvatar));
-  app.route("/", createVoiceSessionsController(dependencies.voiceSessions));
+  if (dependencies.voiceSessions) {
+    app.route("/", createVoiceSessionsController(dependencies.voiceSessions));
+  }
 
   if (dependencies.voiceProviders) {
     app.route("/", createVoiceProvidersController(dependencies.voiceProviders));
+  }
+  if (dependencies.share) {
+    app.route("/", createShareLinksController(dependencies.share));
+  }
+  if (dependencies.accessGrants) {
+    app.route("/", createAccessGrantsController(dependencies.accessGrants));
   }
 
   return app;

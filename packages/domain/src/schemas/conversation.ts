@@ -9,6 +9,12 @@ export const CreatePrivateConversationInputSchema = z.strictObject({
 
 export type CreatePrivateConversationInput = z.infer<typeof CreatePrivateConversationInputSchema>;
 
+export const CreateConversationInputSchema = z.strictObject({
+  mode: ConversationModeSchema.default("text"),
+});
+
+export type CreateConversationInput = z.infer<typeof CreateConversationInputSchema>;
+
 export const CreatePublicConversationInputSchema = z.strictObject({
   shareLinkId: YuniIdSchema,
   avatarAgentId: YuniIdSchema,

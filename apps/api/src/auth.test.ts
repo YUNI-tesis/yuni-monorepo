@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PublicUser, UserWithPassword } from "./domains/auth/repository";
 import { createApp, type AppDependencies } from "./app";
 
@@ -38,6 +38,9 @@ function createTestDependencies(initialUsers: UserWithPassword[] = []): AppDepen
       return [];
     },
     async findByIdForOwner() {
+      return null;
+    },
+    async findAccessibleForUser() {
       return null;
     },
     async updateProviderSync() {
@@ -112,7 +115,7 @@ function createTestDependencies(initialUsers: UserWithPassword[] = []): AppDepen
     voiceSessions: {
       avatarsRepository: avatarRepository,
       conversationsRepository: {
-        async createPrivate() {
+        async createPrivateForParticipant() {
           return { id: "conversation-1" };
         },
         async markEnded() {},
@@ -122,7 +125,7 @@ function createTestDependencies(initialUsers: UserWithPassword[] = []): AppDepen
         async create() {
           return { id: "realtime-1" };
         },
-        async findPrivateForOwner() {
+        async findPrivateForParticipant() {
           return null;
         },
         async markActive() {
@@ -167,6 +170,10 @@ async function json(response: Response) {
 }
 
 describe("@yuni/api auth", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("registers a user and sets the session cookie", async () => {
     const app = createApp(createTestDependencies());
     const response = await app.request("/auth/register", {
@@ -181,6 +188,37 @@ describe("@yuni/api auth", () => {
 
     expect(response.status).toBe(201);
     expect(response.headers.get("set-cookie")).toContain("yuni_session=");
+  });
+
+  it("does not block registration or login when access grant linking fails", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const dependencies = createTestDependencies([createUser()]);
+    const linkActiveForUser = vi.fn().mockRejectedValue(new Error("temporary write failure"));
+    dependencies.auth.accessGrantLinker = { linkActiveForUser };
+    const app = createApp(dependencies);
+
+    const loginResponse = await app.request("/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: "demo@yuni.local",
+        password: "demo-password",
+      }),
+    });
+    const registerResponse = await app.request("/auth/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: "new-user@yuni.local",
+        password: "demo-password",
+      }),
+    });
+
+    expect(loginResponse.status).toBe(200);
+    expect(loginResponse.headers.get("set-cookie")).toContain("yuni_session=");
+    expect(registerResponse.status).toBe(201);
+    expect(registerResponse.headers.get("set-cookie")).toContain("yuni_session=");
+    expect(linkActiveForUser).toHaveBeenCalledTimes(2);
   });
 
   it("rejects duplicate registration", async () => {

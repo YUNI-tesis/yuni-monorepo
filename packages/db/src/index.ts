@@ -1,5 +1,6 @@
 export { prisma, type PrismaClientInstance } from "./client";
 export { createAvatarAgentRepository } from "./repositories/avatar-agent-repository";
+export { createAccessGrantRepository } from "./repositories/access-grant-repository";
 export { createConversationRepository } from "./repositories/conversation-repository";
 export { createDocumentChunkRepository } from "./repositories/document-chunk-repository";
 export { createDocumentRepository } from "./repositories/document-repository";

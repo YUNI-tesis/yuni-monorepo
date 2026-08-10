@@ -4,9 +4,12 @@ import { describe, expect, it, vi } from "vitest";
 import {
   formatContextStatusLabel,
   formatConversationTitle,
+  getSharedCallConsentStorageKey,
   InteractCallControls,
   InteractConversationHistoryPanel,
   InteractDebugPanel,
+  readRememberedPrivacyChoice,
+  rememberPrivacyChoiceForAvatar,
   shouldShowInteractDiagnostics,
 } from "./components/interact/InteractCall";
 import type { LiveAvatarDiagnostics } from "./hooks/useLiveAvatarSession";
@@ -56,9 +59,50 @@ const conversationDetail: ApiConversationDetail = {
 
 describe("Interact contextual UI", () => {
   it("formats user-facing context states", () => {
-    expect(formatContextStatusLabel("synced")).toBe("Listo");
-    expect(formatContextStatusLabel("not_synced")).toBe("Procesando");
+    expect(formatContextStatusLabel("ready")).toBe("Listo");
+    expect(formatContextStatusLabel("processing")).toBe("Procesando");
     expect(formatContextStatusLabel("failed")).toBe("No se pudo actualizar");
+  });
+
+  it("scopes remembered privacy choices by user and avatar", () => {
+    const values = new Map<string, string>();
+    vi.stubGlobal("window", {
+      localStorage: {
+        getItem: (key: string) => values.get(key) ?? null,
+        setItem: (key: string, value: string) => values.set(key, value),
+      },
+    });
+
+    const firstKey = getSharedCallConsentStorageKey("user-1", "avatar-1");
+    const otherAvatarKey = getSharedCallConsentStorageKey("user-1", "avatar-2");
+    const otherUserKey = getSharedCallConsentStorageKey("user-2", "avatar-1");
+
+    expect(readRememberedPrivacyChoice(firstKey)).toBe(false);
+    rememberPrivacyChoiceForAvatar(firstKey);
+    expect(readRememberedPrivacyChoice(firstKey)).toBe(true);
+    expect(readRememberedPrivacyChoice(otherAvatarKey)).toBe(false);
+    expect(readRememberedPrivacyChoice(otherUserKey)).toBe(false);
+
+    vi.unstubAllGlobals();
+  });
+
+  it("treats unavailable local storage as a non-blocking preference failure", () => {
+    vi.stubGlobal("window", {
+      localStorage: {
+        getItem: () => {
+          throw new Error("blocked");
+        },
+        setItem: () => {
+          throw new Error("blocked");
+        },
+      },
+    });
+
+    const key = getSharedCallConsentStorageKey("user-1", "avatar-1");
+    expect(readRememberedPrivacyChoice(key)).toBe(false);
+    expect(() => rememberPrivacyChoiceForAvatar(key)).not.toThrow();
+
+    vi.unstubAllGlobals();
   });
 
   it("renders primary call controls without live transcript controls", () => {

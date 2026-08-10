@@ -2,24 +2,24 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { listAvatars, type ApiAvatar } from "../lib/api/avatar-api";
+import { listAvatars, type ApiAvatarSummary } from "../lib/api/avatar-api";
 import { ApiClientError } from "../lib/api/http-client";
 
 const avatarListCacheTtlMs = 60_000;
 
 type AvatarListCache = {
-  avatars: ApiAvatar[];
+  avatars: ApiAvatarSummary[];
   cachedAt: number;
 };
 
 let avatarListCache: AvatarListCache | null = null;
-let avatarListRequest: Promise<ApiAvatar[]> | null = null;
+let avatarListRequest: Promise<ApiAvatarSummary[]> | null = null;
 let avatarListCacheVersion = 0;
 
 export type AvatarListState =
-  | { status: "loading"; avatars: ApiAvatar[]; error: null }
-  | { status: "ready"; avatars: ApiAvatar[]; error: null }
-  | { status: "error"; avatars: ApiAvatar[]; error: string };
+  | { status: "loading"; avatars: ApiAvatarSummary[]; error: null }
+  | { status: "ready"; avatars: ApiAvatarSummary[]; error: null }
+  | { status: "error"; avatars: ApiAvatarSummary[]; error: string };
 
 function readFreshAvatarListCache() {
   if (!avatarListCache) {

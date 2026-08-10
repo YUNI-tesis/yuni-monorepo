@@ -31,8 +31,15 @@ export function createShareLinkRepository(db: Db) {
       });
     },
 
-    async updateForOwner(ownerId: string, shareLinkId: string, input: UpdateShareLinkInput) {
-      const current = await db.shareLink.findFirst({ where: { id: shareLinkId, ownerId } });
+    async updateForAvatar(
+      ownerId: string,
+      avatarAgentId: string,
+      shareLinkId: string,
+      input: UpdateShareLinkInput
+    ) {
+      const current = await db.shareLink.findFirst({
+        where: { id: shareLinkId, ownerId, avatarAgentId },
+      });
       if (!current) throw new OwnershipError();
 
       const data: Prisma.ShareLinkUncheckedUpdateInput = {};
@@ -45,8 +52,10 @@ export function createShareLinkRepository(db: Db) {
       });
     },
 
-    async deleteForOwner(ownerId: string, shareLinkId: string) {
-      const current = await db.shareLink.findFirst({ where: { id: shareLinkId, ownerId } });
+    async deleteForAvatar(ownerId: string, avatarAgentId: string, shareLinkId: string) {
+      const current = await db.shareLink.findFirst({
+        where: { id: shareLinkId, ownerId, avatarAgentId },
+      });
       if (!current) throw new OwnershipError();
 
       return db.shareLink.delete({
@@ -56,7 +65,11 @@ export function createShareLinkRepository(db: Db) {
 
     resolveEnabledBySlug(slug: string) {
       return db.shareLink.findFirst({
-        where: { slug, isEnabled: true },
+        where: {
+          slug,
+          isEnabled: true,
+          avatarAgent: { status: "active" },
+        },
         include: { avatarAgent: true },
       });
     },

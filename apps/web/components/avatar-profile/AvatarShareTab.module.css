@@ -1,0 +1,124 @@
+.layout {
+  display: grid;
+  gap: var(--yuni-space-5);
+}
+
+.privacyNotice {
+  display: grid;
+  gap: var(--yuni-space-2);
+  border: 1px solid rgba(100, 195, 215, 0.3);
+  border-radius: var(--yuni-radius-md);
+  padding: var(--yuni-space-4);
+  background: rgba(100, 195, 215, 0.08);
+}
+
+.privacyNotice p,
+.sectionDescription,
+.linkCell,
+.availabilityNote,
+.feedback {
+  margin: 0;
+  color: var(--yuni-color-text-muted);
+  line-height: 1.55;
+}
+
+.section {
+  display: grid;
+  gap: var(--yuni-space-4);
+}
+
+.sectionHeader {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: var(--yuni-space-4);
+}
+
+.sectionHeader > div {
+  display: grid;
+  gap: var(--yuni-space-2);
+}
+
+.sectionTitle {
+  margin: 0;
+  font-size: var(--yuni-font-lg);
+}
+
+.createForm {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: start;
+  gap: var(--yuni-space-4);
+  border: 1px solid var(--yuni-color-border);
+  border-radius: var(--yuni-radius-md);
+  padding: var(--yuni-space-4);
+  background: var(--yuni-color-surface-soft);
+}
+
+.slugField {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--yuni-space-2);
+}
+
+.slugField span {
+  color: var(--yuni-color-text-muted);
+  font-weight: 800;
+}
+
+.formActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--yuni-space-2);
+}
+
+.actionMenu {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.formActions,
+.formError {
+  grid-column: 1 / -1;
+}
+
+.formError {
+  margin: 0;
+  color: var(--yuni-color-danger);
+  line-height: 1.5;
+}
+
+.availabilityNote {
+  border-left: 3px solid var(--yuni-color-warning);
+  padding-left: var(--yuni-space-3);
+}
+
+.linkCell {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.grantForm {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: var(--yuni-space-3);
+}
+
+.feedback {
+  min-height: 1.5em;
+}
+
+@media (max-width: 760px) {
+  .sectionHeader,
+  .grantForm {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .createForm {
+    grid-template-columns: 1fr;
+  }
+}

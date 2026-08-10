@@ -1,4 +1,4 @@
-import type { ApiAvatar } from "./api/avatar-api";
+import type { ApiAvatarSummary } from "./api/avatar-api";
 
 export type AvatarDashboardSummary = {
   total: number;
@@ -15,7 +15,7 @@ export const avatarListFilters: { id: AvatarListFilter; label: string }[] = [
   { id: "shared", label: "Compartidos conmigo" },
 ];
 
-export function getAvatarDashboardSummary(avatars: ApiAvatar[]): AvatarDashboardSummary {
+export function getAvatarDashboardSummary(avatars: ApiAvatarSummary[]): AvatarDashboardSummary {
   return avatars.reduce<AvatarDashboardSummary>(
     (summary, avatar) => ({
       total: summary.total + 1,
@@ -27,27 +27,30 @@ export function getAvatarDashboardSummary(avatars: ApiAvatar[]): AvatarDashboard
   );
 }
 
-export function getRecentAvatars(avatars: ApiAvatar[], limit = 3) {
+export function getRecentAvatars(avatars: ApiAvatarSummary[], limit = 3) {
   return [...avatars]
     .sort((left, right) => new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime())
     .slice(0, limit);
 }
 
-export function filterAvatarsByOwnership(avatars: ApiAvatar[], filter: AvatarListFilter) {
-  if (filter === "shared") {
-    return [];
-  }
+export function filterAvatarsByOwnership(avatars: ApiAvatarSummary[], filter: AvatarListFilter) {
+  if (filter === "all") return avatars;
 
-  return avatars;
+  const accessType = filter === "owned" ? "owner" : "shared";
+  return avatars.filter((avatar) => avatar.access.type === accessType);
 }
 
-export function formatAvatarStatusLabel(status: ApiAvatar["status"]) {
+export function getAvatarCardActionMode(accessType: ApiAvatarSummary["access"]["type"]) {
+  return accessType === "owner" ? "owner-actions" : "shared-actions";
+}
+
+export function formatAvatarStatusLabel(status: ApiAvatarSummary["status"]) {
   if (status === "active") return "Activo";
   if (status === "draft") return "Borrador";
   return "Desactivado";
 }
 
-export function formatProviderSyncLabel(status: ApiAvatar["providerSyncStatus"]) {
+export function formatProviderSyncLabel(status: ApiAvatarSummary["providerSyncStatus"]) {
   if (status === "synced") return "Sincronizado";
   if (status === "failed") return "Requiere revision";
   return "Pendiente";

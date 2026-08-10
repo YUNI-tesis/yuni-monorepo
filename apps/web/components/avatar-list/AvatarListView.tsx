@@ -9,10 +9,11 @@ import {
   filterAvatarsByOwnership,
   formatAvatarStatusLabel,
   formatProviderSyncLabel,
+  getAvatarCardActionMode,
   getRecentAvatars,
   type AvatarListFilter,
 } from "../../lib/avatar-dashboard";
-import type { ApiAvatar } from "../../lib/api/avatar-api";
+import type { ApiAvatarSummary } from "../../lib/api/avatar-api";
 import styles from "./AvatarList.module.css";
 
 export function AvatarListView() {
@@ -92,15 +93,27 @@ export function AvatarListFilterControls({
   );
 }
 
-function AvatarCard({ avatar }: { avatar: ApiAvatar }) {
+function AvatarCard({ avatar }: { avatar: ApiAvatarSummary }) {
   const router = useRouter();
+  const isOwner = getAvatarCardActionMode(avatar.access.type) === "owner-actions";
 
   return (
     <Card padding="md" className={styles.card}>
       <div className={styles.meta}>
         <div className={styles.badges}>
-          <Badge tone={avatar.status === "active" ? "success" : "neutral"}>{formatAvatarStatusLabel(avatar.status)}</Badge>
-          <Badge tone={avatar.providerSyncStatus === "failed" ? "danger" : avatar.providerSyncStatus === "synced" ? "success" : "warning"}>
+          <Badge tone={isOwner ? "neutral" : "warning"}>{isOwner ? "Propio" : "Compartido"}</Badge>
+          <Badge tone={avatar.status === "active" ? "success" : "neutral"}>
+            {formatAvatarStatusLabel(avatar.status)}
+          </Badge>
+          <Badge
+            tone={
+              avatar.providerSyncStatus === "failed"
+                ? "danger"
+                : avatar.providerSyncStatus === "synced"
+                  ? "success"
+                  : "warning"
+            }
+          >
             {formatProviderSyncLabel(avatar.providerSyncStatus)}
           </Badge>
         </div>
@@ -108,15 +121,23 @@ function AvatarCard({ avatar }: { avatar: ApiAvatar }) {
         <p className={styles.description}>{avatar.description || "Sin descripcion."}</p>
       </div>
 
-      <div className={styles.actions}>
-        <Button variant="secondary" onClick={() => router.push(`/avatars/${avatar.id}`)}>
-          Ver perfil
-        </Button>
-        <Button variant="secondary" onClick={() => router.push(`/avatars/${avatar.id}/edit`)}>
-          Editar
-        </Button>
-        <Button onClick={() => router.push(`/interact/${avatar.id}`)}>Interactuar</Button>
-      </div>
+      {isOwner ? (
+        <div className={styles.actions}>
+          <Button variant="secondary" onClick={() => router.push(`/avatars/${avatar.id}`)}>
+            Ver perfil
+          </Button>
+          <Button variant="secondary" onClick={() => router.push(`/avatars/${avatar.id}/edit`)}>
+            Editar
+          </Button>
+          <Button onClick={() => router.push(`/interact/${avatar.id}`)}>Interactuar</Button>
+        </div>
+      ) : avatar.access.canInteract ? (
+        <div className={styles.actions}>
+          <Button onClick={() => router.push(`/interact/${avatar.id}`)}>Interactuar</Button>
+        </div>
+      ) : (
+        <p className={styles.sharedNotice}>Este avatar compartido no está disponible para interactuar.</p>
+      )}
     </Card>
   );
 }

@@ -1,7 +1,4 @@
-import {
-  createAvatarAgentRepository,
-  type PrismaClientInstance,
-} from "@yuni/db";
+import { createAvatarAgentRepository, type PrismaClientInstance } from "@yuni/db";
 import type {
   AgentProvider,
   AvatarStatus,
@@ -51,10 +48,44 @@ export type AvatarAgentDto = {
   updatedAt: string;
 };
 
+export type AvatarListItemDto = {
+  id: string;
+  name: string;
+  description: string;
+  status: AvatarStatus;
+  providerSyncStatus: ProviderSyncStatus;
+  createdAt: string;
+  updatedAt: string;
+  access: {
+    type: "owner" | "shared";
+    canEdit: boolean;
+    canShare: boolean;
+    canInteract: boolean;
+  };
+};
+
+export type AvatarAccessRecord =
+  | {
+      type: "owner";
+      avatar: AvatarAgentRecord;
+    }
+  | {
+      type: "shared";
+      avatar: AvatarAgentRecord;
+      accessGrant: {
+        id: string;
+        participantEmail: string;
+        participantUserId: string | null;
+        status: "active" | "revoked";
+      };
+    };
+
 export type AvatarsRepository = {
   create(ownerId: string, input: CreateAvatarAgentInput): Promise<AvatarAgentRecord>;
   listByOwner(ownerId: string): Promise<AvatarAgentRecord[]>;
+  listSharedByUser?(participantUserId: string): Promise<AvatarAgentRecord[]>;
   findByIdForOwner(ownerId: string, avatarId: string): Promise<AvatarAgentRecord | null>;
+  findAccessibleForUser(userId: string, avatarId: string): Promise<AvatarAccessRecord | null>;
   updateProviderSync(
     ownerId: string,
     avatarId: string,

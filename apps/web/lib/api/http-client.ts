@@ -5,7 +5,9 @@ import { clientEnv } from "@yuni/config";
 export class ApiClientError extends Error {
   constructor(
     message: string,
-    readonly status: number
+    readonly status: number,
+    readonly code?: string,
+    readonly reason?: string
   ) {
     super(message);
     this.name = "ApiClientError";
@@ -15,13 +17,19 @@ export class ApiClientError extends Error {
 type ApiErrorBody = {
   error?: {
     message?: string;
+    code?: string;
+    reason?: string;
   };
 };
 
-async function parseError(response: Response): Promise<string> {
+async function parseError(response: Response) {
   const body = (await response.json().catch(() => null)) as ApiErrorBody | null;
 
-  return body?.error?.message ?? "No pudimos completar la accion.";
+  return {
+    message: body?.error?.message ?? "No pudimos completar la accion.",
+    code: body?.error?.code,
+    reason: body?.error?.reason,
+  };
 }
 
 export async function apiRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -35,7 +43,8 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}): Promi
   });
 
   if (!response.ok) {
-    throw new ApiClientError(await parseError(response), response.status);
+    const error = await parseError(response);
+    throw new ApiClientError(error.message, response.status, error.code, error.reason);
   }
 
   return response.json() as Promise<T>;

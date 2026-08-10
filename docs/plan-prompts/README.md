@@ -4,7 +4,11 @@ Prompts base para pedir planes modulares de YUNI y seguir implementando por part
 
 Roadmap operativo para dividir el MVP entre dos personas: [docs/roadmap/mvp-gantt.md](../roadmap/mvp-gantt.md).
 
-Decision de producto vigente: [0009-product-navigation-sharing-background-sync.md](../thesis/decision-records/0009-product-navigation-sharing-background-sync.md).
+Decisiones de producto vigentes:
+
+- [0009-product-navigation-sharing-background-sync.md](../thesis/decision-records/0009-product-navigation-sharing-background-sync.md)
+- [0010-share-links-access-grants-api.md](../thesis/decision-records/0010-share-links-access-grants-api.md)
+- [0011-sharing-management-ui-public-preview.md](../thesis/decision-records/0011-sharing-management-ui-public-preview.md)
 
 ## Direccion Actual
 
@@ -18,12 +22,12 @@ Decision de producto vigente: [0009-product-navigation-sharing-background-sync.m
 
 - `00-monorepo-base.md`: implementado.
 - `01-config-env.md`: implementado.
-- `02-domain-db.md`: implementado; requiere evolucion para grants/email identity.
+- `02-domain-db.md`: implementado; evolucionado con grants/email identity en `15`.
 - `03-dev-infra-env-runtime.md`: implementado dentro de config/env y DB local.
 - `04-auth.md`: implementado; sirve como base para vincular emails a cuentas.
 - `05-api-structure-observability.md`: implementado como refactor posterior.
 - `06-ui-design-system.md`: implementado.
-- `07-avatar-domain-api.md`: implementado; debe extender listados para propios/compartidos.
+- `07-avatar-domain-api.md`: implementado; listados propios/compartidos extendidos en `15`.
 - `08-avatar-builder-ui.md`: implementado.
 - `09-avatar-profile-info-ui.md`: implementado; refactorizado como perfil con tabs finales.
 - `10-avatar-edit-ui.md`: implementado.
@@ -32,14 +36,14 @@ Decision de producto vigente: [0009-product-navigation-sharing-background-sync.m
 - `12A-app-shell-navigation-dashboard.md`: pendiente; refactorizado a Inicio + Mis avatares.
 - `13-voice-selector-config.md`: implementado.
 - `14-documents-filedrop-shell.md`: pendiente; refactorizado a tab Contexto.
-- `15-share-links-api.md`: pendiente; refactorizado a links + access grants.
+- `15-share-links-api.md`: implementado; links + access grants + listado seguro de compartidos.
 - `16-share-metrics-api.md`: pendiente; refactorizado a actividad por email/cuenta.
-- `17-share-tab-ui.md`: pendiente; refactorizado a links e invitaciones.
-- `18-interact-shell-ui.md`: implementado parcialmente dentro de `24B`; requiere refactor a accion contextual fullscreen.
-- `19-private-conversations-api.md`: pendiente; refactorizado a owner/shared/public identity.
+- `17-share-tab-ui.md`: implementado; administra links y accesos sin emails ni metricas.
+- `18-interact-shell-ui.md`: implementado para owner y usuarios autenticados con acceso compartido; fullscreen, voz e historial listos.
+- `19-private-conversations-api.md`: implementado para owner/shared autenticado; identidad publica queda asociada a `23`.
 - `20-private-chat-ui.md`: pendiente; refactorizado a owner/shared chat UI.
-- `21-public-link-resolver-api.md`: pendiente; refactorizado a identify por email.
-- `22-public-avatar-ui.md`: pendiente; refactorizado a entrada por email.
+- `21-public-link-resolver-api.md`: implementado parcialmente; resolver GET seguro listo, identify pendiente.
+- `22-public-avatar-ui.md`: implementado parcialmente; vista informativa lista, email y sesiones pendientes.
 - `23-public-session-api.md`: pendiente; refactorizado a public session identificada.
 - `24A-agent-voice-architecture-context-contract.md`: pendiente; actualizado con identity y background sync.
 - `24B-elevenlabs-agent-provider-sync.md`: implementado para MVP privado con contexto textual; refactor conceptual a background sync.

@@ -8,11 +8,12 @@ export type DialogProps = DialogHTMLAttributes<HTMLDialogElement> & {
   title: string;
   description?: string;
   children?: ReactNode;
+  footer?: ReactNode;
   closeLabel?: string;
 };
 
 export const Dialog = forwardRef<HTMLDialogElement, DialogProps>(function Dialog(
-  { title, description, children, closeLabel = "Cerrar", ...props },
+  { title, description, children, footer, closeLabel = "Cerrar", ...props },
   ref
 ) {
   function onDialogClick(event: MouseEvent<HTMLDialogElement>) {
@@ -25,21 +26,23 @@ export const Dialog = forwardRef<HTMLDialogElement, DialogProps>(function Dialog
     <dialog ref={ref} className="yuni-dialog" aria-label={title} onClick={onDialogClick} {...props}>
       <div className="yuni-dialog__body">
         <form method="dialog" className="yuni-dialog__close-form">
-          <button className="yuni-dialog__close" type="submit" aria-label="Cerrar modal">
+          <button className="yuni-dialog__close" type="submit" aria-label="Cerrar">
             x
           </button>
         </form>
-        <div className="yuni-stack">
-          <p className="yuni-eyebrow">Modal</p>
-          <h2 className="yuni-page-header__title">{title}</h2>
+        <div className="yuni-dialog__header">
+          <h2 className="yuni-dialog__title">{title}</h2>
           {description ? <p className="yuni-text-muted">{description}</p> : null}
         </div>
         {children}
-        <form method="dialog">
-          <Button variant="secondary" type="submit">
-            {closeLabel}
-          </Button>
-        </form>
+        <footer className="yuni-dialog__footer">
+          <form method="dialog">
+            <Button variant="secondary" type="submit">
+              {closeLabel}
+            </Button>
+          </form>
+          {footer}
+        </footer>
       </div>
     </dialog>
   );

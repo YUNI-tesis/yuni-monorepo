@@ -1,6 +1,7 @@
 import { Hono, type Context } from "hono";
 import {
   CreateAvatarAgentInputSchema,
+  AvatarListScopeSchema,
   NotFoundError,
   UpdateAvatarAgentInputSchema,
 } from "@yuni/domain";
@@ -22,7 +23,9 @@ import { AvatarVoiceNotFoundError, createAvatarsService, type AvatarsServiceDepe
 export type AvatarsControllerDependencies = AvatarsServiceDependencies;
 
 function isEmptyObject(value: unknown) {
-  return Boolean(value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).length === 0);
+  return Boolean(
+    value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).length === 0
+  );
 }
 
 async function getCurrentSession(context: Context) {
@@ -46,7 +49,15 @@ export function createAvatarsController(dependencies: AvatarsControllerDependenc
       return context.json(unauthorizedError(), 401);
     }
 
-    return context.json({ avatars: await service.listAvatars(session.userId) });
+    const parsedScope = AvatarListScopeSchema.safeParse(context.req.query("scope") ?? "all");
+
+    if (!parsedScope.success) {
+      return context.json(validationError(parsedScope.error.issues, "Invalid avatar scope"), 400);
+    }
+
+    return context.json({
+      avatars: await service.listAvatars(session.userId, parsedScope.data),
+    });
   });
 
   avatars.post("/avatars", async (context) => {
@@ -103,6 +114,29 @@ export function createAvatarsController(dependencies: AvatarsControllerDependenc
       const avatar = await service.getAvatar(session.userId, context.req.param("avatarId"));
 
       return context.json({ avatar });
+    } catch (error) {
+      if (error instanceof NotFoundError) {
+        return context.json(notFoundError("Avatar not found"), 404);
+      }
+
+      throw error;
+    }
+  });
+
+  avatars.get("/avatars/:avatarId/interaction-context", async (context) => {
+    const session = await getCurrentSession(context);
+
+    if (!session) {
+      return context.json(unauthorizedError(), 401);
+    }
+
+    try {
+      const interactionContext = await service.getInteractionContext(
+        session.userId,
+        context.req.param("avatarId")
+      );
+
+      return context.json({ interactionContext });
     } catch (error) {
       if (error instanceof NotFoundError) {
         return context.json(notFoundError("Avatar not found"), 404);
