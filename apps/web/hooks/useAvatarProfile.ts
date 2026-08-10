@@ -22,13 +22,16 @@ export type AvatarProfileState =
       error: string;
     };
 
-export function useAvatarProfile(avatarId: string): AvatarProfileState {
+export type AvatarProfileResult = AvatarProfileState & { reload: () => void };
+
+export function useAvatarProfile(avatarId: string): AvatarProfileResult {
   const router = useRouter();
   const [state, setState] = useState<AvatarProfileState>({
     status: "loading",
     avatar: null,
     error: null,
   });
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     let isMounted = true;
@@ -70,7 +73,10 @@ export function useAvatarProfile(avatarId: string): AvatarProfileState {
     return () => {
       isMounted = false;
     };
-  }, [avatarId, router]);
+  }, [avatarId, reloadKey, router]);
 
-  return state;
+  return {
+    ...state,
+    reload: () => setReloadKey((current) => current + 1),
+  };
 }

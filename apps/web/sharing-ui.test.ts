@@ -12,12 +12,14 @@ import {
 } from "./lib/api/sharing-api";
 import {
   canOpenPublicLink,
+  getAccessGrantCreateError,
   getAccessGrantPresentation,
   normalizeGrantEmail,
   toPublicSlug,
   validateGrantEmail,
   validateShareLinkDraft,
 } from "./lib/avatar-sharing";
+import { ApiClientError } from "./lib/api/http-client";
 import { getAvatarCardActionMode } from "./lib/avatar-dashboard";
 
 describe("sharing UI helpers", () => {
@@ -66,6 +68,19 @@ describe("sharing UI helpers", () => {
     });
     expect(getAvatarCardActionMode("owner")).toBe("owner-actions");
     expect(getAvatarCardActionMode("shared")).toBe("shared-actions");
+  });
+
+  it("presents a friendly error when the owner grants access to themselves", () => {
+    expect(
+      getAccessGrantCreateError(
+        new ApiClientError(
+          "Owners cannot grant access to themselves",
+          400,
+          "BAD_REQUEST",
+          "SELF_ACCESS_GRANT"
+        )
+      )
+    ).toBe("No necesitás darte acceso: ya sos el propietario de este avatar.");
   });
 
   it("only enables public preview when link and avatar are active", () => {

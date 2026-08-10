@@ -397,7 +397,7 @@ export function InteractCall({ avatarId }: { avatarId: string }) {
         <Dialog
           ref={privacyDialog}
           title="Antes de iniciar la llamada"
-          description="La llamada y su transcripción se guardarán. El creador del avatar podrá consultar esta actividad cuando la sección Actividad esté disponible."
+          description="La llamada y su transcripción se guardarán. El creador del avatar podrá consultar esta información en la sección Actividad."
           closeLabel="Cancelar"
           footer={<Button onClick={confirmCallStart}>Iniciar llamada</Button>}
           onClose={() => {

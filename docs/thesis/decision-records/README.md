@@ -29,3 +29,4 @@ Registros de decisiones usadas como insumo para el informe final de tesis.
 | 0010 | [Share Links And Access Grants API](0010-share-links-access-grants-api.md)                                     | `15-share-links-api.md`                                                | 2026-07-25 | accepted   |
 | 0011 | [Sharing Management UI And Public Preview](0011-sharing-management-ui-public-preview.md)                       | `17`, `21`, `22`                                                       | 2026-07-27 | accepted   |
 | 0012 | [Authenticated Shared Interaction Identity](0012-authenticated-shared-interaction-identity.md)                 | `18-interact-shell-ui.md`, `19-private-conversations-api.md`           | 2026-08-10 | accepted   |
+| 0013 | [Owner Participant Activity](0013-owner-participant-activity.md)                                               | `16-share-metrics-api.md`, actividad owner                             | 2026-08-10 | accepted   |

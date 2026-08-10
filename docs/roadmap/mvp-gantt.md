@@ -18,7 +18,8 @@ Decision source: [0009-product-navigation-sharing-background-sync.md](../thesis/
 - Implementado: planes `00` a `13`, segun `docs/plan-prompts/README.md`.
 - Implementado: sharing por grants y llamada autenticada owner/shared con historial aislado por participante (`15`, `17`, `18`, `19`).
 - Implementado parcialmente: `21`, `22` y `24B`; la vista publica sigue siendo informativa y la voz conserva sync lazy para owner.
-- Pendiente: contexto/documentos reales, actividad/progreso, sesiones publicas identificadas y hardening.
+- Implementado parcialmente: actividad owner por Access Grant con conversaciones y transcripts; costos, usage y actividad publica siguen pendientes.
+- Pendiente: contexto/documentos reales, progreso, sesiones publicas identificadas y hardening.
 - La estrategia recomendada para MVP sigue siendo validar temprano la experiencia conversacional con ElevenLabs Agents + LiveAvatar LITE, sin esperar a completar RAG propio.
 
 ## Regla De Trabajo Para Dos Personas
@@ -42,8 +43,8 @@ Decision source: [0009-product-navigation-sharing-background-sync.md](../thesis/
 | P1        | `15-share-links-api`                                                                      | API/share identity          | avatar domain                                      | links con email e invitaciones/grants                          |
 | P1        | `19-private-conversations-api`                                                            | API/conversacion            | implementado owner/shared; publico depende de `23` | conversaciones aisladas por identidad efectiva                 |
 | P1        | `17-share-tab-ui`                                                                         | UI/share                    | `15`                                               | gestion de links e invitaciones en perfil                      |
-| P1        | `16-share-metrics-api`                                                                    | API/actividad               | `15`, `19`, `27` parcial                           | metricas por link/grant/email/user                             |
-| P1        | actividad del perfil owner                                                                | UI/actividad                | `16`, `19`, `20` parcial                           | transcripts, uso y progreso por alumno/email                   |
+| P1        | `16-share-metrics-api`                                                                    | API/actividad               | parcial: grants/transcripts listos; falta `27`      | metricas por link/grant/email/user                             |
+| P1        | actividad del perfil owner                                                                | UI/actividad                | implementada para grants; falta uso/progreso        | transcripts, uso y progreso por alumno/email                   |
 | P2        | `14-documents-filedrop-shell`                                                             | UI/contexto                 | `09`                                               | tab Contexto preparada                                         |
 | P2        | `28-s3-storage-adapter`                                                                   | storage                     | contrato storage acordado                          | storage listo para documentos                                  |
 | P2        | `29-document-upload-api`                                                                  | API/documentos              | `14`, `28`                                         | documentos reales subibles y procesables                       |

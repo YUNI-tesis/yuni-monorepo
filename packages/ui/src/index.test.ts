@@ -4,6 +4,8 @@ import {
   Button,
   Card,
   DataList,
+  Dialog,
+  Drawer,
   EmptyState,
   ErrorState,
   FileDrop,
@@ -38,5 +40,7 @@ describe("@yuni/ui", () => {
     expect(MetricCard).toBeTypeOf("function");
     expect(DataList).toBeTypeOf("function");
     expect(Badge).toBeTypeOf("function");
+    expect(Dialog).toBeTypeOf("object");
+    expect(Drawer).toBeTypeOf("object");
   });
 });

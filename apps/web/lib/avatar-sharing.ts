@@ -1,4 +1,5 @@
 import type { ApiAccessGrantState, ApiShareLink } from "./api/sharing-api";
+import { ApiClientError } from "./api/http-client";
 
 const publicSlugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -46,6 +47,18 @@ export function normalizeGrantEmail(value: string) {
 export function validateGrantEmail(value: string) {
   const email = normalizeGrantEmail(value);
   return emailPattern.test(email) ? null : "Ingresá un email válido.";
+}
+
+export function getAccessGrantCreateError(error: unknown) {
+  if (error instanceof ApiClientError && error.reason === "SELF_ACCESS_GRANT") {
+    return "No necesitás darte acceso: ya sos el propietario de este avatar.";
+  }
+
+  if (error instanceof ApiClientError && error.status === 409) {
+    return "Ese email ya tiene un acceso para este avatar.";
+  }
+
+  return error instanceof Error ? error.message : "No pudimos completar la acción.";
 }
 
 export function getAccessGrantPresentation(state: ApiAccessGrantState) {

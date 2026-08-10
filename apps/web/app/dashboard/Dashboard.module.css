@@ -41,6 +41,7 @@
 
 .avatarCard {
   display: grid;
+  min-width: 0;
   min-height: 190px;
   align-content: space-between;
   gap: var(--yuni-space-4);
@@ -48,6 +49,7 @@
 
 .avatarMeta {
   display: grid;
+  min-width: 0;
   gap: var(--yuni-space-2);
 }
 
@@ -55,6 +57,11 @@
   margin: 0;
   font-size: var(--yuni-font-lg);
   line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.avatarDescription {
+  overflow-wrap: anywhere;
 }
 
 .badges,

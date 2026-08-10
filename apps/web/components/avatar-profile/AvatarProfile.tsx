@@ -1,16 +1,28 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Badge, Button, Card, ErrorState, LoadingState, PageHeader, Tabs } from "@yuni/ui";
 import { useAvatarProfile } from "../../hooks/useAvatarProfile";
 import { AvatarInfoTab } from "./AvatarInfoTab";
 import { AvatarShareTab } from "./AvatarShareTab";
+import { AvatarActivityTab } from "./AvatarActivityTab";
 import { formatAvatarStatus, getAvatarStatusTone } from "./formatters";
 import styles from "./AvatarProfile.module.css";
 
 export function AvatarProfile({ avatarId }: { avatarId: string }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const profile = useAvatarProfile(avatarId);
+  const requestedTab = searchParams.get("tab");
+  const selectedTab = requestedTab === "share" || requestedTab === "activity" ? requestedTab : "info";
+
+  function selectTab(value: string) {
+    const query = new URLSearchParams(searchParams.toString());
+    if (value === "info") query.delete("tab");
+    else query.set("tab", value);
+    const queryString = query.toString();
+    router.replace(`/avatars/${avatarId}${queryString ? `?${queryString}` : ""}`, { scroll: false });
+  }
 
   if (profile.status === "loading") {
     return <LoadingState title="Cargando avatar" description="Estamos preparando el perfil." />;
@@ -62,7 +74,8 @@ export function AvatarProfile({ avatarId }: { avatarId: string }) {
         </div>
 
         <Tabs
-          defaultValue="info"
+          value={selectedTab}
+          onValueChange={selectTab}
           items={[
             {
               value: "info",
@@ -73,6 +86,11 @@ export function AvatarProfile({ avatarId }: { avatarId: string }) {
               value: "share",
               label: "Compartir",
               content: <AvatarShareTab avatar={avatar} />,
+            },
+            {
+              value: "activity",
+              label: "Actividad",
+              content: <AvatarActivityTab avatarId={avatar.id} />,
             },
           ]}
         />

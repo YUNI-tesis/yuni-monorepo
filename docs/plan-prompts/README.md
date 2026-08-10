@@ -9,6 +9,8 @@ Decisiones de producto vigentes:
 - [0009-product-navigation-sharing-background-sync.md](../thesis/decision-records/0009-product-navigation-sharing-background-sync.md)
 - [0010-share-links-access-grants-api.md](../thesis/decision-records/0010-share-links-access-grants-api.md)
 - [0011-sharing-management-ui-public-preview.md](../thesis/decision-records/0011-sharing-management-ui-public-preview.md)
+- [0012-authenticated-shared-interaction-identity.md](../thesis/decision-records/0012-authenticated-shared-interaction-identity.md)
+- [0013-owner-participant-activity.md](../thesis/decision-records/0013-owner-participant-activity.md)
 
 ## Direccion Actual
 
@@ -37,7 +39,7 @@ Decisiones de producto vigentes:
 - `13-voice-selector-config.md`: implementado.
 - `14-documents-filedrop-shell.md`: pendiente; refactorizado a tab Contexto.
 - `15-share-links-api.md`: implementado; links + access grants + listado seguro de compartidos.
-- `16-share-metrics-api.md`: pendiente; refactorizado a actividad por email/cuenta.
+- `16-share-metrics-api.md`: implementado parcialmente; actividad autenticada por Access Grant y transcripts lista, costos/usage/publico pendientes.
 - `17-share-tab-ui.md`: implementado; administra links y accesos sin emails ni metricas.
 - `18-interact-shell-ui.md`: implementado para owner y usuarios autenticados con acceso compartido; fullscreen, voz e historial listos.
 - `19-private-conversations-api.md`: implementado para owner/shared autenticado; identidad publica queda asociada a `23`.

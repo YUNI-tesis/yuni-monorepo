@@ -3,6 +3,7 @@ export { Badge, type BadgeProps, type BadgeTone } from "./components/Badge";
 export { Button, type ButtonProps, type ButtonSize, type ButtonVariant } from "./components/Button";
 export { Card, type CardProps } from "./components/Card";
 export { Dialog, type DialogProps } from "./components/Dialog";
+export { Drawer, type DrawerProps } from "./components/Drawer";
 export { DropdownMenu, type DropdownMenuItem, type DropdownMenuProps } from "./components/DropdownMenu";
 export { IconButton, type IconButtonProps } from "./components/IconButton";
 export { Tabs, type TabItem, type TabsProps } from "./components/Tabs";

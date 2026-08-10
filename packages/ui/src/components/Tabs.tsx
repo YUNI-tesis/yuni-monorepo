@@ -11,11 +11,14 @@ export type TabItem = {
 export type TabsProps = {
   items: TabItem[];
   defaultValue?: string;
+  value?: string;
+  onValueChange?: (value: string) => void;
 };
 
-export function Tabs({ items, defaultValue }: TabsProps) {
+export function Tabs({ items, defaultValue, value, onValueChange }: TabsProps) {
   const initialValue = defaultValue ?? items[0]?.value ?? "";
-  const [selectedValue, setSelectedValue] = useState(initialValue);
+  const [internalValue, setInternalValue] = useState(initialValue);
+  const selectedValue = value ?? internalValue;
   const selectedItem = useMemo(
     () => items.find((item) => item.value === selectedValue) ?? items[0],
     [items, selectedValue]
@@ -31,7 +34,10 @@ export function Tabs({ items, defaultValue }: TabsProps) {
             type="button"
             role="tab"
             aria-selected={item.value === selectedItem?.value}
-            onClick={() => setSelectedValue(item.value)}
+            onClick={() => {
+              if (value === undefined) setInternalValue(item.value);
+              onValueChange?.(item.value);
+            }}
           >
             {item.label}
           </button>

@@ -114,7 +114,10 @@ function handleAccessGrantError(error: unknown, context: Context) {
     return context.json(conflictError(error.message), 409);
   }
   if (error instanceof SelfAccessGrantError) {
-    return context.json(validationError([{ message: error.message }]), 400);
+    return context.json(
+      validationError([{ message: error.message }], error.message, "SELF_ACCESS_GRANT"),
+      400
+    );
   }
   throw error;
 }

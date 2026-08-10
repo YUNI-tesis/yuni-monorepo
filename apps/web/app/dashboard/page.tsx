@@ -116,7 +116,9 @@ function RecentAvatarCard({ avatar }: { avatar: ApiAvatarSummary }) {
           </Badge>
         </div>
         <h2 className={styles.avatarTitle}>{avatar.name}</h2>
-        <p className="yuni-text-muted">{avatar.description || "Sin descripcion."}</p>
+        <p className={`yuni-text-muted ${styles.avatarDescription}`}>
+          {avatar.description || "Sin descripcion."}
+        </p>
       </div>
 
       {isOwner ? (

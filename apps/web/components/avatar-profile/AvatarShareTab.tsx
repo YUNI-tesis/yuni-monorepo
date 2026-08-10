@@ -19,6 +19,7 @@ import type { ApiAccessGrant, ApiShareLink } from "../../lib/api/sharing-api";
 import { ApiClientError } from "../../lib/api/http-client";
 import {
   canOpenPublicLink,
+  getAccessGrantCreateError,
   getAccessGrantPresentation,
   normalizeGrantEmail,
   toPublicSlug,
@@ -79,8 +80,8 @@ export function AvatarShareTab({ avatar }: { avatar: ApiAvatar }) {
       <aside className={styles.privacyNotice}>
         <strong>Privacidad de los usos compartidos</strong>
         <p>
-          Cuando se habiliten las conversaciones, el creador podrá consultar actividad y transcripts asociados
-          a cada participante.
+          El creador puede consultar en Actividad las conversaciones y transcripts asociados a cada
+          participante.
         </p>
       </aside>
 
@@ -423,11 +424,7 @@ function AccessGrantsSection({
       setEmail("");
       onFeedback("El acceso fue agregado.");
     } catch (error) {
-      setFormError(
-        error instanceof ApiClientError && error.status === 409
-          ? "Ese email ya tiene un acceso para este avatar."
-          : getActionError(error)
-      );
+      setFormError(getAccessGrantCreateError(error));
     }
   }
 

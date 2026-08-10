@@ -8,6 +8,7 @@ import {
   Checkbox,
   DataList,
   Dialog,
+  Drawer,
   DropdownMenu,
   EmptyState,
   ErrorState,
@@ -44,6 +45,7 @@ const rows = [
 
 export function ShowcaseClient() {
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const drawerRef = useRef<HTMLDialogElement>(null);
 
   return (
     <PageShell maxWidth="1180px">
@@ -59,7 +61,11 @@ export function ShowcaseClient() {
           <h2>Tokens</h2>
           <div className="design-system-grid">
             {swatches.map(([label, color]) => (
-              <div key={label} className="design-system-swatch" style={{ "--swatch-color": color } as CSSProperties}>
+              <div
+                key={label}
+                className="design-system-swatch"
+                style={{ "--swatch-color": color } as CSSProperties}
+              >
                 <strong>{label}</strong>
                 <span>{color}</span>
               </div>
@@ -123,7 +129,11 @@ export function ShowcaseClient() {
                 <Checkbox label="Permitir texto" defaultChecked />
                 <Switch label="Link activo" defaultChecked />
               </div>
-              <FileDrop title="Subir contexto" description="PDF, TXT o DOCX para futuras pruebas visuales." multiple />
+              <FileDrop
+                title="Subir contexto"
+                description="PDF, TXT o DOCX para futuras pruebas visuales."
+                multiple
+              />
             </div>
           </Card>
         </section>
@@ -133,8 +143,16 @@ export function ShowcaseClient() {
           <Card padding="md">
             <Tabs
               items={[
-                { value: "info", label: "Informacion", content: <p className="yuni-text-muted">Contenido de informacion.</p> },
-                { value: "share", label: "Compartir", content: <p className="yuni-text-muted">Contenido de compartir.</p> },
+                {
+                  value: "info",
+                  label: "Informacion",
+                  content: <p className="yuni-text-muted">Contenido de informacion.</p>,
+                },
+                {
+                  value: "share",
+                  label: "Compartir",
+                  content: <p className="yuni-text-muted">Contenido de compartir.</p>,
+                },
               ]}
             />
           </Card>
@@ -186,6 +204,9 @@ export function ShowcaseClient() {
               <Button variant="secondary" onClick={() => dialogRef.current?.showModal()}>
                 Ver dialog
               </Button>
+              <Button variant="secondary" onClick={() => drawerRef.current?.showModal()}>
+                Ver drawer
+              </Button>
             </div>
           </Card>
         </section>
@@ -196,6 +217,15 @@ export function ShowcaseClient() {
         title="Dialog del design system"
         description="Modal simple para validar estilos, foco y contenido."
       />
+      <Drawer
+        ref={drawerRef}
+        title="Drawer del design system"
+        description="Panel lateral para contenido extenso que necesita conservar el contexto de la página."
+      >
+        <p className="yuni-text-muted">
+          El cuerpo tiene scroll independiente, mientras que el encabezado y las acciones permanecen visibles.
+        </p>
+      </Drawer>
     </PageShell>
   );
 }

@@ -54,6 +54,7 @@
 
 .card {
   display: grid;
+  min-width: 0;
   min-height: 230px;
   align-content: space-between;
   gap: var(--yuni-space-5);
@@ -61,6 +62,7 @@
 
 .meta {
   display: grid;
+  min-width: 0;
   gap: var(--yuni-space-3);
 }
 
@@ -75,12 +77,14 @@
   margin: 0;
   font-size: var(--yuni-font-lg);
   line-height: 1.2;
+  overflow-wrap: anywhere;
 }
 
 .description {
   margin: 0;
   color: var(--yuni-color-text-muted);
   line-height: 1.55;
+  overflow-wrap: anywhere;
 }
 
 .sharedNotice {

@@ -43,6 +43,11 @@ import {
   type AccessGrantsControllerDependencies,
 } from "./domains/share/access-grant-controller.js";
 import { createAccessGrantsRepository } from "./domains/share/access-grant-repository.js";
+import {
+  createAvatarActivityController,
+  type AvatarActivityControllerDependencies,
+} from "./domains/activity/controller.js";
+import { createAvatarActivityDataRepository } from "./domains/activity/repository.js";
 import { requestLogger } from "./middleware/request-logger.js";
 import { internalServerError } from "./utils/errors.js";
 
@@ -55,6 +60,7 @@ export type AppDependencies = {
   voiceProviders?: VoiceProvidersControllerDependencies;
   share?: ShareLinksControllerDependencies;
   accessGrants?: AccessGrantsControllerDependencies;
+  activity?: AvatarActivityControllerDependencies;
 };
 
 const liveAvatarProvider = new LiveAvatarProvider();
@@ -99,6 +105,9 @@ const defaultDependencies: AppDependencies = {
   },
   accessGrants: {
     repository: createAccessGrantsRepository(prisma),
+  },
+  activity: {
+    repository: createAvatarActivityDataRepository(prisma),
   },
 };
 
@@ -161,6 +170,9 @@ export function createApp(dependencies: AppDependencies = defaultDependencies) {
   }
   if (dependencies.accessGrants) {
     app.route("/", createAccessGrantsController(dependencies.accessGrants));
+  }
+  if (dependencies.activity) {
+    app.route("/", createAvatarActivityController(dependencies.activity));
   }
 
   return app;

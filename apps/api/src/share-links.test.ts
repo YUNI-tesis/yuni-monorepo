@@ -758,7 +758,14 @@ describe("@yuni/api access grants", () => {
       state: "linked",
     });
     expect((await createAccessGrant(app, cookie, avatarId, "guest@yuni.local")).status).toBe(409);
-    expect((await createAccessGrant(app, cookie, avatarId, "demo@yuni.local")).status).toBe(400);
+    const selfGrant = await createAccessGrant(app, cookie, avatarId, "demo@yuni.local");
+    expect(selfGrant.status).toBe(400);
+    expect(await json(selfGrant)).toMatchObject({
+      error: {
+        code: "BAD_REQUEST",
+        reason: "SELF_ACCESS_GRANT",
+      },
+    });
   });
 
   it("revokes, reactivates and removes shared avatar access", async () => {
