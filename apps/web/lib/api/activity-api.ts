@@ -5,10 +5,11 @@ import { apiRequest } from "./http-client";
 export type ApiActivityParticipantState = "pending" | "linked" | "revoked";
 
 export type ApiActivityParticipant = {
-  accessGrantId: string;
+  participantKey: string;
   participantEmail: string;
   participantName: string | null;
-  state: ApiActivityParticipantState;
+  origins: Array<"access_grant" | "public_link">;
+  accessState: ApiActivityParticipantState | null;
   totalConversations: number;
   lastActivityAt: string | null;
 };
@@ -21,6 +22,8 @@ export type ApiActivityConversation = {
   messageCount: number;
   createdAt: string;
   lastMessageAt: string | null;
+  origin: "access_grant" | "public_link";
+  shareLinkName: string | null;
 };
 
 export type ApiActivityTranscriptMessage = {
@@ -41,7 +44,7 @@ export function listActivityParticipants(avatarId: string) {
 
 export function listParticipantActivityConversations(
   avatarId: string,
-  accessGrantId: string,
+  participantKey: string,
   options: { limit?: number; cursor?: string } = {}
 ) {
   const query = new URLSearchParams({ limit: String(options.limit ?? 20) });
@@ -50,7 +53,7 @@ export function listParticipantActivityConversations(
   return apiRequest<{
     conversations: ApiActivityConversation[];
     nextCursor: string | null;
-  }>(`/avatars/${avatarId}/activity/participants/${accessGrantId}/conversations?${query}`);
+  }>(`/avatars/${avatarId}/activity/participants/${participantKey}/conversations?${query}`);
 }
 
 export function getActivityConversation(avatarId: string, conversationId: string) {

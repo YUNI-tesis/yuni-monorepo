@@ -30,6 +30,12 @@
   min-width: 0;
 }
 
+.summaryBadges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--yuni-space-2);
+}
+
 .summaryItem > span {
   color: var(--yuni-color-text-muted);
   font-size: var(--yuni-font-xs);

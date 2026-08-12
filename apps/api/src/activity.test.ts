@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { OwnershipError } from "@yuni/domain";
 import { createAvatarActivityController } from "./domains/activity/controller";
 import type { AvatarActivityRepository } from "./domains/activity/repository";
+import { createParticipantKey } from "./domains/activity/service";
 import { createSessionToken, SESSION_COOKIE_NAME } from "./domains/auth/session";
 
 const now = new Date("2026-08-10T15:00:00.000Z");
@@ -14,39 +15,39 @@ function createRepository(): AvatarActivityRepository {
 
       return [
         {
-          id: "grant-pending",
           participantEmail: "pending@example.com",
           participantUserId: null,
           participantName: null,
-          status: "active",
-          createdAt: new Date("2026-08-09T10:00:00.000Z"),
+          grantStatus: "active",
+          grantCreatedAt: new Date("2026-08-09T10:00:00.000Z"),
+          origins: ["access_grant"],
           totalConversations: 0,
           lastActivityAt: null,
         },
         {
-          id: "grant-linked",
           participantEmail: "linked@example.com",
           participantUserId: "participant-1",
           participantName: "Participante",
-          status: "active",
-          createdAt: new Date("2026-08-08T10:00:00.000Z"),
+          grantStatus: "active",
+          grantCreatedAt: new Date("2026-08-08T10:00:00.000Z"),
+          origins: ["access_grant", "public_link"],
           totalConversations: 2,
           lastActivityAt: now,
         },
         {
-          id: "grant-revoked",
           participantEmail: "revoked@example.com",
           participantUserId: "participant-2",
           participantName: null,
-          status: "revoked",
-          createdAt: new Date("2026-08-07T10:00:00.000Z"),
+          grantStatus: "revoked",
+          grantCreatedAt: new Date("2026-08-07T10:00:00.000Z"),
+          origins: ["access_grant"],
           totalConversations: 1,
           lastActivityAt: new Date("2026-08-09T15:00:00.000Z"),
         },
       ];
     },
-    async listConversations(ownerId, _avatarId, accessGrantId, options) {
-      if (ownerId !== "owner-1" || accessGrantId === "grant-missing") throw new OwnershipError();
+    async listConversations(ownerId, _avatarId, participantEmail, options) {
+      if (ownerId !== "owner-1" || participantEmail === "missing@example.com") throw new OwnershipError();
       if (options.cursor === "foreign-cursor") return { invalidCursor: true, conversations: [] };
 
       const records = [3, 2, 1].map((number) => ({
@@ -54,6 +55,8 @@ function createRepository(): AvatarActivityRepository {
         title: `Conversation ${number}`,
         mode: "voice" as const,
         status: "ended" as const,
+        visibility: number === 3 ? ("public" as const) : ("private" as const),
+        shareLink: number === 3 ? { name: "Demo pública" } : null,
         createdAt: new Date(`2026-08-0${number}T10:00:00.000Z`),
         lastMessageAt: new Date(`2026-08-0${number}T10:05:00.000Z`),
         _count: { messages: number },
@@ -76,9 +79,11 @@ function createRepository(): AvatarActivityRepository {
         title: "Transcript seguro",
         mode: "voice",
         status: "ended",
+        visibility: "private",
+        participantEmail: "linked@example.com",
+        shareLink: null,
         createdAt: now,
         lastMessageAt: now,
-        accessGrant: { participantEmail: "linked@example.com" },
         messages:
           conversationId === "empty"
             ? []
@@ -129,14 +134,14 @@ describe("@yuni/api avatar activity", () => {
     expect(response.status).toBe(200);
     expect(body.participants).toEqual([
       expect.objectContaining({
-        accessGrantId: "grant-linked",
-        state: "linked",
+        participantKey: createParticipantKey("linked@example.com"),
+        accessState: "linked",
+        origins: ["access_grant", "public_link"],
         totalConversations: 2,
       }),
-      expect.objectContaining({ accessGrantId: "grant-revoked", state: "revoked" }),
+      expect.objectContaining({ accessState: "revoked" }),
       expect.objectContaining({
-        accessGrantId: "grant-pending",
-        state: "pending",
+        accessState: "pending",
         totalConversations: 0,
         lastActivityAt: null,
       }),
@@ -155,7 +160,7 @@ describe("@yuni/api avatar activity", () => {
   it("paginates conversations without duplicates", async () => {
     const { app, ownerCookie } = await createTestApp();
     const firstResponse = await app.request(
-      "/avatars/avatar-1/activity/participants/grant-linked/conversations?limit=2",
+      `/avatars/avatar-1/activity/participants/${createParticipantKey("linked@example.com")}/conversations?limit=2`,
       { headers: { Cookie: ownerCookie } }
     );
     const first = (await firstResponse.json()) as {
@@ -163,7 +168,7 @@ describe("@yuni/api avatar activity", () => {
       nextCursor: string | null;
     };
     const secondResponse = await app.request(
-      `/avatars/avatar-1/activity/participants/grant-linked/conversations?limit=2&cursor=${first.nextCursor}`,
+      `/avatars/avatar-1/activity/participants/${createParticipantKey("linked@example.com")}/conversations?limit=2&cursor=${first.nextCursor}`,
       { headers: { Cookie: ownerCookie } }
     );
     const second = (await secondResponse.json()) as {
@@ -180,11 +185,11 @@ describe("@yuni/api avatar activity", () => {
   it("rejects invalid limits and cursors", async () => {
     const { app, ownerCookie } = await createTestApp();
     const invalidLimit = await app.request(
-      "/avatars/avatar-1/activity/participants/grant-linked/conversations?limit=100",
+      `/avatars/avatar-1/activity/participants/${createParticipantKey("linked@example.com")}/conversations?limit=100`,
       { headers: { Cookie: ownerCookie } }
     );
     const invalidCursor = await app.request(
-      "/avatars/avatar-1/activity/participants/grant-linked/conversations?cursor=foreign-cursor",
+      `/avatars/avatar-1/activity/participants/${createParticipantKey("linked@example.com")}/conversations?cursor=foreign-cursor`,
       { headers: { Cookie: ownerCookie } }
     );
 
@@ -195,7 +200,7 @@ describe("@yuni/api avatar activity", () => {
   it("returns 404 for grants and transcripts outside the owned activity", async () => {
     const { app, ownerCookie } = await createTestApp();
     const missingGrant = await app.request(
-      "/avatars/avatar-1/activity/participants/grant-missing/conversations",
+      "/avatars/avatar-1/activity/participants/p_missing/conversations",
       { headers: { Cookie: ownerCookie } }
     );
     const missingConversation = await app.request("/avatars/avatar-1/activity/conversations/missing", {

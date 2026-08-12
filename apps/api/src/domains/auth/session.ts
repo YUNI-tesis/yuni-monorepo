@@ -20,6 +20,7 @@ function getSecretKey() {
 
 export async function createSessionToken(user: SessionUser): Promise<string> {
   return new SignJWT({
+    type: "user_session",
     email: user.email,
     name: user.name,
   })
@@ -34,7 +35,7 @@ export async function verifySessionToken(token: string): Promise<{ userId: strin
   try {
     const { payload } = await jwtVerify(token, getSecretKey());
 
-    if (!payload.sub) {
+    if (!payload.sub || payload.type !== "user_session") {
       return null;
     }
 

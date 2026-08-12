@@ -27,14 +27,14 @@ import styles from "./AvatarParticipantActivity.module.css";
 
 export function AvatarParticipantActivity({
   avatarId,
-  accessGrantId,
+  participantKey,
 }: {
   avatarId: string;
-  accessGrantId: string;
+  participantKey: string;
 }) {
   const router = useRouter();
   const profile = useAvatarProfile(avatarId);
-  const activity = useParticipantActivity(avatarId, accessGrantId);
+  const activity = useParticipantActivity(avatarId, participantKey);
   const transcriptDrawer = useRef<HTMLDialogElement>(null);
 
   function goBack() {
@@ -82,7 +82,9 @@ export function AvatarParticipantActivity({
   if (!profile.avatar || !activity.participant.data) return null;
 
   const participant = activity.participant.data;
-  const presentation = getActivityParticipantPresentation(participant.state);
+  const presentation = participant.accessState
+    ? getActivityParticipantPresentation(participant.accessState)
+    : null;
 
   return (
     <div className={styles.page}>
@@ -101,7 +103,16 @@ export function AvatarParticipantActivity({
       <Card padding="md" className={styles.summary}>
         <SummaryItem label="Nombre" value={participant.participantName ?? "Sin nombre"} />
         <SummaryItem label="Email" value={participant.participantEmail} />
-        <SummaryItem label="Estado" value={<Badge tone={presentation.tone}>{presentation.label}</Badge>} />
+        <SummaryItem
+          label="Origen"
+          value={
+            <span className={styles.summaryBadges}>
+              {participant.origins.includes("access_grant") ? <Badge tone="neutral">Cuenta compartida</Badge> : null}
+              {participant.origins.includes("public_link") ? <Badge tone="warning">Link público</Badge> : null}
+              {presentation ? <Badge tone={presentation.tone}>{presentation.label}</Badge> : null}
+            </span>
+          }
+        />
         <SummaryItem label="Conversaciones" value={String(participant.totalConversations)} />
         <SummaryItem label="Última conversación" value={formatActivityDate(participant.lastActivityAt)} />
       </Card>
@@ -201,6 +212,17 @@ function ConversationsTable({
             render: (conversation) => (
               <strong>{formatActivityConversationTitle(conversation, participant.participantEmail)}</strong>
             ),
+          },
+          {
+            key: "origin",
+            header: "Origen",
+            minWidth: "150px",
+            render: (conversation) =>
+              conversation.origin === "public_link" ? (
+                <span>Link público · {conversation.shareLinkName ?? "Link eliminado"}</span>
+              ) : (
+                "Cuenta compartida"
+              ),
           },
           {
             key: "mode",

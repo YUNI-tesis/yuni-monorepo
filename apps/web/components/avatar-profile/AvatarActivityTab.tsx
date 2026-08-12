@@ -55,7 +55,7 @@ export function AvatarActivityTab({ avatarId }: { avatarId: string }) {
         <DataList
           ariaLabel="Actividad por participante"
           items={activity.participants.data}
-          getRowKey={(participant) => participant.accessGrantId}
+          getRowKey={(participant) => participant.participantKey}
           columns={[
             {
               key: "name",
@@ -70,10 +70,16 @@ export function AvatarActivityTab({ avatarId }: { avatarId: string }) {
               render: (participant) => participant.participantEmail,
             },
             {
+              key: "origin",
+              header: "Origen",
+              minWidth: "190px",
+              render: (participant) => <ParticipantOriginBadges participant={participant} />,
+            },
+            {
               key: "state",
               header: "Estado",
-              minWidth: "150px",
-              render: (participant) => <ParticipantStateBadge participant={participant} />,
+              minWidth: "170px",
+              render: (participant) => <ParticipantState participant={participant} />,
             },
             {
               key: "conversations",
@@ -104,7 +110,7 @@ export function AvatarActivityTab({ avatarId }: { avatarId: string }) {
                         label: "Ver actividad",
                         icon: <EyeIcon />,
                         onSelect: () =>
-                          router.push(getParticipantActivityPath(avatarId, participant.accessGrantId)),
+                          router.push(getParticipantActivityPath(avatarId, participant.participantKey)),
                       },
                     ]}
                   />
@@ -118,8 +124,19 @@ export function AvatarActivityTab({ avatarId }: { avatarId: string }) {
   );
 }
 
-function ParticipantStateBadge({ participant }: { participant: ApiActivityParticipant }) {
-  const presentation = getActivityParticipantPresentation(participant.state);
+function ParticipantOriginBadges({ participant }: { participant: ApiActivityParticipant }) {
+  return (
+    <div className={styles.badgesCell}>
+      {participant.origins.includes("access_grant") ? <Badge tone="neutral">Cuenta compartida</Badge> : null}
+      {participant.origins.includes("public_link") ? <Badge tone="warning">Link público</Badge> : null}
+    </div>
+  );
+}
+
+function ParticipantState({ participant }: { participant: ApiActivityParticipant }) {
+  if (!participant.accessState) return <span>—</span>;
+
+  const presentation = getActivityParticipantPresentation(participant.accessState);
   return <Badge tone={presentation.tone}>{presentation.label}</Badge>;
 }
 

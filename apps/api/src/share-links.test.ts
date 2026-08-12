@@ -669,6 +669,7 @@ describe("@yuni/api share links", () => {
         description: "Avatar de prueba",
         thumbnailUrl: null,
       },
+      capabilities: { voice: "unavailable" },
     });
     expect(body.shareLink.ownerId).toBeUndefined();
     expect(body.avatar.instructions).toBeUndefined();

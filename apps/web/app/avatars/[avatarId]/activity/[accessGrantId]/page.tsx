@@ -8,6 +8,6 @@ type ParticipantActivityPageProps = {
 };
 
 export default async function ParticipantActivityPage({ params }: ParticipantActivityPageProps) {
-  const { avatarId, accessGrantId } = await params;
-  return <AvatarParticipantActivity avatarId={avatarId} accessGrantId={accessGrantId} />;
+  const { avatarId, accessGrantId: participantKey } = await params;
+  return <AvatarParticipantActivity avatarId={avatarId} participantKey={participantKey} />;
 }

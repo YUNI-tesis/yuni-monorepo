@@ -18,6 +18,8 @@ export type PublicShareLinkRecord = ShareLinkRecord & {
     name: string;
     description: string;
     liveAvatarConfig: unknown;
+    providerSyncStatus: "not_synced" | "synced" | "failed";
+    providerAgentId: string | null;
   };
 };
 

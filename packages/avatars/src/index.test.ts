@@ -159,6 +159,21 @@ describe("@yuni/avatars", () => {
     });
   });
 
+  it("stops a session remotely using its short-lived bearer token", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(jsonResponse({ data: {} }));
+    const provider = new LiveAvatarProvider({ config, fetch: fetcher });
+
+    await provider.stopSession("session-token");
+
+    expect(fetcher).toHaveBeenCalledWith(
+      new URL("https://api.liveavatar.test/v1/sessions/stop"),
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({ Authorization: "Bearer session-token" }),
+      })
+    );
+  });
+
   it("requires the Live Avatar ElevenLabs connector secret before creating a session token", async () => {
     const provider = new LiveAvatarProvider({
       config: { ...config, elevenLabsSecretId: "" },

@@ -4,6 +4,7 @@ export type ApiErrorCode =
   | "CONFLICT"
   | "INTERNAL_SERVER_ERROR"
   | "NOT_FOUND"
+  | "RATE_LIMITED"
   | "SERVICE_UNAVAILABLE"
   | "UNAUTHORIZED";
 
@@ -58,4 +59,8 @@ export function badGatewayError(message = "Bad gateway") {
 
 export function serviceUnavailableError(message = "Service unavailable", reason?: string) {
   return apiError("SERVICE_UNAVAILABLE", message, undefined, reason);
+}
+
+export function rateLimitedError(message = "Too many requests") {
+  return apiError("RATE_LIMITED", message);
 }

@@ -106,6 +106,18 @@ export class LiveAvatarProvider implements AvatarProvider {
     return token;
   }
 
+  async stopSession(sessionToken: string): Promise<void> {
+    const config = this.requireConfig();
+    await this.fetchJson(config, "/v1/sessions/stop", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${sessionToken}`,
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+    });
+  }
+
   private requireConfig(): LiveAvatarConfig {
     try {
       return requireLiveAvatarConfig(this.config);
@@ -213,6 +225,7 @@ export class MockAvatarProvider implements AvatarProvider {
       sessionId: "mock-liveavatar-session",
     };
   }
+
 }
 
 function withTrailingSlash(value: string): string {

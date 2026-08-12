@@ -2,9 +2,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createAccessGrant,
   createShareLink,
+  confirmPublicSessionStarted,
   deleteAccessGrant,
   deleteShareLink,
   getPublicSharedAvatar,
+  identifyPublicVisitor,
+  startPublicSession,
+  endPublicSession,
+  normalizePublicTranscript,
   listAccessGrants,
   listShareLinks,
   updateAccessGrant,
@@ -15,6 +20,7 @@ import {
   getAccessGrantCreateError,
   getAccessGrantPresentation,
   normalizeGrantEmail,
+  requiresRenewedPublicConsent,
   toPublicSlug,
   validateGrantEmail,
   validateShareLinkDraft,
@@ -88,6 +94,13 @@ describe("sharing UI helpers", () => {
     expect(canOpenPublicLink({ isEnabled: false }, "active")).toBe(false);
     expect(canOpenPublicLink({ isEnabled: true }, "draft")).toBe(false);
   });
+
+  it("requires fresh consent before another call after the public identity expires", () => {
+    expect(requiresRenewedPublicConsent(true, false, false)).toBe(true);
+    expect(requiresRenewedPublicConsent(false, true, false)).toBe(true);
+    expect(requiresRenewedPublicConsent(true, false, true)).toBe(false);
+    expect(requiresRenewedPublicConsent(false, false, false)).toBe(false);
+  });
 });
 
 describe("sharing API client", () => {
@@ -140,6 +153,7 @@ describe("sharing API client", () => {
           JSON.stringify({
             shareLink: { slug: "demo-link", name: "Demo" },
             avatar: { name: "Avatar", description: "", thumbnailUrl: null },
+            capabilities: { voice: "ready" },
           }),
           { status: 200, headers: { "Content-Type": "application/json" } }
         )
@@ -160,5 +174,57 @@ describe("sharing API client", () => {
       message: "Share link slug already exists",
     });
     expect(fetchMock.mock.calls[0]?.[0]).toBe("http://localhost:4000/public/links/demo%20link/avatar");
+  });
+
+  it("uses bearer tokens and safe payloads for the complete public session flow", async () => {
+    const fetchMock = vi.fn().mockImplementation(() =>
+      Promise.resolve(
+        new Response(JSON.stringify({ identity: {}, publicSession: {}, voiceSession: {} }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })
+      )
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await identifyPublicVisitor("demo link", "person@example.com");
+    await startPublicSession("demo link", "identity-token");
+    await confirmPublicSessionStarted("session-1", "session-token");
+    await endPublicSession("session-1", "session-token", [{ role: "user", content: "Hola" }], {
+      keepalive: true,
+    });
+
+    expect(fetchMock.mock.calls.map(([url, init]) => [url, init.method])).toEqual([
+      ["http://localhost:4000/public/links/demo%20link/identify", "POST"],
+      ["http://localhost:4000/public/links/demo%20link/sessions", "POST"],
+      ["http://localhost:4000/public/sessions/session-1/started", "POST"],
+      ["http://localhost:4000/public/sessions/session-1/end", "POST"],
+    ]);
+    expect(fetchMock.mock.calls[0]?.[1].body).toBe(
+      JSON.stringify({ email: "person@example.com", consent: true })
+    );
+    expect(fetchMock.mock.calls[1]?.[1].headers).toMatchObject({
+      Authorization: "Bearer identity-token",
+    });
+    expect(fetchMock.mock.calls[2]?.[1].headers).toMatchObject({
+      Authorization: "Bearer session-token",
+    });
+    expect(fetchMock.mock.calls[3]?.[1].headers).toMatchObject({
+      Authorization: "Bearer session-token",
+    });
+    expect(fetchMock.mock.calls[3]?.[1].keepalive).toBe(true);
+  });
+
+  it("bounds public transcripts and removes technical metadata before sending", () => {
+    const transcript = normalizePublicTranscript([
+      { role: "user", content: `  ${"x".repeat(600)}  `, metadata: { providerId: "secret" } },
+      ...Array.from({ length: 25 }, () => ({ role: "assistant" as const, content: "Respuesta" })),
+    ]);
+
+    expect(transcript).toHaveLength(20);
+    expect(transcript[0]?.content).toHaveLength(500);
+    expect(JSON.stringify(transcript)).not.toContain("metadata");
+    expect(JSON.stringify(transcript)).not.toContain("providerId");
+    expect(normalizePublicTranscript(transcript, 3)).toHaveLength(3);
   });
 });

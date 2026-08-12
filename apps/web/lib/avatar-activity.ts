@@ -33,8 +33,8 @@ export function formatActivityConversationTitle(
   return conversation.title?.trim() || `Conversación con ${participantEmail}`;
 }
 
-export function getParticipantActivityPath(avatarId: string, accessGrantId: string) {
-  return `/avatars/${encodeURIComponent(avatarId)}/activity/${encodeURIComponent(accessGrantId)}`;
+export function getParticipantActivityPath(avatarId: string, participantKey: string) {
+  return `/avatars/${encodeURIComponent(avatarId)}/activity/${encodeURIComponent(participantKey)}`;
 }
 
 export function getAvatarActivityTabPath(avatarId: string) {

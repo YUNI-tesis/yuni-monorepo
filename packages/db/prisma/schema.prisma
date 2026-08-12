@@ -20,6 +20,7 @@ model User {
   shareLinks           ShareLink[]
   ownedAccessGrants    AccessGrant[]  @relation("AccessGrantOwner")
   receivedAccessGrants AccessGrant[]  @relation("AccessGrantParticipant")
+  publicSessions       PublicSession[] @relation("PublicSessionParticipant")
   conversations        Conversation[]
   documents            Document[]
   usageEvents          UsageEvent[]
@@ -157,24 +158,33 @@ model Message {
 }
 
 model PublicSession {
-  id            String              @id @default(cuid())
-  shareLinkId   String
-  avatarAgentId String
-  anonymousId   String
-  status        PublicSessionStatus @default(active)
-  startedAt     DateTime            @default(now())
-  endedAt       DateTime?
+  id                String              @id @default(cuid())
+  shareLinkId       String?
+  avatarAgentId     String
+  anonymousId       String?
+  participantEmail  String?
+  participantUserId String?
+  consentedAt       DateTime?
+  expiresAt         DateTime?
+  status            PublicSessionStatus @default(active)
+  startedAt         DateTime            @default(now())
+  endedAt           DateTime?
 
-  shareLink        ShareLink         @relation(fields: [shareLinkId], references: [id], onDelete: Cascade)
+  shareLink        ShareLink?        @relation(fields: [shareLinkId], references: [id], onDelete: SetNull)
   avatarAgent      AvatarAgent       @relation(fields: [avatarAgentId], references: [id], onDelete: Cascade)
+  participantUser  User?             @relation("PublicSessionParticipant", fields: [participantUserId], references: [id], onDelete: SetNull)
   conversation     Conversation?
   realtimeSessions RealtimeSession[]
   usageEvents      UsageEvent[]
 
   @@index([shareLinkId])
+  @@index([shareLinkId, participantEmail])
   @@index([avatarAgentId])
+  @@index([avatarAgentId, participantEmail])
   @@index([anonymousId])
+  @@index([participantUserId])
   @@index([status])
+  @@index([status, expiresAt])
 }
 
 model RealtimeSession {
@@ -184,6 +194,8 @@ model RealtimeSession {
   avatarAgentId     String
   status            RealtimeSessionStatus @default(connecting)
   providerSessionId String?
+  providerSessionTokenCiphertext String?
+  providerStoppedAt DateTime?
   startedAt         DateTime              @default(now())
   endedAt           DateTime?
   errorMessage      String?

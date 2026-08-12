@@ -152,6 +152,7 @@ describe("@yuni/config", () => {
 
     expect(config.publicSessionMaxMinutes).toBe(5);
     expect(config.publicSessionMaxMessages).toBe(20);
+    expect(config.maxPublicSessionsPerIpPerHour).toBe(10);
   });
 
   it("applies pricing defaults", () => {

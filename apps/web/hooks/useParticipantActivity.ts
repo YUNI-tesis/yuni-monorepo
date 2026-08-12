@@ -41,7 +41,7 @@ const emptyTranscript: TranscriptState = {
   error: null,
 };
 
-export function useParticipantActivity(avatarId: string, accessGrantId: string) {
+export function useParticipantActivity(avatarId: string, participantKey: string) {
   const router = useRouter();
   const [participant, setParticipant] = useState<ParticipantState>({
     status: "loading",
@@ -74,7 +74,7 @@ export function useParticipantActivity(avatarId: string, accessGrantId: string) 
 
     try {
       const response = await listActivityParticipants(avatarId);
-      const match = response.participants.find((item) => item.accessGrantId === accessGrantId);
+      const match = response.participants.find((item) => item.participantKey === participantKey);
       setParticipant(
         match
           ? { status: "ready", data: match, error: null }
@@ -88,7 +88,7 @@ export function useParticipantActivity(avatarId: string, accessGrantId: string) 
         error: error instanceof Error ? error.message : "No pudimos cargar el participante.",
       });
     }
-  }, [accessGrantId, avatarId, handleUnauthorized]);
+  }, [participantKey, avatarId, handleUnauthorized]);
 
   const loadConversations = useCallback(
     async (options: { cursor?: string; append?: boolean } = {}) => {
@@ -100,7 +100,7 @@ export function useParticipantActivity(avatarId: string, accessGrantId: string) 
       }));
 
       try {
-        const page = await listParticipantActivityConversations(avatarId, accessGrantId, {
+        const page = await listParticipantActivityConversations(avatarId, participantKey, {
           limit: 20,
           ...(options.cursor ? { cursor: options.cursor } : {}),
         });
@@ -123,7 +123,7 @@ export function useParticipantActivity(avatarId: string, accessGrantId: string) 
         }));
       }
     },
-    [accessGrantId, avatarId, handleUnauthorized]
+    [participantKey, avatarId, handleUnauthorized]
   );
 
   useEffect(() => {

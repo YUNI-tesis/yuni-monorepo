@@ -1,4 +1,5 @@
 import { NotFoundError, OwnershipError } from "@yuni/domain";
+import { createHash } from "node:crypto";
 import type { AvatarActivityRepository } from "./repository";
 
 export class InvalidActivityCursorError extends Error {
@@ -20,26 +21,32 @@ export function createAvatarActivityService({ repository }: AvatarActivityServic
 
         return participants
           .map((participant) => ({
-            accessGrantId: participant.id,
+            participantKey: createParticipantKey(participant.participantEmail),
             participantEmail: participant.participantEmail,
             participantName: participant.participantName,
-            state:
-              participant.status === "revoked"
+            origins: participant.origins,
+            accessState:
+              participant.grantStatus === null
+                ? null
+                : participant.grantStatus === "revoked"
                 ? ("revoked" as const)
                 : participant.participantUserId
                   ? ("linked" as const)
                   : ("pending" as const),
             totalConversations: participant.totalConversations,
             lastActivityAt: participant.lastActivityAt?.toISOString() ?? null,
-            grantCreatedAt: participant.createdAt,
+            sortCreatedAt: participant.grantCreatedAt,
           }))
           .sort((left, right) => {
             const activityDifference =
               (right.lastActivityAt ? new Date(right.lastActivityAt).getTime() : 0) -
               (left.lastActivityAt ? new Date(left.lastActivityAt).getTime() : 0);
-            return activityDifference || right.grantCreatedAt.getTime() - left.grantCreatedAt.getTime();
+            return (
+              activityDifference ||
+              (right.sortCreatedAt?.getTime() ?? 0) - (left.sortCreatedAt?.getTime() ?? 0)
+            );
           })
-          .map(({ grantCreatedAt: _grantCreatedAt, ...participant }) => participant);
+          .map(({ sortCreatedAt: _sortCreatedAt, ...participant }) => participant);
       } catch (error) {
         throw normalizeActivityError(error, "Avatar not found");
       }
@@ -48,11 +55,17 @@ export function createAvatarActivityService({ repository }: AvatarActivityServic
     async listConversations(
       ownerId: string,
       avatarId: string,
-      accessGrantId: string,
+      participantKey: string,
       options: { limit: number; cursor?: string }
     ) {
       try {
-        const result = await repository.listConversations(ownerId, avatarId, accessGrantId, options);
+        const participant = await resolveParticipant(repository, ownerId, avatarId, participantKey);
+        const result = await repository.listConversations(
+          ownerId,
+          avatarId,
+          participant.participantEmail,
+          options
+        );
         if (result.invalidCursor) throw new InvalidActivityCursorError();
 
         const hasMore = result.conversations.length > options.limit;
@@ -71,7 +84,7 @@ export function createAvatarActivityService({ repository }: AvatarActivityServic
     async getConversation(ownerId: string, avatarId: string, conversationId: string) {
       try {
         const conversation = await repository.findConversation(ownerId, avatarId, conversationId);
-        if (!conversation?.accessGrant) throw new NotFoundError("Activity conversation not found");
+        if (!conversation?.participantEmail) throw new NotFoundError("Activity conversation not found");
 
         return {
           id: conversation.id,
@@ -80,7 +93,9 @@ export function createAvatarActivityService({ repository }: AvatarActivityServic
           status: conversation.status,
           createdAt: conversation.createdAt.toISOString(),
           lastMessageAt: conversation.lastMessageAt?.toISOString() ?? null,
-          participantEmail: conversation.accessGrant.participantEmail,
+          participantEmail: conversation.participantEmail,
+          origin: conversation.visibility === "public" ? "public_link" : "access_grant",
+          shareLinkName: conversation.visibility === "public" ? (conversation.shareLink?.name ?? null) : null,
           messages: conversation.messages
             .filter((message) => message.role === "user" || message.role === "assistant")
             .map((message) => ({
@@ -106,6 +121,8 @@ function toConversationSummaryDto(conversation: ActivityConversationRecordLike) 
     messageCount: conversation._count.messages,
     createdAt: conversation.createdAt.toISOString(),
     lastMessageAt: conversation.lastMessageAt?.toISOString() ?? null,
+    origin: conversation.visibility === "public" ? "public_link" : "access_grant",
+    shareLinkName: conversation.visibility === "public" ? (conversation.shareLink?.name ?? null) : null,
   };
 }
 
@@ -116,10 +133,30 @@ type ActivityConversationRecordLike = {
   status: "active" | "ended";
   createdAt: Date;
   lastMessageAt: Date | null;
+  visibility: "private" | "public";
+  shareLink: { name: string } | null;
   _count: { messages: number };
 };
 
 function normalizeActivityError(error: unknown, message: string): Error {
   if (error instanceof OwnershipError) return new NotFoundError(message);
   return error instanceof Error ? error : new Error("Unknown activity error");
+}
+
+export function createParticipantKey(email: string) {
+  return `p_${createHash("sha256").update(email.trim().toLowerCase()).digest("base64url")}`;
+}
+
+async function resolveParticipant(
+  repository: AvatarActivityRepository,
+  ownerId: string,
+  avatarId: string,
+  participantKey: string
+) {
+  const participants = await repository.listParticipants(ownerId, avatarId);
+  const participant = participants.find(
+    (item) => createParticipantKey(item.participantEmail) === participantKey
+  );
+  if (!participant) throw new NotFoundError("Activity participant not found");
+  return participant;
 }

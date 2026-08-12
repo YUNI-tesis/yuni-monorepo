@@ -7,21 +7,19 @@ export function createAvatarActivityRepository(db: Db) {
   async function ensureOwnedAvatar(ownerId: string, avatarAgentId: string) {
     const avatar = await db.avatarAgent.findFirst({
       where: { id: avatarAgentId, ownerId },
-      select: { id: true },
+      select: { id: true, owner: { select: { email: true } } },
     });
-
     if (!avatar) throw new OwnershipError();
+    return avatar;
   }
 
   return {
     async listParticipants(ownerId: string, avatarAgentId: string) {
-      await ensureOwnedAvatar(ownerId, avatarAgentId);
-
+      const avatar = await ensureOwnedAvatar(ownerId, avatarAgentId);
       const [grants, activity] = await Promise.all([
         db.accessGrant.findMany({
           where: { ownerId, avatarAgentId },
           select: {
-            id: true,
             participantEmail: true,
             participantUserId: true,
             status: true,
@@ -30,31 +28,66 @@ export function createAvatarActivityRepository(db: Db) {
           },
         }),
         db.conversation.groupBy({
-          by: ["accessGrantId"],
+          by: ["participantEmail", "visibility"],
           where: {
             avatarAgentId,
-            accessGrantId: { not: null },
-            visibility: "private",
+            participantEmail: { not: null },
+            NOT: { participantEmail: avatar.owner.email },
+            OR: [
+              { visibility: "public" },
+              { visibility: "private", accessGrantId: { not: null } },
+            ],
           },
           _count: { id: true },
           _max: { createdAt: true, lastMessageAt: true },
         }),
       ]);
 
-      const activityByGrant = new Map(activity.map((item) => [item.accessGrantId, item]));
+      const emails = new Set<string>();
+      grants.forEach((grant) => emails.add(grant.participantEmail));
+      activity.forEach((item) => item.participantEmail && emails.add(item.participantEmail));
+      const linkedPublicSessions = await db.publicSession.findMany({
+        where: {
+          avatarAgentId,
+          participantEmail: { in: [...emails] },
+          participantUserId: { not: null },
+        },
+        select: {
+          participantEmail: true,
+          participantUser: { select: { name: true } },
+        },
+      });
+      const publicNames = new Map(
+        linkedPublicSessions.flatMap((session) =>
+          session.participantEmail
+            ? [[session.participantEmail, session.participantUser?.name ?? null] as const]
+            : []
+        )
+      );
 
-      return grants.map((grant) => {
-        const aggregate = activityByGrant.get(grant.id);
-        const candidates = [aggregate?._max.createdAt, aggregate?._max.lastMessageAt].filter(
-          (value): value is Date => Boolean(value)
-        );
+      return [...emails].map((participantEmail) => {
+        const grant = grants.find((item) => item.participantEmail === participantEmail) ?? null;
+        const records = activity.filter((item) => item.participantEmail === participantEmail);
+        const dates = records
+          .flatMap((item) => [item._max.createdAt, item._max.lastMessageAt])
+          .filter((value): value is Date => Boolean(value));
+        const hasGrantActivity = records.some((item) => item.visibility === "private");
+        const hasPublicActivity = records.some((item) => item.visibility === "public");
 
         return {
-          ...grant,
-          participantName: grant.participantUser?.name ?? null,
-          totalConversations: aggregate?._count.id ?? 0,
-          lastActivityAt:
-            candidates.length > 0 ? new Date(Math.max(...candidates.map((value) => value.getTime()))) : null,
+          participantEmail,
+          participantUserId: grant?.participantUserId ?? null,
+          participantName: grant?.participantUser?.name ?? publicNames.get(participantEmail) ?? null,
+          grantStatus: grant?.status ?? null,
+          grantCreatedAt: grant?.createdAt ?? null,
+          origins: [
+            ...(grant || hasGrantActivity ? (["access_grant"] as const) : []),
+            ...(hasPublicActivity ? (["public_link"] as const) : []),
+          ],
+          totalConversations: records.reduce((total, item) => total + item._count.id, 0),
+          lastActivityAt: dates.length
+            ? new Date(Math.max(...dates.map((value) => value.getTime())))
+            : null,
         };
       });
     },
@@ -62,32 +95,25 @@ export function createAvatarActivityRepository(db: Db) {
     async listConversations(
       ownerId: string,
       avatarAgentId: string,
-      accessGrantId: string,
+      participantEmail: string,
       options: { limit: number; cursor?: string }
     ) {
-      await ensureOwnedAvatar(ownerId, avatarAgentId);
+      const avatar = await ensureOwnedAvatar(ownerId, avatarAgentId);
+      if (participantEmail === avatar.owner.email) throw new OwnershipError();
+      const participantExists = await hasParticipant(db, ownerId, avatarAgentId, participantEmail);
+      if (!participantExists) throw new OwnershipError();
 
-      const grant = await db.accessGrant.findFirst({
-        where: { id: accessGrantId, ownerId, avatarAgentId },
-        select: { id: true },
-      });
-      if (!grant) throw new OwnershipError();
-
+      const where = participantConversationWhere(avatarAgentId, participantEmail);
       if (options.cursor) {
         const cursor = await db.conversation.findFirst({
-          where: {
-            id: options.cursor,
-            avatarAgentId,
-            accessGrantId,
-            visibility: "private",
-          },
+          where: { id: options.cursor, ...where },
           select: { id: true },
         });
         if (!cursor) return { invalidCursor: true as const, conversations: [] };
       }
 
       const conversations = await db.conversation.findMany({
-        where: { avatarAgentId, accessGrantId, visibility: "private" },
+        where,
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         take: options.limit + 1,
         ...(options.cursor ? { cursor: { id: options.cursor }, skip: 1 } : {}),
@@ -96,36 +122,39 @@ export function createAvatarActivityRepository(db: Db) {
           title: true,
           mode: true,
           status: true,
+          visibility: true,
           createdAt: true,
           lastMessageAt: true,
-          _count: {
-            select: { messages: { where: { role: { in: ["user", "assistant"] } } } },
-          },
+          shareLink: { select: { name: true } },
+          _count: { select: { messages: { where: { role: { in: ["user", "assistant"] } } } } },
         },
       });
-
       return { invalidCursor: false as const, conversations };
     },
 
     async findConversation(ownerId: string, avatarAgentId: string, conversationId: string) {
-      await ensureOwnedAvatar(ownerId, avatarAgentId);
-
+      const avatar = await ensureOwnedAvatar(ownerId, avatarAgentId);
       return db.conversation.findFirst({
         where: {
           id: conversationId,
           avatarAgentId,
-          accessGrantId: { not: null },
-          accessGrant: { ownerId, avatarAgentId },
-          visibility: "private",
+          participantEmail: { not: null },
+          NOT: { participantEmail: avatar.owner.email },
+          OR: [
+            { visibility: "public" },
+            { visibility: "private", accessGrant: { ownerId, avatarAgentId } },
+          ],
         },
         select: {
           id: true,
           title: true,
           mode: true,
           status: true,
+          visibility: true,
+          participantEmail: true,
           createdAt: true,
           lastMessageAt: true,
-          accessGrant: { select: { participantEmail: true } },
+          shareLink: { select: { name: true } },
           messages: {
             where: { role: { in: ["user", "assistant"] } },
             orderBy: [{ createdAt: "asc" }, { id: "asc" }],
@@ -135,4 +164,34 @@ export function createAvatarActivityRepository(db: Db) {
       });
     },
   };
+}
+
+function participantConversationWhere(avatarAgentId: string, participantEmail: string) {
+  return {
+    avatarAgentId,
+    participantEmail,
+    OR: [
+      { visibility: "public" as const },
+      { visibility: "private" as const, accessGrantId: { not: null } },
+    ],
+  };
+}
+
+async function hasParticipant(
+  db: Db,
+  ownerId: string,
+  avatarAgentId: string,
+  participantEmail: string
+) {
+  const [grant, conversation] = await Promise.all([
+    db.accessGrant.findFirst({
+      where: { ownerId, avatarAgentId, participantEmail },
+      select: { id: true },
+    }),
+    db.conversation.findFirst({
+      where: participantConversationWhere(avatarAgentId, participantEmail),
+      select: { id: true },
+    }),
+  ]);
+  return Boolean(grant || conversation);
 }

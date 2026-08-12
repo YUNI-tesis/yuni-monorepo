@@ -7,6 +7,7 @@ export type RateLimitConfig = {
   publicMessagesPerMinute: number;
   privateMessagesPerMinute: number;
   maxPublicSessionsPerAvatarPerHour: number;
+  maxPublicSessionsPerIpPerHour: number;
 };
 
 export function createRateLimitConfig(env: RawEnv): RateLimitConfig {
@@ -16,6 +17,7 @@ export function createRateLimitConfig(env: RawEnv): RateLimitConfig {
     publicMessagesPerMinute: env.PUBLIC_MESSAGES_PER_MINUTE,
     privateMessagesPerMinute: env.PRIVATE_MESSAGES_PER_MINUTE,
     maxPublicSessionsPerAvatarPerHour: env.MAX_PUBLIC_SESSIONS_PER_AVATAR_PER_HOUR,
+    maxPublicSessionsPerIpPerHour: env.MAX_PUBLIC_SESSIONS_PER_IP_PER_HOUR,
   };
 }
 

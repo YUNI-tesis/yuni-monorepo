@@ -32,7 +32,7 @@ export function createAvatarActivityController(dependencies: AvatarActivityContr
     }
   });
 
-  activity.get("/avatars/:avatarId/activity/participants/:accessGrantId/conversations", async (context) => {
+  activity.get("/avatars/:avatarId/activity/participants/:participantKey/conversations", async (context) => {
     const session = await getCurrentSession(context);
     if (!session) return context.json(unauthorizedError(), 401);
 
@@ -46,7 +46,7 @@ export function createAvatarActivityController(dependencies: AvatarActivityContr
         await service.listConversations(
           session.userId,
           context.req.param("avatarId"),
-          context.req.param("accessGrantId"),
+          context.req.param("participantKey"),
           parsedQuery.value
         )
       );

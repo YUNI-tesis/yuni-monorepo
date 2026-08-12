@@ -24,6 +24,11 @@ export type LiveAvatarTranscriptEntry = VoiceSessionTranscriptEntry & {
   id: string;
 };
 
+export type LiveAvatarVoiceSession = Pick<
+  ApiVoiceSession,
+  "conversationId" | "realtimeSessionId" | "sessionToken" | "sessionId"
+>;
+
 export type LiveAvatarDiagnostics = {
   voiceChatState: string;
   microphoneLevel: number | null;
@@ -42,13 +47,18 @@ export type LiveAvatarSessionState = {
   isUserSpeaking: boolean;
   isAvatarSpeaking: boolean;
   conversationState: LiveAvatarConversationState;
-  voiceSession: ApiVoiceSession | null;
+  voiceSession: LiveAvatarVoiceSession | null;
   transcript: LiveAvatarTranscriptEntry[];
   diagnostics: LiveAvatarDiagnostics;
 };
 
 export type UseLiveAvatarSessionOptions = {
   onEnded?: () => void | Promise<void>;
+  onStarted?: (realtimeSessionId: string) => void | Promise<void>;
+  startSession?: (sessionKey: string) => Promise<{ voiceSession: LiveAvatarVoiceSession }>;
+  endSession?: (realtimeSessionId: string, transcript: VoiceSessionTranscriptEntry[]) => Promise<unknown>;
+  endSessionOnUnload?: (realtimeSessionId: string, transcript: VoiceSessionTranscriptEntry[]) => void;
+  formatStartError?: (error: unknown, fallback: (error: unknown) => string) => string;
 };
 
 const initialDiagnostics: LiveAvatarDiagnostics = {
@@ -78,7 +88,7 @@ export function useLiveAvatarSession(avatarId: string, options: UseLiveAvatarSes
   const [state, setState] = useState<LiveAvatarSessionState>(initialState);
   const sessionRef = useRef<LiveAvatarSession | null>(null);
   const mediaElementRef = useRef<HTMLMediaElement | null>(null);
-  const voiceSessionRef = useRef<ApiVoiceSession | null>(null);
+  const voiceSessionRef = useRef<LiveAvatarVoiceSession | null>(null);
   const optionsRef = useRef(options);
   const transcriptRef = useRef<LiveAvatarTranscriptEntry[]>([]);
   const eventIdsRef = useRef(new Set<string>());
@@ -97,14 +107,13 @@ export function useLiveAvatarSession(avatarId: string, options: UseLiveAvatarSes
     cleanupDiagnostics(diagnosticsCleanupRef);
     clearInterruptionReset(interruptionResetTimeoutRef);
     sessionRef.current = null;
-    voiceSessionRef.current = null;
 
     if (currentSession) {
       await currentSession.stop().catch(() => undefined);
     }
 
     if (currentVoiceSession) {
-      await endVoiceSession(
+      await (optionsRef.current.endSession ?? endVoiceSession)(
         currentVoiceSession.realtimeSessionId,
         options.includeTranscript
           ? transcriptRef.current.map(({ role, content, metadata }) => ({
@@ -114,6 +123,28 @@ export function useLiveAvatarSession(avatarId: string, options: UseLiveAvatarSes
             }))
           : []
       );
+      voiceSessionRef.current = null;
+    }
+  }, []);
+
+  const closeCurrentSessionOnUnload = useCallback(() => {
+    const currentSession = sessionRef.current;
+    const currentVoiceSession = voiceSessionRef.current;
+    const endSessionOnUnload = optionsRef.current.endSessionOnUnload;
+
+    cleanupDiagnostics(diagnosticsCleanupRef);
+    clearInterruptionReset(interruptionResetTimeoutRef);
+    sessionRef.current = null;
+    voiceSessionRef.current = null;
+
+    if (currentVoiceSession && endSessionOnUnload) {
+      endSessionOnUnload(
+        currentVoiceSession.realtimeSessionId,
+        transcriptRef.current.map(({ role, content }) => ({ role, content }))
+      );
+    }
+    if (currentSession) {
+      void currentSession.stop().catch(() => undefined);
     }
   }, []);
 
@@ -179,7 +210,7 @@ export function useLiveAvatarSession(avatarId: string, options: UseLiveAvatarSes
     let liveAvatarSession: LiveAvatarSession | null = null;
 
     try {
-      const { voiceSession } = await startVoiceSession(avatarId);
+      const { voiceSession } = await (optionsRef.current.startSession ?? startVoiceSession)(avatarId);
       liveAvatarSession = new LiveAvatarSession(voiceSession.sessionToken, {
         voiceChat: { defaultMuted: false },
       });
@@ -211,6 +242,7 @@ export function useLiveAvatarSession(avatarId: string, options: UseLiveAvatarSes
 
       await session.start();
       await ensureVoiceChatStarted(session);
+      await optionsRef.current.onStarted?.(voiceSession.realtimeSessionId);
       diagnosticsCleanupRef.current = startMicrophoneLevelProbe(session, setState);
 
       setState((current) => ({
@@ -243,7 +275,9 @@ export function useLiveAvatarSession(avatarId: string, options: UseLiveAvatarSes
         ...current,
         status: "error",
         conversationState: "idle",
-        error: formatVoiceSessionStartError(error),
+        error: optionsRef.current.formatStartError
+          ? optionsRef.current.formatStartError(error, formatVoiceSessionStartError)
+          : formatVoiceSessionStartError(error),
       }));
     }
   }, [appendTranscript, avatarId, end, state.status]);
@@ -255,6 +289,10 @@ export function useLiveAvatarSession(avatarId: string, options: UseLiveAvatarSes
       }
 
       endingRef.current = true;
+      if (optionsRef.current.endSessionOnUnload) {
+        closeCurrentSessionOnUnload();
+        return;
+      }
       void closeCurrentSession({ includeTranscript: true }).finally(() => {
         endingRef.current = false;
       });
@@ -266,7 +304,7 @@ export function useLiveAvatarSession(avatarId: string, options: UseLiveAvatarSes
       window.removeEventListener("pagehide", cleanup);
       cleanup();
     };
-  }, [closeCurrentSession]);
+  }, [closeCurrentSession, closeCurrentSessionOnUnload]);
 
   const toggleMute = useCallback(async () => {
     const session = sessionRef.current;

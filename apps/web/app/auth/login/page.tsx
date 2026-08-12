@@ -40,10 +40,10 @@ export default function LoginPage() {
   return (
     <PageShell centered maxWidth="460px">
       <Card padding="lg">
-        <PageHeader eyebrow="YUNI" title="Iniciar sesion" />
+        <PageHeader eyebrow="YUNI" title="Iniciar Sesión" />
         <form className="yuni-stack" onSubmit={onSubmit}>
           <FormField label="Email" htmlFor="email">
-            <Input id="email" name="email" type="email" autoComplete="email" required />
+            <Input id="email" name="email" type="email" placeholder="example@gmail.com" autoComplete="email" required />
           </FormField>
           <FormField label="Password" htmlFor="password">
             <Input id="password" name="password" type="password" autoComplete="current-password" required minLength={8} />

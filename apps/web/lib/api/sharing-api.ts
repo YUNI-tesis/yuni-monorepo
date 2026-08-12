@@ -37,6 +37,30 @@ export type ApiPublicSharedAvatar = {
     description: string;
     thumbnailUrl: string | null;
   };
+  capabilities: {
+    voice: "ready" | "unavailable";
+  };
+};
+
+export type ApiPublicIdentity = {
+  email: string;
+  token: string;
+  expiresAt: string;
+};
+
+export type ApiPublicSessionStart = {
+  publicSession: {
+    id: string;
+    token: string;
+    expiresAt: string;
+    maxTranscriptMessages: number;
+  };
+  voiceSession: {
+    conversationId: string;
+    realtimeSessionId: string;
+    sessionToken: string;
+    sessionId: string | null;
+  };
 };
 
 export type CreateShareLinkRequest = {
@@ -102,4 +126,57 @@ export function deleteAccessGrant(avatarId: string, accessGrantId: string) {
 
 export function getPublicSharedAvatar(slug: string) {
   return apiRequest<ApiPublicSharedAvatar>(`/public/links/${encodeURIComponent(slug)}/avatar`);
+}
+
+export function identifyPublicVisitor(slug: string, email: string) {
+  return apiRequest<{ identity: ApiPublicIdentity }>(`/public/links/${encodeURIComponent(slug)}/identify`, {
+    method: "POST",
+    body: JSON.stringify({ email, consent: true }),
+  });
+}
+
+export function startPublicSession(slug: string, identityToken: string) {
+  return apiRequest<ApiPublicSessionStart>(`/public/links/${encodeURIComponent(slug)}/sessions`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${identityToken}` },
+  });
+}
+
+export function confirmPublicSessionStarted(publicSessionId: string, publicSessionToken: string) {
+  return apiRequest<{ publicSession: { id: string; status: "active" } }>(
+    `/public/sessions/${encodeURIComponent(publicSessionId)}/started`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${publicSessionToken}` },
+    }
+  );
+}
+
+export function endPublicSession(
+  publicSessionId: string,
+  publicSessionToken: string,
+  transcript: Array<{ role: "user" | "assistant"; content: string; metadata?: Record<string, unknown> }>,
+  options: { keepalive?: boolean; maxMessages?: number } = {}
+) {
+  return apiRequest<{ publicSession: { id: string; status: string; endedAt: string | null } }>(
+    `/public/sessions/${encodeURIComponent(publicSessionId)}/end`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${publicSessionToken}` },
+      body: JSON.stringify({
+        transcript: normalizePublicTranscript(transcript, options.maxMessages),
+      }),
+      ...(options.keepalive !== undefined ? { keepalive: options.keepalive } : {}),
+    }
+  );
+}
+
+export function normalizePublicTranscript(
+  transcript: Array<{ role: "user" | "assistant"; content: string; metadata?: Record<string, unknown> }>,
+  maxMessages = 20
+) {
+  return transcript.slice(0, maxMessages).flatMap(({ role, content }) => {
+    const normalized = content.trim().slice(0, 500);
+    return normalized ? [{ role, content: normalized }] : [];
+  });
 }

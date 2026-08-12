@@ -1,12 +1,12 @@
 import { createAvatarActivityRepository, type PrismaClientInstance } from "@yuni/db";
 
 export type ActivityParticipantRecord = {
-  id: string;
   participantEmail: string;
   participantUserId: string | null;
   participantName: string | null;
-  status: "active" | "revoked";
-  createdAt: Date;
+  grantStatus: "active" | "revoked" | null;
+  grantCreatedAt: Date | null;
+  origins: Array<"access_grant" | "public_link">;
   totalConversations: number;
   lastActivityAt: Date | null;
 };
@@ -16,13 +16,15 @@ export type ActivityConversationRecord = {
   title: string | null;
   mode: "text" | "voice";
   status: "active" | "ended";
+  visibility: "private" | "public";
   createdAt: Date;
   lastMessageAt: Date | null;
+  shareLink: { name: string } | null;
   _count: { messages: number };
 };
 
 export type ActivityConversationDetailRecord = Omit<ActivityConversationRecord, "_count"> & {
-  accessGrant: { participantEmail: string } | null;
+  participantEmail: string | null;
   messages: Array<{
     id: string;
     role: "user" | "assistant" | "system";
@@ -36,7 +38,7 @@ export type AvatarActivityRepository = {
   listConversations(
     ownerId: string,
     avatarId: string,
-    accessGrantId: string,
+    participantEmail: string,
     options: { limit: number; cursor?: string }
   ): Promise<{ invalidCursor: boolean; conversations: ActivityConversationRecord[] }>;
   findConversation(

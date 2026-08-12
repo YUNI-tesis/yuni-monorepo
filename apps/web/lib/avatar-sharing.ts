@@ -76,3 +76,11 @@ export function getAccessGrantPresentation(state: ApiAccessGrantState) {
 export function canOpenPublicLink(link: Pick<ApiShareLink, "isEnabled">, avatarStatus: string) {
   return link.isEnabled && avatarStatus === "active";
 }
+
+export function requiresRenewedPublicConsent(
+  hasStarted: boolean,
+  consentRestoredFromIdentity: boolean,
+  hasValidIdentity: boolean
+) {
+  return (hasStarted || consentRestoredFromIdentity) && !hasValidIdentity;
+}

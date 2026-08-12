@@ -23,6 +23,8 @@ function conversation(id: string): ApiActivityConversation {
     messageCount: 2,
     createdAt: "2026-08-10T15:00:00.000Z",
     lastMessageAt: "2026-08-10T15:05:00.000Z",
+    origin: "access_grant",
+    shareLinkName: null,
   };
 }
 
@@ -64,7 +66,9 @@ describe("avatar activity helpers", () => {
   });
 
   it("builds the participant detail and activity return paths", () => {
-    expect(getParticipantActivityPath("avatar-1", "grant-1")).toBe("/avatars/avatar-1/activity/grant-1");
+    expect(getParticipantActivityPath("avatar-1", "p_email-key")).toBe(
+      "/avatars/avatar-1/activity/p_email-key"
+    );
     expect(getAvatarActivityTabPath("avatar-1")).toBe("/avatars/avatar-1?tab=activity");
   });
 });
@@ -89,7 +93,7 @@ describe("avatar activity API client", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     await listActivityParticipants("avatar-1");
-    await listParticipantActivityConversations("avatar-1", "grant-1", {
+    await listParticipantActivityConversations("avatar-1", "p_email-key", {
       limit: 20,
       cursor: "conversation-20",
     });
@@ -98,7 +102,7 @@ describe("avatar activity API client", () => {
     expect(fetchMock.mock.calls.map(([url, init]) => [url, init.method ?? "GET"])).toEqual([
       ["http://localhost:4000/avatars/avatar-1/activity/participants", "GET"],
       [
-        "http://localhost:4000/avatars/avatar-1/activity/participants/grant-1/conversations?limit=20&cursor=conversation-20",
+        "http://localhost:4000/avatars/avatar-1/activity/participants/p_email-key/conversations?limit=20&cursor=conversation-20",
         "GET",
       ],
       ["http://localhost:4000/avatars/avatar-1/activity/conversations/conversation-1", "GET"],

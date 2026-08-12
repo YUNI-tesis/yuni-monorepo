@@ -1,11 +1,12 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import { clientEnv, appConfig, liveAvatarConfig } from "@yuni/config";
+import { clientEnv, appConfig, authConfig, liveAvatarConfig, rateLimitConfig } from "@yuni/config";
 import { LiveAvatarProvider } from "@yuni/avatars";
 import {
   createAccessGrantRepository,
   createConversationRepository,
   createMessageRepository,
+  createPublicSessionRepository,
   createRealtimeSessionRepository,
   prisma,
 } from "@yuni/db";
@@ -50,6 +51,14 @@ import {
 import { createAvatarActivityDataRepository } from "./domains/activity/repository.js";
 import { requestLogger } from "./middleware/request-logger.js";
 import { internalServerError } from "./utils/errors.js";
+import {
+  createPublicSessionsController,
+  type PublicSessionsControllerDependencies,
+} from "./domains/public-sessions/controller.js";
+import { createPublicTokenService } from "./domains/public-sessions/tokens.js";
+import { createInMemoryPublicSessionRateLimiter } from "./domains/public-sessions/rate-limiter.js";
+import { createProviderTokenProtector } from "./domains/public-sessions/provider-token-protector.js";
+import { createPublicSessionsService } from "./domains/public-sessions/service.js";
 
 export type AppDependencies = {
   auth: AuthControllerDependencies;
@@ -61,11 +70,16 @@ export type AppDependencies = {
   share?: ShareLinksControllerDependencies;
   accessGrants?: AccessGrantsControllerDependencies;
   activity?: AvatarActivityControllerDependencies;
+  publicSessions?: PublicSessionsControllerDependencies;
 };
 
 const liveAvatarProvider = new LiveAvatarProvider();
 const elevenLabsAgentProvider = new ElevenLabsAgentProvider();
 const conversationTitleGenerator = createOpenAiConversationTitleGenerator();
+const publicSessionRateLimiter = createInMemoryPublicSessionRateLimiter({
+  maxPerAvatar: rateLimitConfig.maxPublicSessionsPerAvatarPerHour,
+  maxPerIpAndLink: rateLimitConfig.maxPublicSessionsPerIpPerHour,
+});
 
 const defaultDependencies: AppDependencies = {
   auth: {
@@ -109,6 +123,16 @@ const defaultDependencies: AppDependencies = {
   activity: {
     repository: createAvatarActivityDataRepository(prisma),
   },
+  publicSessions: {
+    repository: createPublicSessionRepository(prisma),
+    liveAvatarProvider,
+    tokenService: createPublicTokenService(),
+    rateLimiter: publicSessionRateLimiter,
+    publicSessionMaxMinutes: rateLimitConfig.publicSessionMaxMinutes,
+    publicSessionMaxMessages: rateLimitConfig.publicSessionMaxMessages,
+    providerTokenProtector: createProviderTokenProtector(authConfig.secret),
+    conversationTitleGenerator,
+  },
 };
 
 const logger = createLogger("@yuni/api");
@@ -138,7 +162,7 @@ export function createApp(dependencies: AppDependencies = defaultDependencies) {
       origin: clientEnv.NEXT_PUBLIC_WEB_URL,
       credentials: true,
       allowMethods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
-      allowHeaders: ["Content-Type"],
+      allowHeaders: ["Content-Type", "Authorization"],
     })
   );
 
@@ -174,8 +198,35 @@ export function createApp(dependencies: AppDependencies = defaultDependencies) {
   if (dependencies.activity) {
     app.route("/", createAvatarActivityController(dependencies.activity));
   }
+  if (dependencies.publicSessions) {
+    app.route("/", createPublicSessionsController(dependencies.publicSessions));
+  }
 
   return app;
 }
 
 export const app = createApp();
+
+export function startPublicSessionMaintenance(intervalMs = 15_000) {
+  const dependencies = defaultDependencies.publicSessions;
+  if (!dependencies) return () => undefined;
+  const service = createPublicSessionsService(dependencies);
+  let running = false;
+  const cleanup = async () => {
+    if (running) return;
+    running = true;
+    try {
+      await service.cleanupExpired();
+    } catch (error) {
+      logger.error("Public session maintenance failed", {
+        error: error instanceof Error ? error.message : "Unknown cleanup error",
+      });
+    } finally {
+      running = false;
+    }
+  };
+  void cleanup();
+  const timer = setInterval(() => void cleanup(), intervalMs);
+  timer.unref?.();
+  return () => clearInterval(timer);
+}

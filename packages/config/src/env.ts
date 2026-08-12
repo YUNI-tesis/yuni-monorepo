@@ -54,10 +54,11 @@ const RawEnvSchema = z.object({
   S3_PUBLIC_BASE_URL: z.url().optional().or(z.literal("")),
 
   PUBLIC_SESSION_MAX_MINUTES: z.coerce.number().int().positive().default(5),
-  PUBLIC_SESSION_MAX_MESSAGES: z.coerce.number().int().positive().default(20),
+  PUBLIC_SESSION_MAX_MESSAGES: z.coerce.number().int().positive().max(20).default(20),
   PUBLIC_MESSAGES_PER_MINUTE: z.coerce.number().int().positive().default(10),
   PRIVATE_MESSAGES_PER_MINUTE: z.coerce.number().int().positive().default(30),
   MAX_PUBLIC_SESSIONS_PER_AVATAR_PER_HOUR: z.coerce.number().int().positive().default(50),
+  MAX_PUBLIC_SESSIONS_PER_IP_PER_HOUR: z.coerce.number().int().positive().default(10),
 
   PRICING_OPENAI_INPUT_USD_PER_1M_TOKENS: z.coerce.number().nonnegative().default(0.15),
   PRICING_OPENAI_OUTPUT_USD_PER_1M_TOKENS: z.coerce.number().nonnegative().default(0.6),

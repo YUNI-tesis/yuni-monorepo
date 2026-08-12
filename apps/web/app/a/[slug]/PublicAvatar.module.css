@@ -1,86 +1,44 @@
-.page {
-  min-height: 100vh;
-}
-
-.brand {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--yuni-space-3);
-  margin-bottom: var(--yuni-space-5);
-  font-weight: 900;
-  letter-spacing: 0.14em;
-}
-
-.logo {
-  width: 46px;
-  height: auto;
-}
-
-.card {
-  min-height: 460px;
-  display: grid;
-  align-content: center;
-}
-
-.content {
-  display: grid;
-  justify-items: center;
-  gap: var(--yuni-space-4);
-  text-align: center;
-}
-
-.content h1 {
-  margin: 0;
-  font-size: clamp(2rem, 7vw, 3.5rem);
-  line-height: 1.05;
-}
-
-.visual {
-  display: grid;
-  width: min(240px, 65vw);
-  aspect-ratio: 1;
-  place-items: center;
-  overflow: hidden;
-  border: 1px solid var(--yuni-color-border);
-  border-radius: 50%;
-  background:
-    radial-gradient(circle at 35% 25%, rgba(100, 195, 215, 0.22), transparent 48%),
-    var(--yuni-color-surface-soft);
-}
-
-.visual img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.visual svg {
-  width: 45%;
-  height: auto;
-}
-
-.description {
-  max-width: 620px;
-  margin: 0;
-  color: var(--yuni-color-text-muted);
-  font-size: var(--yuni-font-lg);
-  line-height: 1.65;
-}
-
-.comingSoon {
-  display: grid;
-  max-width: 620px;
-  gap: var(--yuni-space-2);
-  margin-top: var(--yuni-space-3);
-  border: 1px solid rgba(100, 195, 215, 0.3);
-  border-radius: var(--yuni-radius-md);
-  padding: var(--yuni-space-4);
-  background: rgba(100, 195, 215, 0.08);
-}
-
-.comingSoon p {
-  margin: 0;
-  color: var(--yuni-color-text-muted);
-  line-height: 1.55;
+.page { min-height: 100vh; }
+.page:global(.yuni-page-shell--center) > :global(.yuni-page-shell__inner) { align-content: center; }
+.brand { display: flex; align-items: center; justify-content: center; gap: var(--yuni-space-3); margin-bottom: var(--yuni-space-5); font-weight: 900; letter-spacing: .14em; }
+.logo { width: 46px; height: auto; }
+.card { min-height: 580px; display: grid; align-content: center; }
+.content { display: grid; justify-items: center; gap: var(--yuni-space-4); text-align: center; min-width: 0; }
+.content h1, .callHeader h1 { margin: 0; overflow-wrap: anywhere; }
+.content h1 { font-size: clamp(2rem, 7vw, 3.5rem); line-height: 1.05; }
+.visual { display: grid; width: min(210px, 60vw); aspect-ratio: 1; place-items: center; overflow: hidden; border: 1px solid var(--yuni-color-border); border-radius: 50%; background: radial-gradient(circle at 35% 25%, rgba(100,195,215,.22), transparent 48%), var(--yuni-color-surface-soft); }
+.visual img { width: 100%; height: 100%; object-fit: cover; }
+.visual svg { width: 45%; height: auto; }
+.description { max-width: 620px; margin: 0; color: var(--yuni-color-text-muted); font-size: var(--yuni-font-lg); line-height: 1.65; overflow-wrap: anywhere; }
+.identification { display: grid; width: min(100%, 560px); gap: var(--yuni-space-4); margin-top: var(--yuni-space-3); text-align: left; }
+.identification > button { justify-self: center; }
+.consent { display: grid; grid-template-columns: auto 1fr; align-items: start; gap: var(--yuni-space-3); color: var(--yuni-color-text-muted); line-height: 1.5; cursor: pointer; }
+.consent input { margin-top: .25em; accent-color: var(--yuni-color-accent); }
+.inlineError { margin: 0; color: var(--yuni-color-danger); line-height: 1.45; }
+.unavailable { display: grid; max-width: 620px; gap: var(--yuni-space-2); border: 1px solid var(--yuni-color-border); border-radius: var(--yuni-radius-md); padding: var(--yuni-space-4); background: var(--yuni-color-surface-soft); }
+.unavailable p { margin: 0; color: var(--yuni-color-text-muted); }
+.callLayout { display: grid; width: 100%; min-width: 0; gap: var(--yuni-space-4); }
+.callHeader { display: grid; min-width: 0; grid-template-columns: minmax(128px, auto) minmax(0, 1fr) minmax(128px, auto); align-items: center; gap: var(--yuni-space-4); border: 1px solid rgba(255,255,255,.12); border-radius: 20px; padding: var(--yuni-space-3) var(--yuni-space-4); background: rgba(7,10,18,.72); backdrop-filter: blur(22px) saturate(1.2); box-shadow: 0 18px 58px rgba(0,0,0,.28); }
+.callBrand { display: flex; align-items: center; gap: var(--yuni-space-2); font-weight: 900; letter-spacing: .14em; }
+.callBrand svg { width: 38px; height: auto; }
+.callTitle { display: grid; min-width: 0; justify-items: center; gap: 2px; text-align: center; }
+.callTitle h1, .callTitle p { margin: 0; }
+.callTitle h1 { overflow: hidden; width: 100%; font-size: var(--yuni-font-xl); line-height: 1.15; text-overflow: ellipsis; white-space: nowrap; }
+.callTitle > p:last-child:not(:first-child) { overflow: hidden; width: min(620px, 100%); color: var(--yuni-color-text-muted); font-size: var(--yuni-font-sm); line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
+.callHeader > :last-child { justify-self: end; }
+.stage { position: relative; overflow: hidden; min-width: 0; min-height: 560px; height: calc(100dvh - 138px); border: 1px solid rgba(255,255,255,.12); border-radius: 28px; background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02)), #060913; box-shadow: 0 28px 90px rgba(0,0,0,.42); }
+.stage video { width: 100%; height: 100%; min-height: inherit; object-fit: cover; }
+.placeholder { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: var(--yuni-space-4); padding: var(--yuni-space-6); text-align: center; }
+.placeholder .visual { width: min(190px, 48vw); }
+.placeholder strong { font-size: var(--yuni-font-xl); }
+.placeholder span { color: var(--yuni-color-text-muted); }
+.callDock { position: absolute; z-index: 2; right: 50%; bottom: var(--yuni-space-5); display: grid; justify-items: center; gap: var(--yuni-space-3); width: min(92%, 620px); transform: translateX(50%); }
+.callDock .inlineError { border: 1px solid rgba(255,119,133,.45); border-radius: var(--yuni-radius-md); padding: var(--yuni-space-3); background: rgba(18,8,20,.9); text-align: center; }
+@media (max-width: 640px) {
+  .callHeader { grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
+  .callBrand { display: none; }
+  .callTitle { justify-items: start; text-align: left; }
+  .callTitle > p:last-child:not(:first-child) { display: none; }
+  .stage { min-height: 68vh; height: calc(100dvh - 122px); }
+  .card { min-height: auto; }
 }

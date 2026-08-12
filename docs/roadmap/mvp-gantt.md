@@ -43,19 +43,19 @@ Decision source: [0009-product-navigation-sharing-background-sync.md](../thesis/
 | P1        | `15-share-links-api`                                                                      | API/share identity          | avatar domain                                      | links con email e invitaciones/grants                          |
 | P1        | `19-private-conversations-api`                                                            | API/conversacion            | implementado owner/shared; publico depende de `23` | conversaciones aisladas por identidad efectiva                 |
 | P1        | `17-share-tab-ui`                                                                         | UI/share                    | `15`                                               | gestion de links e invitaciones en perfil                      |
-| P1        | `16-share-metrics-api`                                                                    | API/actividad               | parcial: grants/transcripts listos; falta `27`      | metricas por link/grant/email/user                             |
-| P1        | actividad del perfil owner                                                                | UI/actividad                | implementada para grants; falta uso/progreso        | transcripts, uso y progreso por alumno/email                   |
+| P1        | `16-share-metrics-api`                                                                    | API/actividad               | parcial: grants/links/transcripts listos; falta `27` | metricas por link/grant/email/user                            |
+| P1        | actividad del perfil owner                                                                | UI/actividad                | implementada unificada por email; falta uso/progreso | transcripts, uso y progreso por alumno/email                  |
 | P2        | `14-documents-filedrop-shell`                                                             | UI/contexto                 | `09`                                               | tab Contexto preparada                                         |
 | P2        | `28-s3-storage-adapter`                                                                   | storage                     | contrato storage acordado                          | storage listo para documentos                                  |
 | P2        | `29-document-upload-api`                                                                  | API/documentos              | `14`, `28`                                         | documentos reales subibles y procesables                       |
 | P2        | `30-document-ingestion-worker`                                                            | worker/contexto             | `28`, `29`                                         | chunks creados y estados de documento                          |
 | P2        | `24C-elevenlabs-knowledge-base-context-sync`                                              | provider/contexto           | `24B`; archivos requieren `28/29/30`               | contexto/documentos sincronizados en background                |
 | P3        | `20-private-chat-ui`, `25-private-text-chat-api`                                          | chat autenticado            | `18`, `19`, `24`                                   | chat owner/shared con historial                                |
-| P3        | `21-public-link-resolver-api`, `22-public-avatar-ui`, `23-public-session-api`             | publico identificado        | `15`                                               | link publico con email y sesion atribuible                     |
+| P3        | `21-public-link-resolver-api`, `22-public-avatar-ui`, `23-public-session-api`             | publico identificado        | implementado                                       | link publico con email, consentimiento y sesion atribuible     |
 | P3        | `26-public-text-chat-api`                                                                 | publico/chat                | `23`, `25` contract                                | chat publico atribuido a email                                 |
 | P3        | `27-usage-cost-tracking`                                                                  | usage/costos                | flujos reales                                      | costos y uso por owner/link/grant/email                        |
 | P4        | `31-rag-retriever-integration`                                                            | AI/RAG propio               | `30`                                               | contexto propio recuperable con permisos                       |
-| P4        | `32-realtime-service-foundation`, `33-realtime-private-voice`, `34-realtime-public-voice` | realtime/voz                | identity/session contracts                         | voz owner/shared/public coherente                              |
+| P4        | `32-realtime-service-foundation`, `33-realtime-private-voice`, `34-realtime-public-voice` | realtime/voz                | `34` implementado sobre LiveAvatar; resto parcial  | voz owner/shared/public coherente                              |
 | P4        | `35-limits-rate-limits`, `36-hardening-observability`                                     | cierre                      | flujos reales                                      | MVP medible, seguro y defendible                               |
 
 ## Que Es Paralelizable
@@ -81,7 +81,7 @@ Decision source: [0009-product-navigation-sharing-background-sync.md](../thesis/
 3. Definir e implementar sharing identity: links con email e invitaciones/grants.
 4. Alinear conversaciones, usage y actividad con owner/shared/public identity.
 5. Agregar documentos reales y sync background a ElevenLabs Knowledge Base.
-6. Abrir experiencia publica por link con email.
+6. Experiencia publica por link con email implementada para voz.
 7. Completar limits, observabilidad, cleanup y hardening.
 
 ## Serie Obligatoria
@@ -100,4 +100,4 @@ Decision source: [0009-product-navigation-sharing-background-sync.md](../thesis/
 - Tercer hito: creator comparte por grant y el usuario compartido puede llamar y recuperar su propio historial.
 - Cuarto hito: activity muestra metricas/transcripts por alumno/email.
 - Quinto hito: documentos del creador se procesan y sincronizan en background.
-- Sexto hito: link publico funcional con email, texto/voz y limits.
+- Sexto hito: link publico funcional con email, consentimiento, voz y limites basicos; texto queda pendiente.

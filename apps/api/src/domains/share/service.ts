@@ -29,6 +29,9 @@ export type PublicSharedAvatarDto = {
     description: string;
     thumbnailUrl: string | null;
   };
+  capabilities: {
+    voice: "ready" | "unavailable";
+  };
 };
 
 export class DuplicateShareSlugError extends Error {
@@ -109,6 +112,14 @@ export function createShareLinksService({ repository, publicBaseUrl }: ShareLink
           name: shareLink.avatarAgent.name,
           description: shareLink.avatarAgent.description,
           thumbnailUrl: liveAvatarConfig.success ? (liveAvatarConfig.data.thumbnailUrl ?? null) : null,
+        },
+        capabilities: {
+          voice:
+            liveAvatarConfig.success &&
+            shareLink.avatarAgent.providerSyncStatus === "synced" &&
+            Boolean(shareLink.avatarAgent.providerAgentId)
+              ? "ready"
+              : "unavailable",
         },
       };
     },

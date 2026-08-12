@@ -2,13 +2,15 @@ import { loadLocalEnv } from "@yuni/config/load-env";
 
 loadLocalEnv();
 
-const [{ serve }, { serverConfig }, { createLogger }, { app }] = await Promise.all([
-  import("@hono/node-server"),
-  import("@yuni/config"),
-  import("@yuni/observability"),
-  import("./app.js"),
-]);
+const [{ serve }, { serverConfig }, { createLogger }, { app, startPublicSessionMaintenance }] =
+  await Promise.all([
+    import("@hono/node-server"),
+    import("@yuni/config"),
+    import("@yuni/observability"),
+    import("./app.js"),
+  ]);
 const logger = createLogger("@yuni/api");
+startPublicSessionMaintenance();
 
 serve(
   {
