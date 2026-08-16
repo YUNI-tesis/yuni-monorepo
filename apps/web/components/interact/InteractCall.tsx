@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Badge, Button, Dialog, ErrorState, LoadingState, type BadgeTone } from "@yuni/ui";
+import { Badge, Button, Dialog, ErrorState, LoadingState, YuniIcon, type BadgeTone } from "@yuni/ui";
 import { useLiveAvatarSession, type LiveAvatarDiagnostics } from "../../hooks/useLiveAvatarSession";
 import {
   getAvatarInteractionContext,
@@ -197,7 +197,6 @@ export function InteractCall({ avatarId }: { avatarId: string }) {
   const canStart =
     interactionContext.voiceAvailability === "ready" &&
     (call.status === "idle" || call.status === "ended" || call.status === "error");
-  const isInCall = call.status === "active" || call.status === "starting" || call.status === "ending";
   const contextNotice =
     interactionContext.access.type === "shared" && interactionContext.voiceAvailability !== "ready"
       ? null
@@ -255,7 +254,7 @@ export function InteractCall({ avatarId }: { avatarId: string }) {
   return (
     <div className={styles.focusLayout}>
       <header className={styles.focusTopbar}>
-        <Button variant="ghost" icon={<IconBack />} onClick={() => router.push("/avatars")}>
+        <Button variant="ghost" icon={<YuniIcon name="arrowLeft" />} onClick={() => router.push("/avatars")}>
           Mis avatares
         </Button>
 
@@ -270,7 +269,7 @@ export function InteractCall({ avatarId }: { avatarId: string }) {
         <div className={styles.topbarActions}>
           <Button
             variant="ghost"
-            icon={<IconHistory />}
+            icon={<YuniIcon name="history" />}
             aria-controls="call-history-panel"
             aria-expanded={isHistoryOpen}
             onClick={toggleHistory}
@@ -280,7 +279,7 @@ export function InteractCall({ avatarId }: { avatarId: string }) {
           {interactionContext.access.type === "owner" ? (
             <Button
               variant="ghost"
-              icon={<IconProfile />}
+              icon={<YuniIcon name="user" />}
               onClick={() => router.push(`/avatars/${avatar.id}`)}
             >
               Perfil
@@ -340,18 +339,20 @@ export function InteractCall({ avatarId }: { avatarId: string }) {
               {call.error ? (
                 <div className={styles.inlineError} role="alert">
                   <span>{call.error}</span>
-                  <Button variant="secondary" onClick={() => void requestCallStart()} disabled={!canStart}>
-                    Reintentar
-                  </Button>
+                  {canStart ? (
+                    <Button variant="secondary" onClick={() => void requestCallStart()}>
+                      Reintentar
+                    </Button>
+                  ) : null}
                 </div>
               ) : null}
               <InteractCallControls
                 status={call.status}
                 isMuted={call.isMuted}
                 canStart={canStart}
-                isInCall={isInCall}
                 onStart={() => void requestCallStart()}
                 onToggleMute={call.toggleMute}
+                onInterrupt={call.interrupt}
                 onEnd={call.end}
               />
             </div>
@@ -365,7 +366,11 @@ export function InteractCall({ avatarId }: { avatarId: string }) {
                 <p className="yuni-eyebrow">Chats de llamada</p>
                 <h2 id="history-title">Historial</h2>
               </div>
-              <Button variant="secondary" icon={<IconClose />} onClick={() => setIsHistoryOpen(false)}>
+              <Button
+                variant="secondary"
+                icon={<YuniIcon name="close" />}
+                onClick={() => setIsHistoryOpen(false)}
+              >
                 Cerrar
               </Button>
             </div>
@@ -423,62 +428,70 @@ export function InteractCallControls({
   status,
   isMuted,
   canStart,
-  isInCall,
   onStart,
   onToggleMute,
+  onInterrupt,
   onEnd,
 }: {
   status: ReturnType<typeof useLiveAvatarSession>["status"];
   isMuted: boolean;
   canStart: boolean;
-  isInCall: boolean;
   onStart: () => void;
   onToggleMute: () => void;
+  onInterrupt: () => void;
   onEnd: () => void;
 }) {
-  const startLabel = status === "starting" ? "Iniciando" : "Iniciar";
-  const muteLabel = isMuted ? "Activar mic" : "Silenciar";
+  const isActive = status === "active";
+  const isEnding = status === "ending";
+  const showEndControl = isActive || isEnding;
+  const microphoneIsMuted = isActive && isMuted;
+  const muteLabel = microphoneIsMuted ? "Activar micrófono" : "Silenciar micrófono";
+  const callLabel = showEndControl
+    ? isEnding
+      ? "Finalizando llamada"
+      : "Finalizar llamada"
+    : status === "starting"
+      ? "Iniciando llamada"
+      : "Iniciar llamada";
 
   return (
-    <div className={styles.callControls} aria-label="Controles de llamada">
+    <div className={styles.callControls} role="group" aria-label="Controles de llamada">
       <button
-        className={`${styles.controlButton} ${styles.controlButtonPrimary}`}
+        className={`${styles.controlButton} ${microphoneIsMuted ? styles.controlButtonMuted : ""}`}
         type="button"
-        aria-label={startLabel}
-        title={startLabel}
-        onClick={onStart}
-        disabled={!canStart}
+        aria-label={muteLabel}
+        title={muteLabel}
+        data-state={microphoneIsMuted ? "muted" : "unmuted"}
+        onClick={onToggleMute}
+        disabled={!isActive}
       >
         <span className={styles.controlIcon} aria-hidden="true">
-          <IconPhoneCall />
+          <YuniIcon name={microphoneIsMuted ? "micOff" : "mic"} size={24} />
         </span>
-        <span className={styles.controlLabel}>{startLabel}</span>
       </button>
       <button
         className={styles.controlButton}
         type="button"
-        aria-label={muteLabel}
-        title={muteLabel}
-        onClick={onToggleMute}
-        disabled={status !== "active"}
+        aria-label="Interrumpir avatar"
+        title="Interrumpir avatar"
+        onClick={onInterrupt}
+        disabled={!isActive}
       >
         <span className={styles.controlIcon} aria-hidden="true">
-          {isMuted ? <IconMic /> : <IconMicOff />}
+          <YuniIcon name="pause" size={24} />
         </span>
-        <span className={styles.controlLabel}>{muteLabel}</span>
       </button>
       <button
-        className={`${styles.controlButton} ${styles.controlButtonDanger}`}
+        className={`${styles.controlButton} ${showEndControl ? styles.controlButtonDanger : styles.controlButtonPrimary}`}
         type="button"
-        aria-label="Finalizar llamada"
-        title="Finalizar llamada"
-        onClick={onEnd}
-        disabled={!isInCall}
+        aria-label={callLabel}
+        title={callLabel}
+        onClick={showEndControl ? onEnd : onStart}
+        disabled={showEndControl ? !isActive : !canStart}
       >
         <span className={styles.controlIcon} aria-hidden="true">
-          <IconPhoneOff />
+          <YuniIcon name={showEndControl ? "callEnd" : "call"} size={24} />
         </span>
-        <span className={styles.controlLabel}>Finalizar</span>
       </button>
     </div>
   );
@@ -630,106 +643,6 @@ export function shouldShowInteractDiagnostics(environment = process.env.NODE_ENV
 
 export function formatConversationTitle(title: string | null, avatarName: string) {
   return title?.trim() || `Llamada con ${avatarName}`;
-}
-
-type IconProps = {
-  size?: number;
-};
-
-function IconFrame({ children, size = 18 }: IconProps & { children: React.ReactNode }) {
-  return (
-    <svg
-      aria-hidden="true"
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      {children}
-    </svg>
-  );
-}
-
-function IconBack(props: IconProps) {
-  return (
-    <IconFrame {...props}>
-      <path d="M19 12H5" />
-      <path d="m12 19-7-7 7-7" />
-    </IconFrame>
-  );
-}
-
-function IconHistory(props: IconProps) {
-  return (
-    <IconFrame {...props}>
-      <path d="M3 12a9 9 0 1 0 3-6.7" />
-      <path d="M3 4v5h5" />
-      <path d="M12 7v5l3 2" />
-    </IconFrame>
-  );
-}
-
-function IconProfile(props: IconProps) {
-  return (
-    <IconFrame {...props}>
-      <path d="M20 21a8 8 0 0 0-16 0" />
-      <circle cx="12" cy="7" r="4" />
-    </IconFrame>
-  );
-}
-
-function IconClose(props: IconProps) {
-  return (
-    <IconFrame {...props}>
-      <path d="M18 6 6 18" />
-      <path d="m6 6 12 12" />
-    </IconFrame>
-  );
-}
-
-function IconPhoneCall(props: IconProps) {
-  return (
-    <IconFrame {...props}>
-      <path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 2 .7 2.9a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.2-1.2a2 2 0 0 1 2.1-.5c.9.3 1.9.6 2.9.7A2 2 0 0 1 22 16.9Z" />
-    </IconFrame>
-  );
-}
-
-function IconPhoneOff(props: IconProps) {
-  return (
-    <IconFrame {...props}>
-      <path d="m2 2 20 20" />
-      <path d="M16.7 14.5c.2-.1.4-.2.7-.3.9.3 1.9.6 2.9.7A2 2 0 0 1 22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.8.3 1.6.5 2.3" />
-      <path d="M8.1 9.9a16 16 0 0 0 6 6" />
-    </IconFrame>
-  );
-}
-
-function IconMic(props: IconProps) {
-  return (
-    <IconFrame {...props}>
-      <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
-      <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-      <path d="M12 19v3" />
-    </IconFrame>
-  );
-}
-
-function IconMicOff(props: IconProps) {
-  return (
-    <IconFrame {...props}>
-      <path d="m2 2 20 20" />
-      <path d="M9 9v3a3 3 0 0 0 5.1 2.1" />
-      <path d="M15 9.3V5a3 3 0 0 0-5.1-2.1" />
-      <path d="M19 10v2a7 7 0 0 1-.8 3.2" />
-      <path d="M5 10v2a7 7 0 0 0 10.4 6.1" />
-      <path d="M12 19v3" />
-    </IconFrame>
-  );
 }
 
 export function InteractDebugPanel({

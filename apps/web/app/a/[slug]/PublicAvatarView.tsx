@@ -354,9 +354,9 @@ function PublicCallExperience({
               status={call.status}
               isMuted={call.isMuted}
               canStart={false}
-              isInCall
               onStart={onStart}
               onToggleMute={call.toggleMute}
+              onInterrupt={call.interrupt}
               onEnd={call.end}
             />
           ) : needsEndRetry ? (

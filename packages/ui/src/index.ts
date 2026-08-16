@@ -8,6 +8,7 @@ export { DropdownMenu, type DropdownMenuItem, type DropdownMenuProps } from "./c
 export { IconButton, type IconButtonProps } from "./components/IconButton";
 export { Tabs, type TabItem, type TabsProps } from "./components/Tabs";
 export { Tooltip, type TooltipProps } from "./components/Tooltip";
+export { YuniIcon, yuniIcons, type YuniIconName, type YuniIconProps } from "./icons/YuniIcon";
 export { Checkbox, type CheckboxProps } from "./forms/Checkbox";
 export { FileDrop, type FileDropProps } from "./forms/FileDrop";
 export { FormField, type FormFieldProps } from "./forms/FormField";

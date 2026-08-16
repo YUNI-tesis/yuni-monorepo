@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, useState, type ChangeEvent, type DragEvent, type InputHTMLAttributes } from "react";
+import { YuniIcon } from "../icons/YuniIcon";
 import { cn } from "../utils";
 
 export type FileDropProps = Omit<InputHTMLAttributes<HTMLInputElement>, "type" | "onChange"> & {
@@ -66,21 +67,7 @@ export function FileDrop({
     >
       <label className="yuni-file-drop__target" htmlFor={inputId}>
         <span className="yuni-file-drop__icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none">
-            <path
-              d="M12 15V4m0 0 4 4m-4-4L8 8"
-              stroke="currentColor"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth="1.8"
-            />
-            <path
-              d="M5 15v3a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3"
-              stroke="currentColor"
-              strokeLinecap="round"
-              strokeWidth="1.8"
-            />
-          </svg>
+          <YuniIcon name="upload" size={28} />
         </span>
         <span className="yuni-file-drop__title">{title}</span>
         <span className="yuni-file-drop__description">{description}</span>
@@ -91,7 +78,7 @@ export function FileDrop({
           {selectedFiles.map((file, index) => (
             <li className="yuni-file-drop__file" key={`${file.name}-${file.size}-${file.lastModified}-${index}`}>
               <span className="yuni-file-drop__file-icon" aria-hidden="true">
-                DOC
+                <YuniIcon name="file" size={20} />
               </span>
               <span className="yuni-file-drop__file-info">
                 <strong>{file.name}</strong>
@@ -103,7 +90,7 @@ export function FileDrop({
                 aria-label={`Eliminar ${file.name}`}
                 onClick={() => removeFile(index)}
               >
-                x
+                <YuniIcon name="close" size={16} />
               </button>
             </li>
           ))}

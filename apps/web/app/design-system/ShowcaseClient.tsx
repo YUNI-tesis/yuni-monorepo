@@ -25,6 +25,7 @@ import {
   Tabs,
   Textarea,
   Tooltip,
+  YuniIcon,
 } from "@yuni/ui";
 
 const swatches = [
@@ -97,9 +98,9 @@ export function ShowcaseClient() {
               <Button size="lg">Large</Button>
               <Button loading>Loading</Button>
               <Button disabled>Disabled</Button>
-              <IconButton aria-label="Crear" icon="+" />
+              <IconButton aria-label="Crear" icon={<YuniIcon name="add" />} />
               <Tooltip content="Accion con tooltip">
-                <IconButton aria-label="Informacion" icon="i" variant="ghost" />
+                <IconButton aria-label="Informacion" icon={<YuniIcon name="info" />} variant="ghost" />
               </Tooltip>
             </div>
           </Card>

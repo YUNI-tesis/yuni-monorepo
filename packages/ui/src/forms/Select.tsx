@@ -13,6 +13,7 @@ import {
   type ReactNode,
   type ButtonHTMLAttributes,
 } from "react";
+import { YuniIcon } from "../icons/YuniIcon";
 import { cn } from "../utils";
 
 type SelectOption = {
@@ -117,9 +118,7 @@ export function Select({
       >
         <span>{selectedOption?.label ?? placeholder}</span>
         <span className="yuni-select__chevron" aria-hidden="true">
-          <svg viewBox="0 0 16 16" fill="none">
-            <path d="M4 6L8 10L12 6" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
-          </svg>
+          <YuniIcon name="chevronDown" size={16} />
         </span>
       </button>
       <input name={name} value={selectedValue} required={required} type="hidden" />

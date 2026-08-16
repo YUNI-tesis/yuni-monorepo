@@ -166,6 +166,23 @@ export function useLiveAvatarSession(avatarId: string, options: UseLiveAvatarSes
     }
   }, []);
 
+  const markInterrupted = useCallback(() => {
+    clearInterruptionReset(interruptionResetTimeoutRef);
+    setState((current) => ({
+      ...current,
+      error: null,
+      conversationState: "interrupted",
+      isAvatarSpeaking: false,
+    }));
+    interruptionResetTimeoutRef.current = window.setTimeout(() => {
+      setState((current) => ({
+        ...current,
+        conversationState: current.status === "active" ? "listening" : current.conversationState,
+      }));
+      interruptionResetTimeoutRef.current = null;
+    }, 1400);
+  }, []);
+
   const end = useCallback(async () => {
     const currentVoiceSession = voiceSessionRef.current;
 
@@ -226,17 +243,7 @@ export function useLiveAvatarSession(avatarId: string, options: UseLiveAvatarSes
           }
         },
         end,
-        markInterrupted: () => {
-          clearInterruptionReset(interruptionResetTimeoutRef);
-          setState((current) => ({ ...current, conversationState: "interrupted", isAvatarSpeaking: false }));
-          interruptionResetTimeoutRef.current = window.setTimeout(() => {
-            setState((current) => ({
-              ...current,
-              conversationState: current.status === "active" ? "listening" : current.conversationState,
-            }));
-            interruptionResetTimeoutRef.current = null;
-          }, 1400);
-        },
+        markInterrupted,
         setState,
       });
 
@@ -280,7 +287,7 @@ export function useLiveAvatarSession(avatarId: string, options: UseLiveAvatarSes
           : formatVoiceSessionStartError(error),
       }));
     }
-  }, [appendTranscript, avatarId, end, state.status]);
+  }, [appendTranscript, avatarId, end, markInterrupted, state.status]);
 
   useEffect(() => {
     const cleanup = () => {
@@ -323,6 +330,21 @@ export function useLiveAvatarSession(avatarId: string, options: UseLiveAvatarSes
 
     setState((current) => ({ ...current, isMuted: session.voiceChat.isMuted }));
   }, []);
+
+  const interrupt = useCallback(() => {
+    const session = sessionRef.current;
+
+    try {
+      if (interruptActiveLiveAvatarSession(session, state.status)) {
+        markInterrupted();
+      }
+    } catch {
+      setState((current) => ({
+        ...current,
+        error: "No pudimos interrumpir al avatar. Intentá nuevamente.",
+      }));
+    }
+  }, [markInterrupted, state.status]);
 
   const sendTextProbe = useCallback(async () => {
     const session = sessionRef.current;
@@ -368,8 +390,21 @@ export function useLiveAvatarSession(avatarId: string, options: UseLiveAvatarSes
     start,
     end,
     toggleMute,
+    interrupt,
     sendTextProbe,
   };
+}
+
+export function interruptActiveLiveAvatarSession(
+  session: Pick<LiveAvatarSession, "interrupt"> | null,
+  status: LiveAvatarSessionStatus
+) {
+  if (!session || status !== "active") {
+    return false;
+  }
+
+  session.interrupt();
+  return true;
 }
 
 type RegisterSessionEventsOptions = {

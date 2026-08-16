@@ -1017,9 +1017,7 @@
   border-radius: var(--yuni-radius-sm);
   background: rgba(100, 195, 215, 0.12);
   color: var(--yuni-color-accent-hover);
-  font-size: 0.66rem;
-  font-weight: 900;
-  letter-spacing: 0.04em;
+  line-height: 1;
 }
 
 .yuni-file-drop__file-info {
