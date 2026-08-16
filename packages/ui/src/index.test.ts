@@ -16,6 +16,8 @@ import {
   PageHeader,
   PageShell,
   Tabs,
+  YuniIcon,
+  yuniIcons,
   yuniTokens,
 } from "./index";
 
@@ -42,5 +44,7 @@ describe("@yuni/ui", () => {
     expect(Badge).toBeTypeOf("function");
     expect(Dialog).toBeTypeOf("object");
     expect(Drawer).toBeTypeOf("object");
+    expect(YuniIcon).toBeTypeOf("function");
+    expect(yuniIcons.add).toBeDefined();
   });
 });

@@ -12,7 +12,7 @@ import {
   rememberPrivacyChoiceForAvatar,
   shouldShowInteractDiagnostics,
 } from "./components/interact/InteractCall";
-import type { LiveAvatarDiagnostics } from "./hooks/useLiveAvatarSession";
+import { interruptActiveLiveAvatarSession, type LiveAvatarDiagnostics } from "./hooks/useLiveAvatarSession";
 import type { ApiConversationDetail, ApiConversationSummary } from "./lib/api/avatar-api";
 
 const diagnostics: LiveAvatarDiagnostics = {
@@ -105,25 +105,89 @@ describe("Interact contextual UI", () => {
     vi.unstubAllGlobals();
   });
 
-  it("renders primary call controls without live transcript controls", () => {
+  it("renders active call controls as three accessible icon-only buttons in the expected order", () => {
     const html = renderToStaticMarkup(
       createElement(InteractCallControls, {
         status: "active",
         isMuted: false,
         canStart: false,
-        isInCall: true,
         onStart: vi.fn(),
         onToggleMute: vi.fn(),
+        onInterrupt: vi.fn(),
         onEnd: vi.fn(),
       })
     );
 
-    expect(html).toContain("Iniciar");
-    expect(html).toContain("Silenciar");
-    expect(html).toContain("Finalizar");
+    const microphoneIndex = html.indexOf('aria-label="Silenciar micrófono"');
+    const interruptIndex = html.indexOf('aria-label="Interrumpir avatar"');
+    const endIndex = html.indexOf('aria-label="Finalizar llamada"');
+
+    expect(html.match(/<button/g)).toHaveLength(3);
+    expect(microphoneIndex).toBeGreaterThan(-1);
+    expect(interruptIndex).toBeGreaterThan(microphoneIndex);
+    expect(endIndex).toBeGreaterThan(interruptIndex);
     expect(html).toContain("<svg");
+    expect(html).not.toContain("controlLabel");
     expect(html).not.toContain("Historial");
     expect(html).not.toContain("Transcript");
+  });
+
+  it.each([
+    ["idle", true, "Iniciar llamada", false],
+    ["starting", false, "Iniciando llamada", true],
+    ["active", false, "Finalizar llamada", false],
+    ["ending", false, "Finalizando llamada", true],
+    ["ended", true, "Iniciar llamada", false],
+    ["error", true, "Iniciar llamada", false],
+  ] as const)(
+    "renders the combined call action for %s",
+    (status, canStart, expectedLabel, expectDisabled) => {
+      const html = renderToStaticMarkup(
+        createElement(InteractCallControls, {
+          status,
+          isMuted: false,
+          canStart,
+          onStart: vi.fn(),
+          onToggleMute: vi.fn(),
+          onInterrupt: vi.fn(),
+          onEnd: vi.fn(),
+        })
+      );
+      const callButton = html.slice(html.lastIndexOf("<button"));
+
+      expect(callButton).toContain(`aria-label="${expectedLabel}"`);
+      expect(callButton.includes(' disabled=""')).toBe(expectDisabled);
+    }
+  );
+
+  it("shows the muted microphone as crossed out and visually red", () => {
+    const html = renderToStaticMarkup(
+      createElement(InteractCallControls, {
+        status: "active",
+        isMuted: true,
+        canStart: false,
+        onStart: vi.fn(),
+        onToggleMute: vi.fn(),
+        onInterrupt: vi.fn(),
+        onEnd: vi.fn(),
+      })
+    );
+
+    expect(html).toContain('aria-label="Activar micrófono"');
+    expect(html).toContain('data-state="muted"');
+    expect(html).toContain("controlButtonMuted");
+    expect(html).not.toContain('aria-label="Silenciar micrófono"');
+  });
+
+  it("interrupts only active LiveAvatar sessions", () => {
+    const interrupt = vi.fn();
+    const session = { interrupt };
+
+    expect(interruptActiveLiveAvatarSession(session, "active")).toBe(true);
+    expect(interrupt).toHaveBeenCalledTimes(1);
+    expect(interruptActiveLiveAvatarSession(session, "ending")).toBe(false);
+    expect(interruptActiveLiveAvatarSession(null, "active")).toBe(false);
+    expect(interrupt).toHaveBeenCalledTimes(1);
   });
 
   it("renders history side panel content with literal chat details", () => {

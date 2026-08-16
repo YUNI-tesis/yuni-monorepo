@@ -197,6 +197,12 @@ importers:
 
   packages/ui:
     dependencies:
+      '@hugeicons/core-free-icons':
+        specifier: ^4.2.1
+        version: 4.2.1
+      '@hugeicons/react':
+        specifier: ^1.1.7
+        version: 1.1.7(react@19.2.3)
       react:
         specifier: ^19.0.0
         version: 19.2.3
@@ -589,6 +595,14 @@ packages:
     peerDependencies:
       hono: '>=4.10.0'
       zod: ^3.25.0 || ^4.0.0
+
+  '@hugeicons/core-free-icons@4.2.1':
+    resolution: {integrity: sha512-75jYZKYyA9VwS35YRmmGUGzFedbY+Fl0Vxx5FzXR2CGDlIhNRumFeVqaaKoClf2MeYEJwPAVMEL9RwCYtOgnSw==}
+
+  '@hugeicons/react@1.1.7':
+    resolution: {integrity: sha512-0q1gekPJvNtIsfqi6alVdKfqsLz0PGiZWOzxJDxOd55UpFwcgohBFU4CwTcJ7kg4hO3kwXuzxrn/JEj280GX3g==}
+    peerDependencies:
+      react: '>=16.0.0'
 
   '@humanfs/core@0.19.2':
     resolution: {integrity: sha512-UhXNm+CFMWcbChXywFwkmhqjs3PRCmcSa/hfBgLIb7oQ5HNb1wS0icWsGtSAUNgefHeI+eBrA8I1fxmbHsGdvA==}
@@ -1985,6 +1999,12 @@ snapshots:
     dependencies:
       hono: 4.12.18
       zod: 4.4.3
+
+  '@hugeicons/core-free-icons@4.2.1': {}
+
+  '@hugeicons/react@1.1.7(react@19.2.3)':
+    dependencies:
+      react: 19.2.3
 
   '@humanfs/core@0.19.2':
     dependencies:

@@ -223,10 +223,9 @@
 .callControls {
   display: flex;
   max-width: 100%;
-  flex-wrap: wrap;
   align-items: center;
   justify-content: center;
-  gap: var(--yuni-space-3);
+  gap: 12px;
   border: 1px solid rgba(255, 255, 255, 0.13);
   border-radius: 999px;
   padding: var(--yuni-space-2);
@@ -237,15 +236,14 @@
 
 .controlButton {
   display: inline-flex;
-  min-width: 82px;
-  min-height: 68px;
-  flex-direction: column;
+  width: 56px;
+  height: 56px;
+  flex: 0 0 56px;
   align-items: center;
   justify-content: center;
-  gap: 5px;
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 999px;
-  padding: var(--yuni-space-2) var(--yuni-space-3);
+  padding: 0;
   background: rgba(255, 255, 255, 0.1);
   color: white;
   cursor: pointer;
@@ -260,10 +258,14 @@
     transform 180ms ease;
 }
 
-.controlButton:hover {
+.controlButton:hover:not(:disabled) {
   transform: translateY(-1px);
   border-color: rgba(255, 255, 255, 0.24);
   background: rgba(255, 255, 255, 0.16);
+}
+
+.controlButton:active:not(:disabled) {
+  transform: scale(0.96);
 }
 
 .controlButton:focus-visible {
@@ -288,6 +290,17 @@
   background: rgba(255, 72, 94, 0.92);
 }
 
+.controlButtonMuted {
+  border-color: rgba(255, 135, 135, 0.54);
+  background: rgba(255, 72, 94, 0.82);
+  box-shadow: 0 8px 22px rgba(255, 72, 94, 0.2);
+}
+
+.controlButtonMuted:hover:not(:disabled) {
+  border-color: rgba(255, 170, 170, 0.68);
+  background: rgba(255, 72, 94, 0.94);
+}
+
 .controlIcon {
   display: grid;
   width: 24px;
@@ -297,11 +310,6 @@
 
 .controlIcon svg {
   display: block;
-}
-
-.controlLabel {
-  font-size: var(--yuni-font-xs);
-  line-height: 1.1;
 }
 
 .contextNotice,
@@ -661,16 +669,8 @@
   }
 
   .callControls {
-    width: 100%;
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    border-radius: 22px;
-  }
-
-  .controlButton {
-    min-width: 0;
-    min-height: 64px;
-    padding: 0 var(--yuni-space-3);
+    width: auto;
+    border-radius: 999px;
   }
 
   .message {
@@ -684,7 +684,7 @@
     transition: none;
   }
 
-  .controlButton:hover,
+  .controlButton:hover:not(:disabled),
   .historyItem:hover {
     transform: none;
   }
