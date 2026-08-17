@@ -1,5 +1,7 @@
 # Prompt: Conversations API
 
+Estado: implementado parcialmente el 2026-06-21. Existe historial privado owner para conversaciones `voice` generadas por llamadas, con listado por avatar, detalle por conversacion, mensajes ordenados y titulo persistido. Quedan pendientes `POST`, `latest`, conversaciones `text`, shared authenticated users y public session identity.
+
 Armame un plan especifico para conversaciones privadas y compartidas.
 
 Objetivo:

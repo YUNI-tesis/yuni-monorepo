@@ -1,5 +1,7 @@
 # Prompt: Avatar Profile Info UI
 
+Estado: rediseñado el 2026-06-21 como perfil tech premium con hero visual, tabs finales (`Informacion`, `Contexto`, `Compartir`, `Actividad`) y shells preparados sin agregar backend nuevo.
+
 Armame un plan especifico para el perfil del avatar, empezando por la tab `Informacion`.
 
 Objetivo:

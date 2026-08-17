@@ -1,5 +1,7 @@
 # Prompt: OpenAI Adapter Y Prompt Builder
 
+Estado: implementado parcialmente el 2026-06-21. `packages/ai` tiene adapter minimo para generar titulos de conversaciones con OpenAI Responses API y fallback controlado. Quedan pendientes la interfaz general de LLM provider, prompt builder de respuestas del avatar, RAG futuro y metadata de pricing.
+
 Armame un plan específico para `packages/ai`.
 
 Objetivo:

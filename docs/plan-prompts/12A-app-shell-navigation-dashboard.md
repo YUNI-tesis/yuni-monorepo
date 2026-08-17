@@ -1,5 +1,7 @@
 # Prompt: App Shell Navigation E Inicio
 
+Estado: implementado el 2026-06-21. El alcance final se resolvio con `/dashboard` como pantalla privada principal, `/` publica con CTA a dashboard, navegacion privada `Dashboard` + `Mis avatares`, filtros de avatares y `Interactuar` como accion contextual.
+
 Armame un plan especifico para hacer YUNI navegable como una aplicacion privada coherente.
 
 Objetivo:

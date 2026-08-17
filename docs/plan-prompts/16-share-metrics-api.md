@@ -1,5 +1,7 @@
 # Prompt: Share Activity And Metrics API
 
+Estado: implementado parcialmente. El 2026-08-16 se agregó el agregado owner-level para dashboard con actividad por email/avatar, comparación temporal, recurrencia, sesiones, duración, profundidad y alertas. Quedan pendientes costos y el desglose específico por link/grant.
+
 Armame un plan especifico para metricas y actividad de avatares compartidos.
 
 Objetivo:

@@ -11,6 +11,8 @@ Decisiones de producto vigentes:
 - [0011-sharing-management-ui-public-preview.md](../thesis/decision-records/0011-sharing-management-ui-public-preview.md)
 - [0012-authenticated-shared-interaction-identity.md](../thesis/decision-records/0012-authenticated-shared-interaction-identity.md)
 - [0013-owner-participant-activity.md](../thesis/decision-records/0013-owner-participant-activity.md)
+- [0014-identified-public-voice-sessions.md](../thesis/decision-records/0014-identified-public-voice-sessions.md)
+- [0015-creator-dashboard-actionable-metrics.md](../thesis/decision-records/0015-creator-dashboard-actionable-metrics.md)
 
 ## Direccion Actual
 
@@ -35,22 +37,22 @@ Decisiones de producto vigentes:
 - `10-avatar-edit-ui.md`: implementado.
 - `11-live-avatar-adapter.md`: implementado.
 - `12-live-avatar-selector-stage.md`: implementado.
-- `12A-app-shell-navigation-dashboard.md`: pendiente; refactorizado a Inicio + Mis avatares.
+- `12A-app-shell-navigation-dashboard.md`: implementado; el 2026-08-16 el Inicio se reemplazó por métricas accionables de actividad para creadores.
 - `13-voice-selector-config.md`: implementado.
 - `14-documents-filedrop-shell.md`: pendiente; refactorizado a tab Contexto.
 - `15-share-links-api.md`: implementado; links + access grants + listado seguro de compartidos.
-- `16-share-metrics-api.md`: implementado parcialmente; actividad unificada por email para grants y links públicos lista, costos/usage pendientes.
+- `16-share-metrics-api.md`: implementado parcialmente; dashboard owner-level, actividad unificada, recurrencia, sesiones y alertas listos. Costos y desglose específico por link/grant quedan pendientes.
 - `17-share-tab-ui.md`: implementado; administra links y accesos sin emails ni metricas.
 - `18-interact-shell-ui.md`: implementado para owner y usuarios autenticados con acceso compartido; fullscreen, voz e historial listos.
 - `19-private-conversations-api.md`: implementado para owner/shared autenticado; identidad publica queda asociada a `23`.
-- `20-private-chat-ui.md`: pendiente; refactorizado a owner/shared chat UI.
+- `20-private-chat-ui.md`: pendiente; refactorizado a owner/shared chat UI. La lectura de transcripts de llamadas quedo cubierta parcialmente en `18`.
 - `21-public-link-resolver-api.md`: implementado; resolver seguro, capabilities e identificación por email listos.
 - `22-public-avatar-ui.md`: implementado para voz; consentimiento, llamada pública y reintento listos.
 - `23-public-session-api.md`: implementado; sesión identificada, token corto, conversación y cierre listos.
 - `24A-agent-voice-architecture-context-contract.md`: pendiente; actualizado con identity y background sync.
 - `24B-elevenlabs-agent-provider-sync.md`: implementado para MVP privado con contexto textual; refactor conceptual a background sync.
 - `24C-elevenlabs-knowledge-base-context-sync.md`: pendiente; refactorizado a background jobs/retries.
-- `24-openai-adapter-prompt-builder.md`: pendiente.
+- `24-openai-adapter-prompt-builder.md`: implementado parcialmente el 2026-06-21 para titulos de conversaciones con OpenAI; falta prompt builder/respuestas de avatar.
 - `25-private-text-chat-api.md`: pendiente; refactorizado a owner/shared text chat.
 - `26-public-text-chat-api.md`: pendiente; refactorizado a public chat con email.
 - `27-usage-cost-tracking.md`: pendiente; refactorizado a owner/link/grant/email/user.

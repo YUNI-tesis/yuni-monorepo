@@ -15,6 +15,8 @@ function createAvatar(overrides: Partial<ApiAvatarSummary>): ApiAvatarSummary {
     name: "Avatar",
     description: "",
     providerSyncStatus: "not_synced",
+    thumbnailUrl: null,
+    interactionAvailability: "ready",
     status: "active",
     createdAt: "2026-06-01T00:00:00.000Z",
     updatedAt: "2026-06-01T00:00:00.000Z",
@@ -57,7 +59,7 @@ describe("avatar dashboard helpers", () => {
   it("formats user-facing status labels", () => {
     expect(formatAvatarStatusLabel("active")).toBe("Activo");
     expect(formatAvatarStatusLabel("draft")).toBe("Borrador");
-    expect(formatAvatarStatusLabel("disabled")).toBe("Desactivado");
+    expect(formatAvatarStatusLabel("disabled")).toBe("Inactivo");
     expect(formatProviderSyncLabel("synced")).toBe("Sincronizado");
     expect(formatProviderSyncLabel("failed")).toBe("Requiere revision");
     expect(formatProviderSyncLabel("not_synced")).toBe("Pendiente");

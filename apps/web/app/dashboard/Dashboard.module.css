@@ -1,6 +1,7 @@
 .layout {
   display: grid;
-  gap: var(--yuni-space-6);
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--yuni-space-8);
 }
 
 .actions {
@@ -11,86 +12,370 @@
 
 .metrics {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: var(--yuni-space-4);
 }
 
 .section {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--yuni-space-4);
+  min-width: 0;
+}
+
+.section > *,
+.sectionHeader,
+.sectionHeader > * {
+  min-width: 0;
 }
 
 .sectionHeader {
   display: flex;
-  align-items: end;
+  align-items: flex-end;
   justify-content: space-between;
   gap: var(--yuni-space-4);
 }
 
 .sectionTitle {
-  margin: 0;
+  margin: var(--yuni-space-1) 0 0;
   font-size: var(--yuni-font-xl);
   line-height: 1.2;
 }
 
-.recentGrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
-  gap: var(--yuni-space-4);
-}
-
-.avatarCard {
-  display: grid;
-  min-width: 0;
-  min-height: 190px;
-  align-content: space-between;
-  gap: var(--yuni-space-4);
-}
-
-.avatarMeta {
-  display: grid;
-  min-width: 0;
-  gap: var(--yuni-space-2);
-}
-
-.avatarTitle {
-  margin: 0;
-  font-size: var(--yuni-font-lg);
-  line-height: 1.2;
-  overflow-wrap: anywhere;
-}
-
-.avatarDescription {
-  overflow-wrap: anywhere;
-}
-
-.badges,
-.cardActions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--yuni-space-2);
-}
-
-.sharedNotice {
-  margin: 0;
-  border-left: 3px solid var(--yuni-color-warning);
-  padding-left: var(--yuni-space-3);
+.sectionDescription {
+  margin: var(--yuni-space-2) 0 0;
   color: var(--yuni-color-text-muted);
   line-height: 1.5;
 }
 
-@media (max-width: 560px) {
+.attentionCard {
+  display: grid;
+  gap: var(--yuni-space-5);
+  border-color: rgba(255, 193, 90, 0.28);
+}
+
+.attentionGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--yuni-space-4);
+}
+
+.attentionGroup {
+  min-width: 0;
+  border: 1px solid var(--yuni-color-border);
+  border-radius: var(--yuni-radius-md);
+  background: rgba(255, 255, 255, 0.025);
+  padding: var(--yuni-space-4);
+}
+
+.attentionGroupHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--yuni-space-3);
+}
+
+.attentionGroupHeader h3 {
+  margin: 0;
+  font-size: var(--yuni-font-md);
+}
+
+.attentionGroupHeader p,
+.noItems,
+.moreItems {
+  margin: var(--yuni-space-1) 0 0;
+  color: var(--yuni-color-text-muted);
+  font-size: var(--yuni-font-sm);
+  line-height: 1.45;
+}
+
+.attentionItems {
+  display: grid;
+  gap: var(--yuni-space-2);
+  margin-top: var(--yuni-space-4);
+}
+
+.attentionItem {
+  display: flex;
+  width: 100%;
+  min-height: 52px;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--yuni-space-3);
+  border: 1px solid transparent;
+  border-radius: var(--yuni-radius-sm);
+  background: var(--yuni-color-surface-soft);
+  color: var(--yuni-color-text);
+  padding: var(--yuni-space-2) var(--yuni-space-3);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 160ms ease, background-color 160ms ease;
+}
+
+.attentionItem:hover {
+  border-color: var(--yuni-color-border-strong);
+  background: var(--yuni-color-surface-muted);
+}
+
+.attentionItem:focus-visible,
+.tableLink:focus-visible,
+.chartDetails summary:focus-visible {
+  outline: none;
+  box-shadow: var(--yuni-focus-ring);
+}
+
+.attentionItem span {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.attentionItem strong,
+.attentionItem small {
+  overflow-wrap: anywhere;
+}
+
+.attentionItem small {
+  color: var(--yuni-color-text-muted);
+  line-height: 1.35;
+}
+
+.attentionEmpty,
+.chartEmpty {
+  display: flex;
+  min-height: 120px;
+  align-items: center;
+  justify-content: center;
+  gap: var(--yuni-space-3);
+  border: 1px dashed var(--yuni-color-border);
+  border-radius: var(--yuni-radius-md);
+  color: var(--yuni-color-text-muted);
+  padding: var(--yuni-space-5);
+  text-align: center;
+}
+
+.attentionEmpty p,
+.chartEmpty p {
+  margin: 0;
+}
+
+.analysisGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.65fr) minmax(280px, 0.75fr);
+  gap: var(--yuni-space-4);
+  align-items: stretch;
+}
+
+.trendCard,
+.qualityCard {
+  display: grid;
+  min-width: 0;
+  gap: var(--yuni-space-5);
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--yuni-space-3);
+  color: var(--yuni-color-text-muted);
+  font-size: var(--yuni-font-sm);
+}
+
+.legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--yuni-space-2);
+}
+
+.legend i {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+}
+
+.conversationDot {
+  background: var(--yuni-color-primary);
+}
+
+.participantDot {
+  background: var(--yuni-color-accent);
+}
+
+.chart {
+  min-height: 220px;
+}
+
+.chart svg {
+  display: block;
+  width: 100%;
+  height: 220px;
+  overflow: visible;
+}
+
+.gridLine {
+  stroke: var(--yuni-color-border);
+  stroke-width: 1;
+}
+
+.conversationLine,
+.participantLine {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 4;
+  vector-effect: non-scaling-stroke;
+}
+
+.conversationLine {
+  stroke: var(--yuni-color-primary);
+}
+
+.participantLine {
+  stroke: var(--yuni-color-accent);
+}
+
+.chartDates {
+  display: flex;
+  justify-content: space-between;
+  color: var(--yuni-color-text-muted);
+  font-size: var(--yuni-font-xs);
+}
+
+.chartDetails summary {
+  width: fit-content;
+  border-radius: var(--yuni-radius-sm);
+  color: var(--yuni-color-accent);
+  font-size: var(--yuni-font-sm);
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.chartTableWrapper {
+  max-height: 280px;
+  overflow: auto;
+  margin-top: var(--yuni-space-3);
+}
+
+.chartTableWrapper table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.chartTableWrapper th,
+.chartTableWrapper td {
+  border-bottom: 1px solid var(--yuni-color-border);
+  padding: var(--yuni-space-2);
+  text-align: left;
+}
+
+.chartTableWrapper th {
+  color: var(--yuni-color-text-muted);
+  font-size: var(--yuni-font-xs);
+  text-transform: uppercase;
+}
+
+.qualityMetrics {
+  display: grid;
+  gap: var(--yuni-space-3);
+}
+
+.qualityMetrics > div {
+  display: grid;
+  gap: var(--yuni-space-2);
+  border: 1px solid var(--yuni-color-border);
+  border-radius: var(--yuni-radius-md);
+  background: var(--yuni-color-surface-soft);
+  padding: var(--yuni-space-4);
+}
+
+.qualityMetrics span,
+.qualityMetrics small {
+  color: var(--yuni-color-text-muted);
+}
+
+.qualityMetrics strong {
+  font-size: var(--yuni-font-xl);
+  font-variant-numeric: tabular-nums;
+}
+
+.tableLink {
+  min-height: 44px;
+  border: 0;
+  border-radius: var(--yuni-radius-sm);
+  background: transparent;
+  color: var(--yuni-color-accent);
+  font: inherit;
+  font-weight: 800;
+  text-align: left;
+  cursor: pointer;
+}
+
+.methodNote {
+  max-width: 72ch;
+  margin: 0;
+  color: var(--yuni-color-text-muted);
+  font-size: var(--yuni-font-sm);
+  line-height: 1.55;
+}
+
+@media (max-width: 1040px) {
+  .metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .analysisGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .qualityMetrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .layout {
+    gap: var(--yuni-space-6);
+  }
+
+  .sectionHeader,
+  .attentionGroupHeader {
+    align-items: flex-start;
+  }
+
+  .attentionGrid,
+  .qualityMetrics {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .chart,
+  .chart svg {
+    min-height: 180px;
+    height: 180px;
+  }
+}
+
+@media (max-width: 520px) {
+  .metrics {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .actions,
   .sectionHeader {
     display: grid;
   }
 
-  .actions,
-  .cardActions {
-    display: grid;
+  .actions button,
+  .sectionHeader > button {
+    width: 100%;
   }
 
-  .actions button,
-  .cardActions button {
-    width: 100%;
+  .legend {
+    margin-top: var(--yuni-space-3);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .attentionItem {
+    transition: none;
   }
 }

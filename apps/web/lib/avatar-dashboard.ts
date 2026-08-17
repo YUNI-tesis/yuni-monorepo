@@ -47,7 +47,7 @@ export function getAvatarCardActionMode(accessType: ApiAvatarSummary["access"]["
 export function formatAvatarStatusLabel(status: ApiAvatarSummary["status"]) {
   if (status === "active") return "Activo";
   if (status === "draft") return "Borrador";
-  return "Desactivado";
+  return "Inactivo";
 }
 
 export function formatProviderSyncLabel(status: ApiAvatarSummary["providerSyncStatus"]) {

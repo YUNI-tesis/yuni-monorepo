@@ -1,7 +1,7 @@
 "use client";
 
-import { useRef, type ReactNode } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useRef, type ReactNode } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   Badge,
   Button,
@@ -33,9 +33,26 @@ export function AvatarParticipantActivity({
   participantKey: string;
 }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const profile = useAvatarProfile(avatarId);
   const activity = useParticipantActivity(avatarId, participantKey);
   const transcriptDrawer = useRef<HTMLDialogElement>(null);
+  const openedConversationFromUrl = useRef<string | null>(null);
+  const requestedConversationId = searchParams.get("conversation");
+
+  useEffect(() => {
+    if (
+      activity.participant.status !== "ready" ||
+      !requestedConversationId ||
+      openedConversationFromUrl.current === requestedConversationId
+    ) {
+      return;
+    }
+
+    openedConversationFromUrl.current = requestedConversationId;
+    transcriptDrawer.current?.showModal();
+    void activity.loadTranscript(requestedConversationId);
+  }, [activity, requestedConversationId]);
 
   function goBack() {
     router.push(getAvatarActivityTabPath(avatarId));
