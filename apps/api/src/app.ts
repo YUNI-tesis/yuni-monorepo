@@ -49,6 +49,11 @@ import {
   type AvatarActivityControllerDependencies,
 } from "./domains/activity/controller.js";
 import { createAvatarActivityDataRepository } from "./domains/activity/repository.js";
+import {
+  createCreatorDashboardController,
+  type CreatorDashboardControllerDependencies,
+} from "./domains/dashboard/controller.js";
+import { createCreatorDashboardDataRepository } from "./domains/dashboard/repository.js";
 import { requestLogger } from "./middleware/request-logger.js";
 import { internalServerError } from "./utils/errors.js";
 import {
@@ -70,6 +75,7 @@ export type AppDependencies = {
   share?: ShareLinksControllerDependencies;
   accessGrants?: AccessGrantsControllerDependencies;
   activity?: AvatarActivityControllerDependencies;
+  dashboard?: CreatorDashboardControllerDependencies;
   publicSessions?: PublicSessionsControllerDependencies;
 };
 
@@ -122,6 +128,9 @@ const defaultDependencies: AppDependencies = {
   },
   activity: {
     repository: createAvatarActivityDataRepository(prisma),
+  },
+  dashboard: {
+    repository: createCreatorDashboardDataRepository(prisma),
   },
   publicSessions: {
     repository: createPublicSessionRepository(prisma),
@@ -197,6 +206,9 @@ export function createApp(dependencies: AppDependencies = defaultDependencies) {
   }
   if (dependencies.activity) {
     app.route("/", createAvatarActivityController(dependencies.activity));
+  }
+  if (dependencies.dashboard) {
+    app.route("/", createCreatorDashboardController(dependencies.dashboard));
   }
   if (dependencies.publicSessions) {
     app.route("/", createPublicSessionsController(dependencies.publicSessions));

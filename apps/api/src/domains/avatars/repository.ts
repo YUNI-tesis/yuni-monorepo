@@ -54,6 +54,8 @@ export type AvatarListItemDto = {
   description: string;
   status: AvatarStatus;
   providerSyncStatus: ProviderSyncStatus;
+  thumbnailUrl: string | null;
+  interactionAvailability: AvatarInteractionAvailability;
   createdAt: string;
   updatedAt: string;
   access: {
@@ -63,6 +65,8 @@ export type AvatarListItemDto = {
     canInteract: boolean;
   };
 };
+
+export type AvatarInteractionAvailability = "ready" | "needs_attention" | "preparing" | "unavailable";
 
 export type AvatarAccessRecord =
   | {

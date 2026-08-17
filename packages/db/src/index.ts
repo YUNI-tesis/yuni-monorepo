@@ -3,6 +3,7 @@ export { createAvatarAgentRepository } from "./repositories/avatar-agent-reposit
 export { createAccessGrantRepository } from "./repositories/access-grant-repository";
 export { createAvatarActivityRepository } from "./repositories/avatar-activity-repository";
 export { createConversationRepository } from "./repositories/conversation-repository";
+export { createCreatorDashboardRepository } from "./repositories/creator-dashboard-repository";
 export { createDocumentChunkRepository } from "./repositories/document-chunk-repository";
 export { createDocumentRepository } from "./repositories/document-repository";
 export { createJobRepository } from "./repositories/job-repository";

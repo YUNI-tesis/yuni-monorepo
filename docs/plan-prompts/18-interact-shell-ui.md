@@ -1,5 +1,7 @@
 # Prompt: Interact Contextual UI
 
+Estado: implementado para MVP privado el 2026-06-21. `/interact/[avatarId]` usa modo foco casi fullscreen, oculta la navegacion global, muestra controles de llamada modernos y deja el historial en un panel lateral oculto por defecto. El chat de texto y el historial shared/public quedan fuera de este cierre.
+
 Armame un plan especifico para la experiencia de Interact como accion contextual de un avatar.
 
 Objetivo:

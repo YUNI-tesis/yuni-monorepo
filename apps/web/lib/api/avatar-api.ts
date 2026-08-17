@@ -4,6 +4,8 @@ import { apiRequest } from "./http-client";
 
 export type ApiAvatarStatus = "draft" | "active" | "disabled";
 
+export type AvatarInteractionAvailability = "ready" | "needs_attention" | "preparing" | "unavailable";
+
 export type ApiVoiceConfig = {
   provider: "openai" | "elevenlabs";
   voiceId: string;
@@ -46,6 +48,8 @@ export type ApiAvatarSummary = {
   description: string;
   status: ApiAvatarStatus;
   providerSyncStatus: "not_synced" | "synced" | "failed";
+  thumbnailUrl: string | null;
+  interactionAvailability: AvatarInteractionAvailability;
   createdAt: string;
   updatedAt: string;
   access: {

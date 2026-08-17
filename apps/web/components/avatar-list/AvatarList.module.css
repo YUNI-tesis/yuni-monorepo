@@ -48,56 +48,19 @@
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--yuni-space-4);
-}
-
-.card {
-  display: grid;
-  min-width: 0;
-  min-height: 230px;
-  align-content: space-between;
-  gap: var(--yuni-space-5);
-}
-
-.meta {
-  display: grid;
-  min-width: 0;
-  gap: var(--yuni-space-3);
-}
-
-.badges,
-.actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--yuni-space-2);
-}
-
-.title {
-  margin: 0;
-  font-size: var(--yuni-font-lg);
-  line-height: 1.2;
-  overflow-wrap: anywhere;
-}
-
-.description {
-  margin: 0;
-  color: var(--yuni-color-text-muted);
-  line-height: 1.55;
-  overflow-wrap: anywhere;
-}
-
-.sharedNotice {
-  margin: 0;
-  border-left: 3px solid var(--yuni-color-warning);
-  padding-left: var(--yuni-space-3);
-  color: var(--yuni-color-text-muted);
-  line-height: 1.5;
 }
 
 .emptyCard {
   display: grid;
   gap: var(--yuni-space-4);
+}
+
+@media (max-width: 900px) {
+  .grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 520px) {
@@ -106,12 +69,8 @@
     grid-template-columns: 1fr;
   }
 
-  .actions {
-    display: grid;
-  }
-
-  .actions button {
-    width: 100%;
+  .grid {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 

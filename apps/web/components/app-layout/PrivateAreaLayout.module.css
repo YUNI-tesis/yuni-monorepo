@@ -91,10 +91,15 @@
 }
 
 .brandText {
-  color: var(--yuni-color-text);
+  background: linear-gradient(180deg, var(--yuni-color-primary) 0%, var(--yuni-color-accent) 100%);
+  background-clip: text;
+  color: var(--yuni-color-primary);
+  font-family: "Audiowide", sans-serif;
   font-size: var(--yuni-font-md);
   font-weight: 900;
   letter-spacing: 0.08em;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
 .nav {

@@ -16,7 +16,13 @@ import {
   type ElevenLabsAgentProvider,
   type ElevenLabsVoiceOption,
 } from "@yuni/voice";
-import type { AvatarAgentDto, AvatarAgentRecord, AvatarListItemDto, AvatarsRepository } from "./repository";
+import type {
+  AvatarAgentDto,
+  AvatarAgentRecord,
+  AvatarInteractionAvailability,
+  AvatarListItemDto,
+  AvatarsRepository,
+} from "./repository";
 import { toAvatarAgentDto } from "./repository";
 
 export class AvatarVoiceNotFoundError extends Error {
@@ -163,8 +169,14 @@ export function createAvatarsService(dependencies: AvatarsServiceDependencies) {
   };
 }
 
-function toAvatarListItemDto(avatar: AvatarAgentRecord, accessType: "owner" | "shared"): AvatarListItemDto {
+export function toAvatarListItemDto(
+  avatar: AvatarAgentRecord,
+  accessType: "owner" | "shared"
+): AvatarListItemDto {
   const isOwner = accessType === "owner";
+  const parsedLiveAvatarConfig = LiveAvatarConfigSchema.safeParse(avatar.liveAvatarConfig);
+  const hasValidConfiguration =
+    VoiceConfigSchema.safeParse(avatar.voiceConfig).success && parsedLiveAvatarConfig.success;
 
   return {
     id: avatar.id,
@@ -172,6 +184,10 @@ function toAvatarListItemDto(avatar: AvatarAgentRecord, accessType: "owner" | "s
     description: avatar.description,
     status: avatar.status,
     providerSyncStatus: avatar.providerSyncStatus,
+    thumbnailUrl: parsedLiveAvatarConfig.success
+      ? readSafeThumbnailUrl(parsedLiveAvatarConfig.data.thumbnailUrl)
+      : null,
+    interactionAvailability: getInteractionAvailability(avatar, accessType, hasValidConfiguration),
     createdAt: avatar.createdAt.toISOString(),
     updatedAt: avatar.updatedAt.toISOString(),
     access: {
@@ -181,6 +197,36 @@ function toAvatarListItemDto(avatar: AvatarAgentRecord, accessType: "owner" | "s
       canInteract: true,
     },
   };
+}
+
+function getInteractionAvailability(
+  avatar: AvatarAgentRecord,
+  accessType: "owner" | "shared",
+  hasValidConfiguration: boolean
+): AvatarInteractionAvailability {
+  if (accessType === "owner") {
+    return !hasValidConfiguration || avatar.providerSyncStatus === "failed" ? "needs_attention" : "ready";
+  }
+
+  if (!hasValidConfiguration || avatar.providerSyncStatus === "failed") {
+    return "unavailable";
+  }
+
+  return avatar.providerSyncStatus === "synced" && Boolean(avatar.providerAgentId) ? "ready" : "preparing";
+}
+
+function readSafeThumbnailUrl(value: string | null | undefined): string | null {
+  if (!value) {
+    return null;
+  }
+
+  try {
+    const url = new URL(value);
+
+    return url.protocol === "https:" || url.protocol === "http:" ? url.toString() : null;
+  } catch {
+    return null;
+  }
 }
 
 export type AvatarsService = ReturnType<typeof createAvatarsService>;

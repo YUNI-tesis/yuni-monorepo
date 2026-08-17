@@ -1,4 +1,13 @@
-import type { ApiAvatar, ApiAvatarStatus } from "../../lib/api/avatar-api";
+import type { ApiAvatar } from "../../lib/api/avatar-api";
+
+export const avatarProfileTabs = [
+  { value: "info", label: "Información" },
+  { value: "contexto", label: "Contexto" },
+  { value: "compartir", label: "Compartir" },
+  { value: "actividad", label: "Actividad" },
+] as const;
+
+export type AvatarProfileTab = (typeof avatarProfileTabs)[number]["value"];
 
 export type LiveAvatarSummary = {
   avatarId: string;
@@ -15,39 +24,77 @@ export type VoiceSummary = {
   description: string;
 };
 
-export function formatAvatarStatus(status: ApiAvatarStatus): string {
-  const labels: Record<ApiAvatarStatus, string> = {
-    active: "Activo",
-    draft: "Borrador",
-    disabled: "Inactivo",
+export type AvatarProfileTone = "success" | "warning" | "danger" | "neutral";
+
+export type AvatarHeaderState = {
+  label: string;
+  tone: AvatarProfileTone;
+};
+
+export function resolveAvatarProfileTab(value: string | null | undefined): AvatarProfileTab {
+  if (value === "share") {
+    return "compartir";
+  }
+
+  if (value === "activity") {
+    return "actividad";
+  }
+
+  return avatarProfileTabs.some((tab) => tab.value === value) ? (value as AvatarProfileTab) : "info";
+}
+
+export function getAvatarHeaderState(avatar: ApiAvatar): AvatarHeaderState {
+  if (avatar.status === "disabled") {
+    return {
+      label: "Inactivo",
+      tone: "neutral",
+    };
+  }
+
+  if (avatar.status === "draft") {
+    return {
+      label: "Borrador",
+      tone: "warning",
+    };
+  }
+
+  if (avatar.providerSyncStatus === "failed") {
+    return {
+      label: "Revisar configuración",
+      tone: "danger",
+    };
+  }
+
+  if (!hasConfiguredVoice(avatar) || !hasConfiguredLiveAvatar(avatar)) {
+    return {
+      label: "Configuración incompleta",
+      tone: "warning",
+    };
+  }
+
+  if (avatar.providerSyncStatus === "not_synced") {
+    return {
+      label: "Preparando cambios",
+      tone: "warning",
+    };
+  }
+
+  return {
+    label: "Listo para usar",
+    tone: "success",
   };
-
-  return labels[status];
 }
 
-export function getAvatarStatusTone(status: ApiAvatarStatus) {
-  if (status === "active") {
-    return "success";
-  }
+export function hasConfiguredVoice(avatar: ApiAvatar): boolean {
+  const config = readRecord(avatar.voiceConfig);
 
-  if (status === "disabled") {
-    return "danger";
-  }
-
-  return "warning";
+  return readString(config.voiceId, "").trim().length > 0;
 }
 
-export function formatDateTime(value: string): string {
-  const date = new Date(value);
+export function hasConfiguredLiveAvatar(avatar: ApiAvatar): boolean {
+  const config = readRecord(avatar.liveAvatarConfig);
 
-  if (Number.isNaN(date.getTime())) {
-    return "Fecha no disponible";
-  }
-
-  return new Intl.DateTimeFormat("es-AR", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(date);
+  return readString(config.avatarId, "").trim().length > 0;
 }
 
 export function getLiveAvatarSummary(avatar: ApiAvatar): LiveAvatarSummary {
