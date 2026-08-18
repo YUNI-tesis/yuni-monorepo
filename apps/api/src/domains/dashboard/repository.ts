@@ -3,7 +3,7 @@ import { createCreatorDashboardRepository, type PrismaClientInstance } from "@yu
 export type CreatorDashboardAvatarRecord = {
   id: string;
   name: string;
-  providerSyncStatus: "not_synced" | "synced" | "failed";
+  providerSyncStatus: "not_synced" | "syncing" | "synced" | "failed";
 };
 
 export type CreatorDashboardGrantRecord = {

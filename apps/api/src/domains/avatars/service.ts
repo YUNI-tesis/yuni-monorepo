@@ -16,6 +16,7 @@ import {
   type ElevenLabsAgentProvider,
   type ElevenLabsVoiceOption,
 } from "@yuni/voice";
+import type { CreateJobInput } from "@yuni/domain";
 import type {
   AvatarAgentDto,
   AvatarAgentRecord,
@@ -38,6 +39,7 @@ export type AvatarsServiceDependencies = {
   avatarProvider?: Pick<AvatarProvider, "listAvatars">;
   elevenLabsVoiceProvider?: Pick<ElevenLabsAgentProvider, "listVoices">;
   elevenLabsAgentProvider?: Pick<ElevenLabsAgentProvider, "syncAvatarAgent">;
+  jobs?: { enqueue(input: CreateJobInput): Promise<unknown> };
 };
 
 export function createAvatarsService(dependencies: AvatarsServiceDependencies) {
@@ -45,15 +47,20 @@ export function createAvatarsService(dependencies: AvatarsServiceDependencies) {
 
   return {
     async createAvatar(ownerId: string, input: CreateAvatarAgentInput): Promise<AvatarAgentDto> {
-      const avatar = await repository.create(
-        ownerId,
-        await withEffectiveVoiceConfig(
-          await withEffectiveLiveAvatarConfig(input, liveAvatarConfig, avatarProvider),
-          elevenLabsVoiceProvider
-        )
+      const effectiveInput = await withEffectiveVoiceConfig(
+        await withEffectiveLiveAvatarConfig(input, liveAvatarConfig, avatarProvider),
+        elevenLabsVoiceProvider
       );
+      const avatar =
+        dependencies.jobs && repository.createWithProviderJobs
+          ? await repository.createWithProviderJobs(ownerId, effectiveInput)
+          : await repository.create(ownerId, effectiveInput);
 
-      return toAvatarAgentDto(await syncAgentAfterSave(dependencies, ownerId, avatar));
+      return toAvatarAgentDto(
+        dependencies.jobs && repository.createWithProviderJobs
+          ? avatar
+          : await syncOrQueueAgentAfterSave(dependencies, ownerId, avatar)
+      );
     },
 
     async listAvatars(ownerId: string, scope: AvatarListScope = "all"): Promise<AvatarListItemDto[]> {
@@ -103,7 +110,8 @@ export function createAvatarsService(dependencies: AvatarsServiceDependencies) {
             : "unavailable"
           : !hasValidConfiguration || access.avatar.providerSyncStatus === "failed"
             ? "unavailable"
-            : access.avatar.providerSyncStatus === "synced" && access.avatar.providerAgentId
+            : access.avatar.providerAgentId &&
+                (access.avatar.providerSyncStatus === "synced" || access.avatar.providerLastUsableAt)
               ? "ready"
               : "processing";
 
@@ -135,17 +143,21 @@ export function createAvatarsService(dependencies: AvatarsServiceDependencies) {
           throw new NotFoundError("Avatar not found");
         }
 
-        const updatedAvatar = await repository.updateForOwner(
-          ownerId,
-          avatarId,
-          await withEffectiveVoiceConfig(
-            await withEffectiveLiveAvatarConfig(input, liveAvatarConfig, avatarProvider, currentAvatar),
-            elevenLabsVoiceProvider,
-            currentAvatar
-          )
+        const effectiveInput = await withEffectiveVoiceConfig(
+          await withEffectiveLiveAvatarConfig(input, liveAvatarConfig, avatarProvider, currentAvatar),
+          elevenLabsVoiceProvider,
+          currentAvatar
         );
+        const updatedAvatar =
+          dependencies.jobs && repository.updateWithProviderJobs
+            ? await repository.updateWithProviderJobs(ownerId, avatarId, effectiveInput)
+            : await repository.updateForOwner(ownerId, avatarId, effectiveInput);
 
-        return toAvatarAgentDto(await syncAgentAfterSave(dependencies, ownerId, updatedAvatar));
+        return toAvatarAgentDto(
+          dependencies.jobs && repository.updateWithProviderJobs
+            ? updatedAvatar
+            : await syncOrQueueAgentAfterSave(dependencies, ownerId, updatedAvatar)
+        );
       } catch (error) {
         if (error instanceof OwnershipError) {
           throw new NotFoundError("Avatar not found");
@@ -157,7 +169,11 @@ export function createAvatarsService(dependencies: AvatarsServiceDependencies) {
 
     async deleteAvatar(ownerId: string, avatarId: string): Promise<void> {
       try {
-        await repository.deleteForOwner(ownerId, avatarId);
+        if (repository.deleteWithCleanup) {
+          await repository.deleteWithCleanup(ownerId, avatarId);
+        } else {
+          await repository.deleteForOwner(ownerId, avatarId);
+        }
       } catch (error) {
         if (error instanceof OwnershipError) {
           throw new NotFoundError("Avatar not found");
@@ -212,7 +228,9 @@ function getInteractionAvailability(
     return "unavailable";
   }
 
-  return avatar.providerSyncStatus === "synced" && Boolean(avatar.providerAgentId) ? "ready" : "preparing";
+  return avatar.providerAgentId && (avatar.providerSyncStatus === "synced" || avatar.providerLastUsableAt)
+    ? "ready"
+    : "preparing";
 }
 
 function readSafeThumbnailUrl(value: string | null | undefined): string | null {
@@ -381,6 +399,49 @@ async function syncAgentAfterSave(
       providerSyncedAt: null,
     });
   }
+}
+
+async function syncOrQueueAgentAfterSave(
+  dependencies: AvatarsServiceDependencies,
+  ownerId: string,
+  avatar: AvatarAgentRecord
+) {
+  if (!dependencies.jobs) return syncAgentAfterSave(dependencies, ownerId, avatar);
+
+  const queuedAvatar = await dependencies.repository.updateProviderSync(ownerId, avatar.id, {
+    agentProvider: "elevenlabs_agents",
+    providerSyncStatus: "syncing",
+    providerSyncError: null,
+  });
+  const contextFingerprint = await sha256(avatar.context);
+  const contextIsReady =
+    avatar.providerContextSyncStatus === "synced" && avatar.providerContextFingerprint === contextFingerprint;
+  await dependencies.jobs.enqueue(
+    contextIsReady
+      ? {
+          ownerId,
+          avatarAgentId: avatar.id,
+          type: "agent_provider_sync",
+          payload: { avatarId: avatar.id },
+          dedupeKey: `agent-sync:${avatar.id}:${avatar.updatedAt.getTime()}`,
+          maxAttempts: 8,
+        }
+      : {
+          ownerId,
+          avatarAgentId: avatar.id,
+          type: "avatar_context_provider_sync",
+          payload: { avatarId: avatar.id },
+          dedupeKey: `avatar-context:${avatar.id}:${contextFingerprint}:${avatar.updatedAt.getTime()}`,
+          maxAttempts: 8,
+        }
+  );
+  return queuedAvatar;
+}
+
+async function sha256(value: string) {
+  const bytes = new TextEncoder().encode(value);
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 function readReusableLiveAvatarSnapshot(avatarId: string, currentConfig: unknown) {

@@ -103,10 +103,7 @@ export function AvatarProfile({ avatarId }: { avatarId: string }) {
               tab.value === "info" ? (
                 <AvatarInfoTab avatar={avatar} />
               ) : tab.value === "contexto" ? (
-                <AvatarContextTab
-                  avatar={avatar}
-                  onEditContext={() => router.push(`/avatars/${avatar.id}/edit`)}
-                />
+                <AvatarContextTab avatarId={avatar.id} />
               ) : tab.value === "compartir" ? (
                 <AvatarShareTab avatar={avatar} />
               ) : (

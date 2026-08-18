@@ -1,6 +1,17 @@
 # Prompt: ElevenLabs Knowledge Base Background Context Sync
 
-Estado: pendiente. Refactorizado conceptualmente el 2026-06-19 por `0009-product-navigation-sharing-background-sync.md`.
+Estado: implementado el 2026-08-17. Refactorizado conceptualmente el 2026-06-19 por `0009-product-navigation-sharing-background-sync.md`.
+
+## Implementacion resultante
+
+- YUNI/PostgreSQL + S3-compatible storage son la fuente de verdad; ElevenLabs es una proyeccion reconstruible.
+- El texto corto se crea como documento `text` y se asocia con `usage_mode: "prompt"`.
+- Los archivos se suben como documento `file`, se indexan con `multilingual_e5_large_instruct` y se asocian con `usage_mode: "auto"`.
+- El prompt conserva el texto inline durante la migracion y lo retira solo cuando el documento textual ya es utilizable.
+- Los jobs efectivos son `avatar_context_provider_sync`, `document_provider_sync`, `agent_provider_sync`, `provider_document_cleanup` y `avatar_provider_cleanup`.
+- Los endpoints privados efectivos son `GET/PATCH /avatars/:avatarId/context`, presign/confirm, retry y delete de documentos.
+- `DocumentChunk` queda reservado para el RAG propio; este MVP entrega el archivo original a ElevenLabs.
+- La version provider anterior sigue disponible mediante `providerLastUsableAt` mientras una nueva proyeccion se procesa o falla.
 
 ## Objetivo
 
@@ -134,11 +145,14 @@ El provider debe resumir errores sin guardar secretos. Ejemplos:
 
 ## APIs YUNI
 
-Agregar endpoints privados de soporte:
+Endpoints privados implementados:
 
-- `POST /avatars/:avatarId/context-provider/sync`
-- `POST /documents/:documentId/provider-sync`
-- `GET /avatars/:avatarId/context-provider/status`
+- `GET /avatars/:avatarId/context`
+- `PATCH /avatars/:avatarId/context`
+- `POST /avatars/:avatarId/documents/presign-upload`
+- `POST /documents/:documentId/confirm-upload`
+- `POST /documents/:documentId/retry`
+- `DELETE /documents/:documentId`
 
 Reglas de API:
 

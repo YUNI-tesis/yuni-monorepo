@@ -77,6 +77,7 @@ export function createAvatarAgentRepository(db: Db) {
         providerSyncError?: string | null;
         providerSyncedAt?: Date | null;
         providerSyncFingerprint?: string | null;
+        providerLastUsableAt?: Date | null;
       }
     ) {
       const current = await this.findByIdForOwner(ownerId, avatarAgentId);
@@ -93,11 +94,28 @@ export function createAvatarAgentRepository(db: Db) {
       if (input.providerSyncFingerprint !== undefined) {
         data.providerSyncFingerprint = input.providerSyncFingerprint;
       }
+      if (input.providerLastUsableAt !== undefined) {
+        data.providerLastUsableAt = input.providerLastUsableAt;
+      }
 
       return db.avatarAgent.update({
         where: { id: avatarAgentId },
         data,
       });
+    },
+
+    updateContextProviderSync(
+      avatarAgentId: string,
+      data: {
+        providerContextDocumentId?: string | null;
+        providerContextSyncStatus?: "pending" | "syncing" | "synced" | "failed" | "deleting";
+        providerContextFingerprint?: string | null;
+        providerContextError?: string | null;
+        providerContextSyncedAt?: Date | null;
+        providerContextLastUsableAt?: Date | null;
+      }
+    ) {
+      return db.avatarAgent.update({ where: { id: avatarAgentId }, data });
     },
 
     listByOwner(ownerId: string) {

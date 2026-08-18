@@ -12,6 +12,10 @@
   },
   "dependencies": {
     "@yuni/config": "workspace:*",
-    "@yuni/observability": "workspace:*"
+    "@yuni/db": "workspace:*",
+    "@yuni/domain": "workspace:*",
+    "@yuni/observability": "workspace:*",
+    "@yuni/storage": "workspace:*",
+    "@yuni/voice": "workspace:*"
   }
 }

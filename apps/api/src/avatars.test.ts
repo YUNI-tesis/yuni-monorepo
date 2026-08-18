@@ -420,9 +420,7 @@ describe("@yuni/api avatars", () => {
     const body = (await json(response)) as {
       avatar: {
         voiceConfig: { provider: string; voiceId: string; displayName?: string; description?: string };
-        providerAgentId: string | null;
-        providerSyncStatus: string;
-        providerSyncError: string | null;
+        providerStatus: string;
       };
     };
 
@@ -433,9 +431,9 @@ describe("@yuni/api avatars", () => {
       displayName: "Agustin",
       description: "Relaxed, warm and approachable.",
     });
-    expect(body.avatar.providerAgentId).toBe("agent-1");
-    expect(body.avatar.providerSyncStatus).toBe("synced");
-    expect(body.avatar.providerSyncError).toBeNull();
+    expect(body.avatar.providerStatus).toBe("ready");
+    expect(body.avatar).not.toHaveProperty("providerAgentId");
+    expect(body.avatar).not.toHaveProperty("providerSyncError");
   });
 
   it("keeps the created avatar with failed sync state when ElevenLabs Agent sync fails", async () => {
@@ -460,17 +458,17 @@ describe("@yuni/api avatars", () => {
       ),
     });
     const body = (await json(response)) as {
-      avatar: { id: string; providerSyncStatus: string; providerSyncError: string | null };
+      avatar: { id: string; providerStatus: string };
     };
     const getResponse = await app.request(`/avatars/${body.avatar.id}`, { headers: { Cookie: cookie } });
     const getBody = (await json(getResponse)) as {
-      avatar: { providerSyncStatus: string; providerSyncError: string | null };
+      avatar: { providerStatus: string };
     };
 
     expect(response.status).toBe(201);
-    expect(body.avatar.providerSyncStatus).toBe("failed");
-    expect(body.avatar.providerSyncError).toBe("ElevenLabs returned 400: bad agent config");
-    expect(getBody.avatar.providerSyncStatus).toBe("failed");
+    expect(body.avatar.providerStatus).toBe("needs_attention");
+    expect(body.avatar).not.toHaveProperty("providerSyncError");
+    expect(getBody.avatar.providerStatus).toBe("needs_attention");
   });
 
   it("rejects new ElevenLabs voices when the provider catalog cannot validate metadata", async () => {

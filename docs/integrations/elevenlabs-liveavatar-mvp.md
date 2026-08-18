@@ -11,8 +11,8 @@ Flujo actual:
 1. El creador configura un avatar visual en YUNI.
 2. El wizard carga `My Voices` desde ElevenLabs por backend.
 3. El creador elige una voz ElevenLabs real.
-4. Al guardar, YUNI crea el avatar y crea o actualiza un ElevenLabs Agent desde el backend.
-5. YUNI guarda el `providerAgentId` del Agent en la base.
+4. Al guardar, YUNI persiste el avatar y encola la proyeccion del contexto y del ElevenLabs Agent.
+5. El worker crea o actualiza Knowledge Base y Agent sin bloquear el guardado ni una llamada que ya tenga una version utilizable.
 6. El backend pide a LiveAvatar un session token LITE usando el `agent_id` de ElevenLabs y el secret de LiveAvatar.
 7. El frontend recibe solo el token de sesion, nunca las API keys.
 8. `@heygen/liveavatar-web-sdk` conecta la llamada y emite eventos de habla/transcripcion.
@@ -192,6 +192,7 @@ ELEVENLABS_BASE_URL=https://api.elevenlabs.io
 ELEVENLABS_AGENT_LLM_MODEL=gpt-4o-mini
 ELEVENLABS_AGENT_TTS_MODEL=eleven_v3
 ELEVENLABS_REQUEST_TIMEOUT_MS=30000
+ELEVENLABS_RAG_MAX_DOCUMENTS_LENGTH=10000
 LIVEAVATAR_BASE_URL=https://api.liveavatar.com
 LIVEAVATAR_MODE=lite
 LIVEAVATAR_REQUEST_TIMEOUT_MS=10000
@@ -228,19 +229,37 @@ Despues de cambiar `.env.local`, reiniciar API y web.
 
    El avatar debe tener un `avatarId` valido de LiveAvatar. Para pruebas, usar un avatar disponible de la cuenta o catalogo de LiveAvatar.
 
-   En el paso de voz, YUNI muestra las voces de `My Voices` de ElevenLabs. Al guardar, el backend valida la voz contra ElevenLabs, guarda metadata confiable y sincroniza el ElevenLabs Agent inmediatamente.
+   En el paso de voz, YUNI muestra las voces de `My Voices` de ElevenLabs. Al guardar, el backend valida la voz contra ElevenLabs, guarda metadata confiable y encola la sincronizacion. La tab `Contexto` muestra cuando texto y documentos pasan de `Procesando` a `Listo`.
 
 4. Ir a `/interact`.
 
    Seleccionar el avatar y abrir la pantalla de llamada.
 
-5. Sincronizar o iniciar llamada.
+5. Esperar el primer estado `Listo` e iniciar llamada.
 
-   Normalmente el Agent ya queda sincronizado al guardar el avatar. Al iniciar llamada, el backend mantiene un auto-sync defensivo si falta `providerAgentId` o cambio el fingerprint del contexto/configuracion.
+   Iniciar una llamada no sube ni indexa documentos. Si una edicion posterior esta procesando o falla, YUNI usa la ultima version provider utilizable.
 
 6. Cortar llamada desde la UI.
 
    Al cortar, el frontend envia el transcript acumulado al backend y la sesion queda cerrada.
+
+## Knowledge Base y storage local
+
+Los documentos aceptados son PDF, DOCX, TXT, Markdown, HTML y EPUB, con un maximo de 20 MB por archivo. El contexto textual tiene un maximo de 20.000 caracteres. YUNI usa S3 como fuente de verdad y ElevenLabs Knowledge Base como proyeccion; el texto usa `prompt` y los archivos `auto` con RAG multilingue. Ver [Knowledge Base](https://elevenlabs.io/docs/eleven-agents/customization/knowledge-base), [gestion de documentos](https://elevenlabs.io/docs/eleven-agents/customization/knowledge-base/manage-documents) y [RAG](https://elevenlabs.io/docs/eleven-agents/customization/knowledge-base/rag).
+
+Para desarrollo local, `pnpm db:up` levanta PostgreSQL y MinIO. Variables recomendadas:
+
+```env
+S3_BUCKET=yuni-documents
+S3_ACCESS_KEY_ID=yuni
+S3_SECRET_ACCESS_KEY=yuni-development
+S3_ENDPOINT=http://localhost:9000
+S3_FORCE_PATH_STYLE=true
+S3_PRESIGN_TTL_SECONDS=900
+```
+
+MinIO expone la API en `http://localhost:9000` y la consola en `http://localhost:9001`.
+El compose habilita CORS para `http://localhost:3000`; un bucket S3 de staging/produccion debe permitir `PUT` y los headers firmados desde el origen web correspondiente.
 
 ## Como Funciona Internamente
 
@@ -415,7 +434,7 @@ Solucion: editar permisos de la API key y volver a intentar sync.
 Mensaje:
 
 ```json
-{"error":{"code":"BAD_GATEWAY","message":"Voice provider timed out"}}
+{ "error": { "code": "BAD_GATEWAY", "message": "Voice provider timed out" } }
 ```
 
 Causa probable: YUNI llego a ElevenLabs, pero ElevenLabs no respondio antes del timeout del backend. Esto puede pasar en el primer sync porque se crea el agent completo.
@@ -462,7 +481,7 @@ Solucion: copiar una voz desde `My Voices`, confirmar permisos y probar de nuevo
 Antes, YUNI podia devolver solo:
 
 ```json
-{"error":{"code":"BAD_GATEWAY","message":"Live Avatar session failed"}}
+{ "error": { "code": "BAD_GATEWAY", "message": "Live Avatar session failed" } }
 ```
 
 El adapter debe propagar el detalle real de LiveAvatar cuando el provider lo devuelva, por ejemplo `Invalid secret_id`, falta de creditos, avatar no encontrado o limite de concurrencia.

@@ -58,7 +58,7 @@ export function getAvatarHeaderState(avatar: ApiAvatar): AvatarHeaderState {
     };
   }
 
-  if (avatar.providerSyncStatus === "failed") {
+  if (avatar.providerStatus === "needs_attention") {
     return {
       label: "Revisar configuración",
       tone: "danger",
@@ -72,7 +72,7 @@ export function getAvatarHeaderState(avatar: ApiAvatar): AvatarHeaderState {
     };
   }
 
-  if (avatar.providerSyncStatus === "not_synced") {
+  if (avatar.providerStatus === "preparing") {
     return {
       label: "Preparando cambios",
       tone: "warning",

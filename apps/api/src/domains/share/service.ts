@@ -116,8 +116,11 @@ export function createShareLinksService({ repository, publicBaseUrl }: ShareLink
         capabilities: {
           voice:
             liveAvatarConfig.success &&
-            shareLink.avatarAgent.providerSyncStatus === "synced" &&
-            Boolean(shareLink.avatarAgent.providerAgentId)
+            Boolean(shareLink.avatarAgent.providerAgentId) &&
+            Boolean(
+              shareLink.avatarAgent.providerSyncStatus === "synced" ||
+              shareLink.avatarAgent.providerLastUsableAt
+            )
               ? "ready"
               : "unavailable",
         },

@@ -1,14 +1,8 @@
-import { appConfig } from "@yuni/config";
-import { createLogger } from "@yuni/observability";
+import { loadLocalEnv } from "@yuni/config/load-env";
 
-const logger = createLogger("@yuni/worker");
+loadLocalEnv();
 
-logger.info(`${appConfig.appName} worker ready`);
-
-function shutdown(signal: NodeJS.Signals) {
-  logger.info(`received ${signal}; shutting down`);
-  process.exit(0);
-}
-
-process.on("SIGINT", shutdown);
-process.on("SIGTERM", shutdown);
+const { startWorker } = await import("./main");
+const stop = await startWorker();
+process.once("SIGTERM", stop);
+process.once("SIGINT", stop);

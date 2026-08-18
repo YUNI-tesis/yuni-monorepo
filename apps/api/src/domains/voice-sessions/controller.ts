@@ -43,9 +43,9 @@ export function createVoiceSessionsController(dependencies: VoiceSessionsControl
     }
 
     try {
-      const sync = await service.syncAgentProvider(session.userId, context.req.param("avatarId"));
+      await service.syncAgentProvider(session.userId, context.req.param("avatarId"));
 
-      return context.json({ sync });
+      return context.json({ sync: { status: "ready" as const } });
     } catch (error) {
       return toVoiceSessionError(context, error);
     }

@@ -1,10 +1,8 @@
 "use client";
 
-import { Button, Card, ErrorState, FileDrop, FormField, Input, LoadingState, Textarea } from "@yuni/ui";
-import type {
-  AvatarEditState,
-  AvatarEditValidation,
-} from "../../hooks/useAvatarEdit";
+import { Button, Card, ErrorState, FormField, Input, LoadingState, Textarea } from "@yuni/ui";
+import { DocumentFileDrop } from "../context/DocumentFileDrop";
+import type { AvatarEditState, AvatarEditValidation } from "../../hooks/useAvatarEdit";
 import type { ElevenLabsVoiceOptionsState } from "../../hooks/useElevenLabsVoiceOptions";
 import type { LiveAvatarOptionsState } from "../../hooks/useLiveAvatarOptions";
 import { LiveAvatarPicker } from "../live-avatar/LiveAvatarPicker";
@@ -136,7 +134,10 @@ export function AvatarEditForm({
         </section>
 
         <section className={styles.section}>
-          <SectionHeader title="Persona" description="Define cómo debe comportarse el agente cuando responda." />
+          <SectionHeader
+            title="Persona"
+            description="Define cómo debe comportarse el agente cuando responda."
+          />
           <FormField
             label="Instrucciones"
             htmlFor="avatar-edit-instructions"
@@ -161,16 +162,11 @@ export function AvatarEditForm({
             <Textarea
               id="avatar-edit-context"
               value={state.context}
+              maxLength={20_000}
               onChange={(event) => onFieldChange("context", event.currentTarget.value)}
             />
           </FormField>
-          <FileDrop
-            title="Subir contexto"
-            description="Carga archivos para que el agente base sus respuestas en ese contenido."
-            accept=".pdf,.txt,.doc,.docx"
-            files={state.files}
-            onFilesSelected={(files) => onFieldChange("files", files)}
-          />
+          <DocumentFileDrop files={state.files} onFilesSelected={(files) => onFieldChange("files", files)} />
         </section>
 
         {errors.form ? <ErrorState title="No pudimos guardar" description={errors.form} /> : null}

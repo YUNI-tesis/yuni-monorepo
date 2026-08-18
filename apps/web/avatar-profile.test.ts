@@ -34,12 +34,8 @@ const avatar: ApiAvatar = {
     mode: "lite",
     sandbox: true,
   },
-  agentProvider: "elevenlabs_agents",
-  providerAgentId: null,
-  providerSyncStatus: "not_synced",
-  providerSyncError: null,
-  providerSyncedAt: null,
-  providerSyncFingerprint: null,
+  providerStatus: "preparing",
+  hasPreviousUsableVersion: false,
   status: "active",
   createdAt: "2026-05-21T13:30:00.000Z",
   updatedAt: "2026-05-21T14:45:00.000Z",
@@ -100,11 +96,11 @@ describe("avatar profile", () => {
   });
 
   it.each([
-    [{ status: "disabled", providerSyncStatus: "failed" }, "Inactivo", "neutral"],
-    [{ status: "draft", providerSyncStatus: "failed" }, "Borrador", "warning"],
-    [{ status: "active", providerSyncStatus: "failed" }, "Revisar configuración", "danger"],
-    [{ status: "active", providerSyncStatus: "not_synced" }, "Preparando cambios", "warning"],
-    [{ status: "active", providerSyncStatus: "synced" }, "Listo para usar", "success"],
+    [{ status: "disabled", providerStatus: "needs_attention" }, "Inactivo", "neutral"],
+    [{ status: "draft", providerStatus: "needs_attention" }, "Borrador", "warning"],
+    [{ status: "active", providerStatus: "needs_attention" }, "Revisar configuración", "danger"],
+    [{ status: "active", providerStatus: "preparing" }, "Preparando cambios", "warning"],
+    [{ status: "active", providerStatus: "ready" }, "Listo para usar", "success"],
   ] as const)("maps status %o to the human header state", (overrides, label, tone) => {
     expect(getAvatarHeaderState({ ...avatar, ...overrides })).toEqual({ label, tone });
   });
@@ -113,7 +109,7 @@ describe("avatar profile", () => {
     expect(
       getAvatarHeaderState({
         ...avatar,
-        providerSyncStatus: "synced",
+        providerStatus: "ready",
         voiceConfig: {},
       })
     ).toEqual({
@@ -124,7 +120,7 @@ describe("avatar profile", () => {
     expect(
       getAvatarHeaderState({
         ...avatar,
-        providerSyncStatus: "synced",
+        providerStatus: "ready",
         liveAvatarConfig: {},
       })
     ).toEqual({

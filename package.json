@@ -15,7 +15,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "pnpm -r test",
-    "db:up": "docker compose up -d postgres",
+    "db:up": "docker compose up -d postgres minio minio-init",
     "db:up:test": "docker compose up -d postgres-test",
     "db:down": "docker compose down",
     "db:down:volumes": "docker compose down -v",

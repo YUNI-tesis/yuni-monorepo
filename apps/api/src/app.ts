@@ -1,6 +1,13 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import { clientEnv, appConfig, authConfig, liveAvatarConfig, rateLimitConfig } from "@yuni/config";
+import {
+  clientEnv,
+  appConfig,
+  authConfig,
+  liveAvatarConfig,
+  rateLimitConfig,
+  hasS3Config,
+} from "@yuni/config";
 import { LiveAvatarProvider } from "@yuni/avatars";
 import {
   createAccessGrantRepository,
@@ -8,8 +15,10 @@ import {
   createMessageRepository,
   createPublicSessionRepository,
   createRealtimeSessionRepository,
+  createJobRepository,
   prisma,
 } from "@yuni/db";
+import { S3ObjectStorage } from "@yuni/storage";
 import { ElevenLabsAgentProvider } from "@yuni/voice";
 import { createOpenAiConversationTitleGenerator } from "@yuni/ai";
 import { createLogger } from "@yuni/observability";
@@ -64,6 +73,11 @@ import { createPublicTokenService } from "./domains/public-sessions/tokens.js";
 import { createInMemoryPublicSessionRateLimiter } from "./domains/public-sessions/rate-limiter.js";
 import { createProviderTokenProtector } from "./domains/public-sessions/provider-token-protector.js";
 import { createPublicSessionsService } from "./domains/public-sessions/service.js";
+import {
+  createAvatarContextController,
+  type AvatarContextControllerDependencies,
+} from "./domains/context/controller.js";
+import { createAvatarContextRepository } from "./domains/context/repository.js";
 
 export type AppDependencies = {
   auth: AuthControllerDependencies;
@@ -77,6 +91,7 @@ export type AppDependencies = {
   activity?: AvatarActivityControllerDependencies;
   dashboard?: CreatorDashboardControllerDependencies;
   publicSessions?: PublicSessionsControllerDependencies;
+  context?: AvatarContextControllerDependencies;
 };
 
 const liveAvatarProvider = new LiveAvatarProvider();
@@ -99,6 +114,7 @@ const defaultDependencies: AppDependencies = {
     avatarProvider: liveAvatarProvider,
     elevenLabsVoiceProvider: elevenLabsAgentProvider,
     elevenLabsAgentProvider,
+    jobs: createJobRepository(prisma),
   },
   liveAvatar: {
     provider: liveAvatarProvider,
@@ -115,6 +131,7 @@ const defaultDependencies: AppDependencies = {
     liveAvatarProvider,
     elevenLabsAgentProvider,
     conversationTitleGenerator,
+    backgroundSyncEnabled: true,
   },
   voiceProviders: {
     elevenLabsVoiceProvider: elevenLabsAgentProvider,
@@ -141,6 +158,10 @@ const defaultDependencies: AppDependencies = {
     publicSessionMaxMessages: rateLimitConfig.publicSessionMaxMessages,
     providerTokenProtector: createProviderTokenProtector(authConfig.secret),
     conversationTitleGenerator,
+  },
+  context: {
+    repository: createAvatarContextRepository(prisma),
+    ...(hasS3Config() ? { storage: new S3ObjectStorage() } : {}),
   },
 };
 
@@ -212,6 +233,9 @@ export function createApp(dependencies: AppDependencies = defaultDependencies) {
   }
   if (dependencies.publicSessions) {
     app.route("/", createPublicSessionsController(dependencies.publicSessions));
+  }
+  if (dependencies.context) {
+    app.route("/", createAvatarContextController(dependencies.context));
   }
 
   return app;

@@ -9,6 +9,7 @@ export type ElevenLabsConfig = {
   agentLlmModel: string;
   agentTtsModel: string;
   requestTimeoutMs: number;
+  ragMaxDocumentsLength?: number;
 };
 
 export function createElevenLabsConfig(env: RawEnv): ElevenLabsConfig {
@@ -19,6 +20,7 @@ export function createElevenLabsConfig(env: RawEnv): ElevenLabsConfig {
     agentLlmModel: env.ELEVENLABS_AGENT_LLM_MODEL,
     agentTtsModel: env.ELEVENLABS_AGENT_TTS_MODEL,
     requestTimeoutMs: env.ELEVENLABS_REQUEST_TIMEOUT_MS,
+    ragMaxDocumentsLength: env.ELEVENLABS_RAG_MAX_DOCUMENTS_LENGTH,
   };
 }
 

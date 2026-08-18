@@ -182,7 +182,7 @@ export function PrivateAreaLayout({
       {variant === "standard" ? (
         <header className={styles.header}>
           <div className={styles.headerInner}>
-            <Link className={styles.brandLink} href="/dashboard" aria-label="Ir al dashboard de YUNI">
+            <Link className={styles.brandLink} href="/" aria-label="YUNI, volver a la landing">
               <YuniLogo className={styles.logo} aria-hidden="true" focusable="false" />
               <span className={styles.brandText}>YUNI</span>
             </Link>

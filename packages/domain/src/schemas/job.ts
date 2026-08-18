@@ -7,6 +7,7 @@ export const CreateJobInputSchema = z.strictObject({
   avatarAgentId: YuniIdSchema.optional(),
   type: JobTypeSchema,
   payload: z.record(z.string(), z.unknown()),
+  dedupeKey: z.string().trim().min(1).max(255).optional(),
   maxAttempts: z.number().int().positive().default(3),
   runAfter: z.date().optional(),
 });

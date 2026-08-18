@@ -6,7 +6,7 @@ export type AvatarStatus = z.infer<typeof AvatarStatusSchema>;
 export const AgentProviderSchema = z.enum(["elevenlabs_agents", "openai_realtime", "none"]);
 export type AgentProvider = z.infer<typeof AgentProviderSchema>;
 
-export const ProviderSyncStatusSchema = z.enum(["not_synced", "synced", "failed"]);
+export const ProviderSyncStatusSchema = z.enum(["not_synced", "syncing", "synced", "failed"]);
 export type ProviderSyncStatus = z.infer<typeof ProviderSyncStatusSchema>;
 
 export const ShareLinkStatusSchema = z.enum(["enabled", "disabled"]);
@@ -33,13 +33,36 @@ export type PublicSessionStatus = z.infer<typeof PublicSessionStatusSchema>;
 export const RealtimeSessionStatusSchema = z.enum(["connecting", "active", "ended", "errored"]);
 export type RealtimeSessionStatus = z.infer<typeof RealtimeSessionStatusSchema>;
 
-export const DocumentStatusSchema = z.enum(["uploaded", "ingesting", "ready", "failed"]);
+export const ContextSyncStatusSchema = z.enum(["pending", "syncing", "synced", "failed", "deleting"]);
+export type ContextSyncStatus = z.infer<typeof ContextSyncStatusSchema>;
+
+export const DocumentStatusSchema = z.enum(["pending_upload", "processing", "ready", "failed", "deleting"]);
 export type DocumentStatus = z.infer<typeof DocumentStatusSchema>;
+
+export const DocumentProviderSyncStatusSchema = z.enum([
+  "pending",
+  "uploading",
+  "indexing",
+  "attaching",
+  "synced",
+  "failed",
+  "deleting",
+  "deleted",
+]);
+export type DocumentProviderSyncStatus = z.infer<typeof DocumentProviderSyncStatusSchema>;
 
 export const UsageOperationSchema = z.enum(["chat_completion", "embedding", "stt", "tts", "live_avatar"]);
 export type UsageOperation = z.infer<typeof UsageOperationSchema>;
 
-export const JobTypeSchema = z.enum(["document_ingest", "session_cleanup"]);
+export const JobTypeSchema = z.enum([
+  "document_ingest",
+  "session_cleanup",
+  "avatar_context_provider_sync",
+  "document_provider_sync",
+  "agent_provider_sync",
+  "provider_document_cleanup",
+  "avatar_provider_cleanup",
+]);
 export type JobType = z.infer<typeof JobTypeSchema>;
 
 export const JobStatusSchema = z.enum(["queued", "running", "done", "failed"]);

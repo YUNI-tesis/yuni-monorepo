@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Badge, Button, Card, ErrorState, FormField, Input, LoadingState, PageShell } from "@yuni/ui";
+import Link from "next/link";
 import { YuniLogo } from "../../../components/brand/YuniLogo";
 import { InteractCallControls } from "../../../components/interact/InteractCall";
 import { useLiveAvatarSession } from "../../../hooks/useLiveAvatarSession";
@@ -155,11 +156,7 @@ export function PublicAvatarView({ slug }: { slug: string }) {
       return;
     }
     if (
-      requiresRenewedPublicConsent(
-        hasStarted,
-        consentRestoredFromIdentity,
-        Boolean(readStoredIdentity(slug))
-      )
+      requiresRenewedPublicConsent(hasStarted, consentRestoredFromIdentity, Boolean(readStoredIdentity(slug)))
     ) {
       setHasStarted(false);
       setConsent(false);
@@ -176,9 +173,11 @@ export function PublicAvatarView({ slug }: { slug: string }) {
   return (
     <PageShell centered maxWidth={hasStarted ? "calc(100vw - 32px)" : "820px"} className={styles.page}>
       {!hasStarted ? (
-        <header className={styles.brand}>
-          <YuniLogo className={styles.logo} aria-hidden="true" />
-          <span>YUNI</span>
+        <header>
+          <Link className={styles.brand} href="/" aria-label="YUNI, volver a la landing">
+            <YuniLogo className={styles.logo} aria-hidden="true" />
+            <span>YUNI</span>
+          </Link>
         </header>
       ) : null}
 
@@ -313,10 +312,10 @@ function PublicCallExperience({
   return (
     <div className={styles.callLayout}>
       <header className={styles.callHeader}>
-        <div className={styles.callBrand}>
+        <Link className={styles.callBrand} href="/" aria-label="YUNI, volver a la landing">
           <YuniLogo aria-hidden="true" />
           <span>YUNI</span>
-        </div>
+        </Link>
         <div className={styles.callTitle}>
           <p className="yuni-eyebrow">Llamada pública</p>
           <h1>{avatar.avatar.name}</h1>

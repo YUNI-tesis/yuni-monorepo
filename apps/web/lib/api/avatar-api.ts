@@ -31,12 +31,8 @@ export type ApiAvatar = {
   context: string;
   voiceConfig: unknown;
   liveAvatarConfig: unknown;
-  agentProvider: "elevenlabs_agents" | "openai_realtime" | "none";
-  providerAgentId: string | null;
-  providerSyncStatus: "not_synced" | "synced" | "failed";
-  providerSyncError: string | null;
-  providerSyncedAt: string | null;
-  providerSyncFingerprint: string | null;
+  providerStatus: "preparing" | "ready" | "needs_attention";
+  hasPreviousUsableVersion: boolean;
   status: ApiAvatarStatus;
   createdAt: string;
   updatedAt: string;
@@ -47,7 +43,7 @@ export type ApiAvatarSummary = {
   name: string;
   description: string;
   status: ApiAvatarStatus;
-  providerSyncStatus: "not_synced" | "synced" | "failed";
+  providerSyncStatus: "not_synced" | "syncing" | "synced" | "failed";
   thumbnailUrl: string | null;
   interactionAvailability: AvatarInteractionAvailability;
   createdAt: string;
@@ -75,6 +71,37 @@ export type ApiInteractionContext = {
   voiceAvailability: "ready" | "processing" | "unavailable";
 };
 
+export type ApiContextDocumentStatus = "pending_upload" | "processing" | "ready" | "failed" | "deleting";
+
+export type ApiContextDocument = {
+  id: string;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  status: ApiContextDocumentStatus;
+  hasPreviousUsableVersion: boolean;
+  error: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ApiAvatarContext = {
+  text: string;
+  status: "ready" | "processing" | "failed";
+  hasPreviousUsableVersion: boolean;
+  updatedAt: string;
+  documents: ApiContextDocument[];
+};
+
+export type PresignedDocumentUpload = {
+  document: ApiContextDocument;
+  upload: {
+    uploadUrl: string;
+    headers: Record<string, string>;
+    expiresAt: string;
+  };
+};
+
 export type AvatarListScope = "all" | "owned" | "shared";
 
 export type CreateAvatarRequest = {
@@ -90,9 +117,7 @@ export type CreateAvatarRequest = {
 export type UpdateAvatarRequest = Partial<CreateAvatarRequest>;
 
 export type ApiAgentProviderSync = {
-  providerAgentId: string;
-  providerSyncFingerprint: string;
-  synced: boolean;
+  status: "ready";
 };
 
 export type ApiVoiceSession = {
@@ -191,6 +216,97 @@ export function updateAvatar(avatarId: string, input: UpdateAvatarRequest) {
     method: "PATCH",
     body: JSON.stringify(input),
   });
+}
+
+export function getAvatarContext(avatarId: string) {
+  return apiRequest<{ context: ApiAvatarContext }>(`/avatars/${avatarId}/context`);
+}
+
+export function updateAvatarContext(avatarId: string, text: string) {
+  return apiRequest<{ context: ApiAvatarContext }>(`/avatars/${avatarId}/context`, {
+    method: "PATCH",
+    body: JSON.stringify({ text }),
+  });
+}
+
+export function presignDocumentUpload(
+  avatarId: string,
+  input: { fileName: string; mimeType: string; sizeBytes: number }
+) {
+  return apiRequest<PresignedDocumentUpload>(`/avatars/${avatarId}/documents/presign-upload`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function confirmDocumentUpload(documentId: string) {
+  return apiRequest<{ document: ApiContextDocument }>(`/documents/${documentId}/confirm-upload`, {
+    method: "POST",
+  });
+}
+
+export function retryDocument(documentId: string) {
+  return apiRequest<{ document: ApiContextDocument }>(`/documents/${documentId}/retry`, {
+    method: "POST",
+  });
+}
+
+export function deleteDocument(documentId: string) {
+  return apiRequest<{ ok: true }>(`/documents/${documentId}`, { method: "DELETE" });
+}
+
+export async function uploadAvatarDocument(
+  avatarId: string,
+  file: File,
+  onProgress?: (progress: number) => void
+) {
+  const mimeType = getSupportedDocumentMimeType(file);
+  const presigned = await presignDocumentUpload(avatarId, {
+    fileName: file.name,
+    mimeType,
+    sizeBytes: file.size,
+  });
+  await putFile(presigned.upload.uploadUrl, presigned.upload.headers, file, onProgress);
+  return confirmDocumentUpload(presigned.document.id);
+}
+
+function putFile(
+  url: string,
+  headers: Record<string, string>,
+  file: File,
+  onProgress?: (progress: number) => void
+) {
+  return new Promise<void>((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open("PUT", url);
+    for (const [name, value] of Object.entries(headers)) request.setRequestHeader(name, value);
+    request.upload.onprogress = (event) => {
+      if (event.lengthComputable) onProgress?.(Math.round((event.loaded / event.total) * 100));
+    };
+    request.onload = () => {
+      if (request.status >= 200 && request.status < 300) resolve();
+      else reject(new Error("No pudimos subir el archivo."));
+    };
+    request.onerror = () => reject(new Error("No pudimos subir el archivo."));
+    request.send(file);
+  });
+}
+
+export function getSupportedDocumentMimeType(file: Pick<File, "name" | "type">) {
+  const extension = file.name.split(".").pop()?.toLowerCase();
+  const byExtension: Record<string, string> = {
+    pdf: "application/pdf",
+    docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    txt: "text/plain",
+    md: "text/markdown",
+    markdown: "text/markdown",
+    html: "text/html",
+    htm: "text/html",
+    epub: "application/epub+zip",
+  };
+  const mime = extension ? byExtension[extension] : undefined;
+  if (!mime) throw new Error("Formato no soportado. Usá PDF, DOCX, TXT, Markdown, HTML o EPUB.");
+  return mime;
 }
 
 export function syncAgentProvider(avatarId: string) {

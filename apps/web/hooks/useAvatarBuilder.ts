@@ -55,6 +55,10 @@ export function validateAvatarBuilderState(state: AvatarBuilderState): AvatarBui
     errors.instructions = "Las instrucciones son obligatorias.";
   }
 
+  if (state.context.length > 20_000) {
+    errors.context = "El contexto textual admite hasta 20.000 caracteres.";
+  }
+
   return errors;
 }
 
@@ -106,7 +110,10 @@ export function buildCreateAvatarRequest(
   };
 }
 
-export function useAvatarBuilder(liveAvatarOptions: ApiLiveAvatarOption[] = [], voiceOptions: VoiceOption[] = []) {
+export function useAvatarBuilder(
+  liveAvatarOptions: ApiLiveAvatarOption[] = [],
+  voiceOptions: VoiceOption[] = []
+) {
   const [state, setState] = useState(createInitialAvatarBuilderState);
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [errors, setErrors] = useState<AvatarBuilderValidation>({});
@@ -150,7 +157,10 @@ export function useAvatarBuilder(liveAvatarOptions: ApiLiveAvatarOption[] = [], 
     });
   }, [state.voiceId, voiceOptions]);
 
-  function updateField<Field extends keyof AvatarBuilderState>(field: Field, value: AvatarBuilderState[Field]) {
+  function updateField<Field extends keyof AvatarBuilderState>(
+    field: Field,
+    value: AvatarBuilderState[Field]
+  ) {
     setState((currentState) => ({ ...currentState, [field]: value }));
     setErrors((currentErrors) => {
       const nextErrors = { ...currentErrors };

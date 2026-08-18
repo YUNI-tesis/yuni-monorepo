@@ -1,9 +1,9 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Button, ErrorState, LoadingState, PageHeader } from "@yuni/ui";
-import { updateAvatar } from "../../lib/api/avatar-api";
+import { updateAvatar, uploadAvatarDocument } from "../../lib/api/avatar-api";
 import { ApiClientError } from "../../lib/api/http-client";
 import { buildUpdateAvatarRequest, useAvatarEdit } from "../../hooks/useAvatarEdit";
 import { useElevenLabsVoiceOptions } from "../../hooks/useElevenLabsVoiceOptions";
@@ -27,6 +27,7 @@ export function AvatarEdit({ avatarId }: { avatarId: string }) {
     includeCurrentFallback: true,
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const uploadedFiles = useRef(new Set<string>());
 
   if (edit.loadState.status === "loading") {
     return <LoadingState title="Cargando avatar" description="Estamos preparando la edicion." />;
@@ -73,6 +74,12 @@ export function AvatarEdit({ avatarId }: { avatarId: string }) {
         avatarId,
         buildUpdateAvatarRequest(editableState, selectedLiveAvatar, selectedVoice)
       );
+      for (const file of editableState.files) {
+        const key = `${file.name}:${file.size}:${file.lastModified}`;
+        if (uploadedFiles.current.has(key)) continue;
+        await uploadAvatarDocument(updatedAvatar.id, file);
+        uploadedFiles.current.add(key);
+      }
       invalidateAvatarListCache();
       edit.setSuccess("Cambios guardados.");
       router.push(`/avatars/${updatedAvatar.id}`);

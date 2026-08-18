@@ -1,0 +1,58 @@
+.root {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.root::after {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 58% 45%, transparent 0 18%, rgba(8, 3, 15, 0.16) 43%, rgba(8, 3, 15, 0.92) 83%),
+    linear-gradient(180deg, rgba(8, 3, 15, 0.12), rgba(8, 3, 15, 0.8));
+  content: "";
+}
+
+.canvas {
+  width: 100%;
+  height: 100%;
+  opacity: 0.76;
+}
+
+.fallback {
+  position: absolute;
+  inset: 0;
+  background:
+    repeating-radial-gradient(
+      ellipse at 68% 42%,
+      transparent 0 24px,
+      rgba(100, 195, 215, 0.1) 25px 26px,
+      transparent 27px 50px
+    ),
+    radial-gradient(circle at 68% 42%, rgba(190, 106, 220, 0.18), transparent 34%);
+  opacity: 0.85;
+}
+
+@media (max-width: 760px) {
+  .canvas {
+    opacity: 0.56;
+  }
+
+  .root::after {
+    background:
+      radial-gradient(
+        circle at 50% 32%,
+        transparent 0 12%,
+        rgba(8, 3, 15, 0.3) 42%,
+        rgba(8, 3, 15, 0.94) 78%
+      ),
+      linear-gradient(180deg, rgba(8, 3, 15, 0.12), rgba(8, 3, 15, 0.9));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .canvas {
+    display: none;
+  }
+}
