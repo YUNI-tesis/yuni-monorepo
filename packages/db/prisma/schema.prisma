@@ -18,8 +18,8 @@ model User {
 
   avatarAgents         AvatarAgent[]
   shareLinks           ShareLink[]
-  ownedAccessGrants    AccessGrant[]  @relation("AccessGrantOwner")
-  receivedAccessGrants AccessGrant[]  @relation("AccessGrantParticipant")
+  ownedAccessGrants    AccessGrant[]   @relation("AccessGrantOwner")
+  receivedAccessGrants AccessGrant[]   @relation("AccessGrantParticipant")
   publicSessions       PublicSession[] @relation("PublicSessionParticipant")
   conversations        Conversation[]
   documents            Document[]
@@ -30,23 +30,30 @@ model User {
 }
 
 model AvatarAgent {
-  id                      String             @id @default(cuid())
-  ownerId                 String
-  name                    String
-  description             String
-  instructions            String
-  context                 String
-  voiceConfig             Json
-  liveAvatarConfig        Json
-  agentProvider           AgentProvider      @default(elevenlabs_agents)
-  providerAgentId         String?
-  providerSyncStatus      ProviderSyncStatus @default(not_synced)
-  providerSyncError       String?
-  providerSyncedAt        DateTime?
-  providerSyncFingerprint String?
-  status                  AvatarStatus       @default(draft)
-  createdAt               DateTime           @default(now())
-  updatedAt               DateTime           @updatedAt
+  id                          String             @id @default(cuid())
+  ownerId                     String
+  name                        String
+  description                 String
+  instructions                String
+  context                     String
+  voiceConfig                 Json
+  liveAvatarConfig            Json
+  agentProvider               AgentProvider      @default(elevenlabs_agents)
+  providerAgentId             String?
+  providerSyncStatus          ProviderSyncStatus @default(not_synced)
+  providerSyncError           String?
+  providerSyncedAt            DateTime?
+  providerSyncFingerprint     String?
+  providerLastUsableAt        DateTime?
+  providerContextDocumentId   String?
+  providerContextSyncStatus   ContextSyncStatus  @default(pending)
+  providerContextFingerprint  String?
+  providerContextError        String?
+  providerContextSyncedAt     DateTime?
+  providerContextLastUsableAt DateTime?
+  status                      AvatarStatus       @default(draft)
+  createdAt                   DateTime           @default(now())
+  updatedAt                   DateTime           @updatedAt
 
   owner            User              @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   shareLinks       ShareLink[]
@@ -188,17 +195,17 @@ model PublicSession {
 }
 
 model RealtimeSession {
-  id                String                @id @default(cuid())
-  conversationId    String?
-  publicSessionId   String?
-  avatarAgentId     String
-  status            RealtimeSessionStatus @default(connecting)
-  providerSessionId String?
+  id                             String                @id @default(cuid())
+  conversationId                 String?
+  publicSessionId                String?
+  avatarAgentId                  String
+  status                         RealtimeSessionStatus @default(connecting)
+  providerSessionId              String?
   providerSessionTokenCiphertext String?
-  providerStoppedAt DateTime?
-  startedAt         DateTime              @default(now())
-  endedAt           DateTime?
-  errorMessage      String?
+  providerStoppedAt              DateTime?
+  startedAt                      DateTime              @default(now())
+  endedAt                        DateTime?
+  errorMessage                   String?
 
   conversation  Conversation?  @relation(fields: [conversationId], references: [id], onDelete: SetNull)
   publicSession PublicSession? @relation(fields: [publicSessionId], references: [id], onDelete: SetNull)
@@ -211,26 +218,50 @@ model RealtimeSession {
 }
 
 model Document {
-  id            String         @id @default(cuid())
-  ownerId       String
-  avatarAgentId String
-  fileName      String
-  mimeType      String
-  sizeBytes     Int
-  storageKey    String
-  status        DocumentStatus @default(uploaded)
-  errorMessage  String?
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+  id                String         @id @default(cuid())
+  ownerId           String
+  avatarAgentId     String
+  fileName          String
+  mimeType          String
+  sizeBytes         Int
+  storageKey        String
+  status            DocumentStatus @default(pending_upload)
+  uploadConfirmedAt DateTime?
+  storageEtag       String?
+  deletedAt         DateTime?
+  errorMessage      String?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
 
-  owner       User            @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  avatarAgent AvatarAgent     @relation(fields: [avatarAgentId], references: [id], onDelete: Cascade)
-  chunks      DocumentChunk[]
+  owner        User                  @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  avatarAgent  AvatarAgent           @relation(fields: [avatarAgentId], references: [id], onDelete: Cascade)
+  chunks       DocumentChunk[]
+  providerSync DocumentProviderSync?
 
   @@index([ownerId])
-  @@index([avatarAgentId])
+  @@index([avatarAgentId, deletedAt])
   @@index([status])
   @@index([storageKey])
+}
+
+model DocumentProviderSync {
+  id                   String                     @id @default(cuid())
+  documentId           String                     @unique
+  provider             AgentProvider              @default(elevenlabs_agents)
+  providerDocumentId   String?
+  status               DocumentProviderSyncStatus @default(pending)
+  ragStatus            String?
+  fingerprint          String?
+  errorMessage         String?
+  providerLastUsableAt DateTime?
+  createdAt            DateTime                   @default(now())
+  updatedAt            DateTime                   @updatedAt
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([documentId, provider])
+  @@index([provider, status])
+  @@index([providerDocumentId])
 }
 
 model DocumentChunk {
@@ -290,15 +321,18 @@ model Job {
   payload       Json
   attempts      Int       @default(0)
   maxAttempts   Int       @default(3)
+  dedupeKey     String?   @unique
   errorMessage  String?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   runAfter      DateTime?
   startedAt     DateTime?
   finishedAt    DateTime?
+  lockedAt      DateTime?
+  lockedBy      String?
 
   owner       User?        @relation(fields: [ownerId], references: [id], onDelete: SetNull)
-  avatarAgent AvatarAgent? @relation(fields: [avatarAgentId], references: [id], onDelete: Cascade)
+  avatarAgent AvatarAgent? @relation(fields: [avatarAgentId], references: [id], onDelete: SetNull)
 
   @@index([status, runAfter])
   @@index([type])
@@ -320,8 +354,17 @@ enum AgentProvider {
 
 enum ProviderSyncStatus {
   not_synced
+  syncing
   synced
   failed
+}
+
+enum ContextSyncStatus {
+  pending
+  syncing
+  synced
+  failed
+  deleting
 }
 
 enum AccessGrantStatus {
@@ -365,10 +408,22 @@ enum RealtimeSessionStatus {
 }
 
 enum DocumentStatus {
-  uploaded
-  ingesting
+  pending_upload
+  processing
   ready
   failed
+  deleting
+}
+
+enum DocumentProviderSyncStatus {
+  pending
+  uploading
+  indexing
+  attaching
+  synced
+  failed
+  deleting
+  deleted
 }
 
 enum UsageOperation {
@@ -382,6 +437,11 @@ enum UsageOperation {
 enum JobType {
   document_ingest
   session_cleanup
+  avatar_context_provider_sync
+  document_provider_sync
+  agent_provider_sync
+  provider_document_cleanup
+  avatar_provider_cleanup
 }
 
 enum JobStatus {

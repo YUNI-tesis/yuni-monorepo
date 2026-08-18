@@ -29,7 +29,7 @@ const AvatarAgentEditableFieldsSchema = z.strictObject({
   name: z.string().trim().min(1),
   description: z.string().trim().default(""),
   instructions: z.string().trim().min(1),
-  context: z.string().trim().default(""),
+  context: z.string().trim().max(20_000).default(""),
   voiceConfig: VoiceConfigSchema,
   liveAvatarConfig: LiveAvatarConfigSchema,
 });
@@ -45,7 +45,7 @@ export const UpdateAvatarAgentInputSchema = z
     name: z.string().trim().min(1).optional(),
     description: z.string().trim().optional(),
     instructions: z.string().trim().min(1).optional(),
-    context: z.string().trim().optional(),
+    context: z.string().trim().max(20_000).optional(),
     voiceConfig: VoiceConfigSchema.optional(),
     liveAvatarConfig: LiveAvatarConfigSchema.optional(),
     status: AvatarStatusSchema.optional(),

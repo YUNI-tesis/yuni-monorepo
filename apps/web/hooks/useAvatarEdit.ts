@@ -2,11 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import {
-  getAvatar,
-  type ApiAvatar,
-  type UpdateAvatarRequest,
-} from "../lib/api/avatar-api";
+import { getAvatar, type ApiAvatar, type UpdateAvatarRequest } from "../lib/api/avatar-api";
 import { ApiClientError } from "../lib/api/http-client";
 import type { ApiLiveAvatarOption } from "../lib/api/live-avatar-api";
 import { createLiveAvatarConfig } from "../lib/avatar-config";
@@ -89,6 +85,10 @@ export function validateAvatarEditState(state: AvatarEditState): AvatarEditValid
 
   if (!state.instructions.trim()) {
     errors.instructions = "Las instrucciones son obligatorias.";
+  }
+
+  if (state.context.length > 20_000) {
+    errors.context = "El contexto textual admite hasta 20.000 caracteres.";
   }
 
   return errors;

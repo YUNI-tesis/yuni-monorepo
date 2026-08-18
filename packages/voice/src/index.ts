@@ -64,6 +64,8 @@ export type ElevenLabsConnectorSyncConfig = {
 export type ProviderSyncFingerprintOptions = {
   syncConfig?: ElevenLabsConnectorSyncConfig;
   ttsModelId?: string;
+  ragEmbeddingModel?: "multilingual_e5_large_instruct";
+  ragMaxDocumentsLength?: number;
 };
 
 export const LIVEAVATAR_ELEVENLABS_SYNC_CONFIG = {
@@ -96,6 +98,22 @@ export type AvatarAgentProviderSyncInput = {
   voiceConfig: VoiceConfig;
   providerAgentId: string | null;
   providerSyncFingerprint: string | null;
+  knowledgeBase?: ElevenLabsKnowledgeBaseReference[];
+  includeInlineContext?: boolean;
+};
+
+export type ElevenLabsKnowledgeBaseReference = {
+  type: "text" | "file";
+  name: string;
+  id: string;
+  usage_mode: "prompt" | "auto";
+};
+
+export type ElevenLabsRagIndexStatus = "not_started" | "processing" | "ready" | "failed";
+
+export type ElevenLabsKnowledgeBaseDocument = {
+  id: string;
+  name: string;
 };
 
 export type AvatarAgentProviderSyncResult = {
@@ -105,12 +123,20 @@ export type AvatarAgentProviderSyncResult = {
 };
 
 export class ElevenLabsProviderError extends Error {
+  readonly statusCode?: number;
+
   constructor(
     message: string,
-    readonly cause?: unknown
+    readonly cause?: unknown,
+    statusCode?: number
   ) {
     super(message);
     this.name = "ElevenLabsProviderError";
+    Object.defineProperty(this, "statusCode", {
+      value: statusCode,
+      enumerable: false,
+      configurable: true,
+    });
   }
 }
 
@@ -156,10 +182,14 @@ export class ElevenLabsAgentProvider {
     this.requireVoiceConfig(input, config);
     const requestedFingerprint = createProviderSyncFingerprint(input, {
       ttsModelId: config.agentTtsModel,
+      ragMaxDocumentsLength: config.ragMaxDocumentsLength ?? 10_000,
     });
     const fallbackTtsModel = getExpressiveTtsFallbackModel(config.agentTtsModel);
     const fallbackFingerprint = fallbackTtsModel
-      ? createProviderSyncFingerprint(input, { ttsModelId: fallbackTtsModel })
+      ? createProviderSyncFingerprint(input, {
+          ttsModelId: fallbackTtsModel,
+          ragMaxDocumentsLength: config.ragMaxDocumentsLength ?? 10_000,
+        })
       : null;
 
     if (
@@ -250,6 +280,71 @@ export class ElevenLabsAgentProvider {
     return extractAgentId(body) ?? agentId;
   }
 
+  async deleteAgent(agentId: string): Promise<void> {
+    await this.request(`/v1/convai/agents/${encodeURIComponent(agentId)}`, { method: "DELETE" });
+  }
+
+  async createTextDocument(name: string, text: string): Promise<ElevenLabsKnowledgeBaseDocument> {
+    const body = await this.request("/v1/convai/knowledge-base/text", {
+      method: "POST",
+      body: JSON.stringify({ name, text }),
+    });
+    return extractKnowledgeBaseDocument(body, name);
+  }
+
+  async updateTextDocument(
+    documentId: string,
+    name: string,
+    text: string
+  ): Promise<ElevenLabsKnowledgeBaseDocument> {
+    const body = await this.request(`/v1/convai/knowledge-base/${encodeURIComponent(documentId)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ name, content: text }),
+    });
+    return extractKnowledgeBaseDocument(body, name, documentId);
+  }
+
+  async createFileDocument(input: {
+    name: string;
+    fileName: string;
+    mimeType: string;
+    bytes: Uint8Array;
+  }): Promise<ElevenLabsKnowledgeBaseDocument> {
+    const form = new FormData();
+    form.append("name", input.name);
+    form.append("file", new Blob([input.bytes], { type: input.mimeType }), input.fileName);
+    const body = await this.request("/v1/convai/knowledge-base/file", {
+      method: "POST",
+      body: form,
+    });
+    return extractKnowledgeBaseDocument(body, input.name);
+  }
+
+  async deleteKnowledgeBaseDocument(documentId: string, force = false): Promise<void> {
+    const suffix = force ? "?force=true" : "";
+    await this.request(`/v1/convai/knowledge-base/${encodeURIComponent(documentId)}${suffix}`, {
+      method: "DELETE",
+    });
+  }
+
+  async computeRagIndex(
+    documentId: string,
+    model = "multilingual_e5_large_instruct"
+  ): Promise<ElevenLabsRagIndexStatus> {
+    const body = await this.request(`/v1/convai/knowledge-base/${encodeURIComponent(documentId)}/rag-index`, {
+      method: "POST",
+      body: JSON.stringify({ model }),
+    });
+    return normalizeRagStatus(body);
+  }
+
+  async getRagIndex(documentId: string): Promise<ElevenLabsRagIndexStatus> {
+    const body = await this.request(`/v1/convai/knowledge-base/${encodeURIComponent(documentId)}/rag-index`, {
+      method: "GET",
+    });
+    return normalizeRagStatus(body);
+  }
+
   private async syncProviderAgent(agentId: string | null, payload: ElevenLabsAgentPayload): Promise<string> {
     return agentId ? await this.updateAgent(agentId, payload) : await this.createAgent(payload);
   }
@@ -286,12 +381,13 @@ export class ElevenLabsAgentProvider {
     try {
       let response: Response;
       try {
+        const isMultipart = init.body instanceof FormData;
         response = await this.fetcher(url, {
           ...init,
           headers: {
             "xi-api-key": config.apiKey,
             Accept: "application/json",
-            "Content-Type": "application/json",
+            ...(!isMultipart ? { "Content-Type": "application/json" } : {}),
           },
           signal: abortController.signal,
         });
@@ -304,9 +400,10 @@ export class ElevenLabsAgentProvider {
       }
 
       if (!response.ok) {
-        throw new ElevenLabsProviderError(await readProviderError(response));
+        throw new ElevenLabsProviderError(await readProviderError(response), undefined, response.status);
       }
 
+      if (response.status === 204) return null;
       return await response.json().catch((error: unknown) => {
         if (isAbortError(error)) {
           throw new ElevenLabsProviderTimeoutError("ElevenLabs request timed out", error);
@@ -342,7 +439,12 @@ export type ElevenLabsAgentPayload = {
         tool_ids: string[];
         mcp_server_ids: string[];
         native_mcp_server_ids: string[];
-        knowledge_base: [];
+        knowledge_base: ElevenLabsKnowledgeBaseReference[];
+        rag?: {
+          enabled: true;
+          embedding_model: "multilingual_e5_large_instruct";
+          max_documents_length: number;
+        };
         ignore_default_personality: boolean;
       };
     };
@@ -390,11 +492,19 @@ export function createProviderSyncFingerprint(
         provider: "elevenlabs_agents",
         syncConfig,
         ttsModelId: options.ttsModelId ?? "default",
+        rag: {
+          embeddingModel: options.ragEmbeddingModel ?? "multilingual_e5_large_instruct",
+          maxDocumentsLength: options.ragMaxDocumentsLength ?? 10_000,
+        },
         name: input.name,
         description: input.description,
         instructions: input.instructions,
         context: input.context,
         voiceConfig: input.voiceConfig,
+        includeInlineContext: input.includeInlineContext ?? true,
+        knowledgeBase: [...(input.knowledgeBase ?? [])].sort((left, right) =>
+          left.id.localeCompare(right.id)
+        ),
       })
     )
     .digest("hex");
@@ -402,7 +512,10 @@ export function createProviderSyncFingerprint(
 
 export function createElevenLabsAgentPayload(
   input: AvatarAgentProviderSyncInput,
-  config: Pick<ElevenLabsConfig, "defaultVoiceId" | "agentLlmModel" | "agentTtsModel">
+  config: Pick<
+    ElevenLabsConfig,
+    "defaultVoiceId" | "agentLlmModel" | "agentTtsModel" | "ragMaxDocumentsLength"
+  >
 ): ElevenLabsAgentPayload {
   const voiceId = resolveElevenLabsVoiceId(input, config);
   const ttsConfig = createElevenLabsTtsConfig(config.agentTtsModel, voiceId);
@@ -431,7 +544,16 @@ export function createElevenLabsAgentPayload(
           tool_ids: [],
           mcp_server_ids: [],
           native_mcp_server_ids: [],
-          knowledge_base: [],
+          knowledge_base: input.knowledgeBase ?? [],
+          ...((input.knowledgeBase?.length ?? 0) > 0
+            ? {
+                rag: {
+                  enabled: true as const,
+                  embedding_model: "multilingual_e5_large_instruct" as const,
+                  max_documents_length: config.ragMaxDocumentsLength ?? 10_000,
+                },
+              }
+            : {}),
           ignore_default_personality: true,
         },
       },
@@ -518,13 +640,18 @@ function buildPrompt(
     ? "- Puedes usar tags expresivos de ElevenLabs con moderacion: [laughs] para humor, [sighs] para alivio o preocupacion, [slow] para remarcar algo importante y [excited] para entusiasmo breve."
     : "- Modula el tono con lenguaje natural y puntuacion, sin escribir tags expresivos como [laughs], [sighs], [slow] o [excited].";
 
-  return [
+  const identityAndInstructions = [
     `Sos ${input.name}, un avatar conversacional creado en YUNI.`,
     `Descripcion del avatar: ${description}`,
     "Instrucciones del creador:",
     input.instructions,
-    "Contexto personalizado del creador:",
-    context,
+  ];
+  if (input.includeInlineContext !== false) {
+    identityAndInstructions.push("Contexto personalizado del creador:", context);
+  }
+
+  return [
+    ...identityAndInstructions,
     "Reglas de conversacion:",
     "- Responde de forma breve, natural y conversacional: 1 a 3 frases por defecto.",
     "- Usa el idioma del usuario.",
@@ -538,17 +665,22 @@ function buildPrompt(
   ].join("\n");
 }
 
+export function isTransientElevenLabsError(error: unknown): boolean {
+  if (error instanceof ElevenLabsProviderTimeoutError) return true;
+  if (!(error instanceof ElevenLabsProviderError)) return false;
+  return (
+    error.statusCode === 408 ||
+    error.statusCode === 429 ||
+    Boolean(error.statusCode && error.statusCode >= 500)
+  );
+}
+
 function getExpressiveTtsFallbackModel(ttsModelId: string): string | null {
-  return ttsModelId === ELEVENLABS_EXPRESSIVE_TTS_MODEL
-    ? ELEVENLABS_EXPRESSIVE_TTS_FALLBACK_MODEL
-    : null;
+  return ttsModelId === ELEVENLABS_EXPRESSIVE_TTS_MODEL ? ELEVENLABS_EXPRESSIVE_TTS_FALLBACK_MODEL : null;
 }
 
 function isExpressiveTtsNotAllowedError(error: unknown): boolean {
-  return (
-    error instanceof ElevenLabsProviderError &&
-    error.message.includes("expressive_tts_not_allowed")
-  );
+  return error instanceof ElevenLabsProviderError && error.message.includes("expressive_tts_not_allowed");
 }
 
 async function readProviderError(response: Response): Promise<string> {
@@ -694,6 +826,43 @@ function extractAgentId(body: unknown): string | null {
   }
 
   return readString(body.agent_id) ?? readString(body.agentId);
+}
+
+function extractKnowledgeBaseDocument(
+  body: unknown,
+  fallbackName: string,
+  fallbackId?: string
+): ElevenLabsKnowledgeBaseDocument {
+  if (!isRecord(body)) {
+    if (fallbackId) return { id: fallbackId, name: fallbackName };
+    throw new ElevenLabsProviderError("ElevenLabs did not return a knowledge base document id");
+  }
+  const id = readString(body.id) ?? readString(body.document_id) ?? fallbackId;
+  if (!id) {
+    throw new ElevenLabsProviderError("ElevenLabs did not return a knowledge base document id");
+  }
+  return { id, name: readString(body.name) ?? fallbackName };
+}
+
+function normalizeRagStatus(body: unknown): ElevenLabsRagIndexStatus {
+  const values: unknown[] = [];
+  if (isRecord(body)) {
+    values.push(body.status, body.rag_status);
+    if (Array.isArray(body.indexes)) {
+      for (const index of body.indexes) {
+        if (isRecord(index)) values.push(index.status);
+      }
+    }
+  }
+  const normalized = values
+    .find((value) => typeof value === "string")
+    ?.toString()
+    .toLowerCase();
+  if (!normalized) return "processing";
+  if (["ready", "completed", "succeeded", "success"].includes(normalized)) return "ready";
+  if (["failed", "error"].includes(normalized)) return "failed";
+  if (["not_started", "not-started", "pending"].includes(normalized)) return "not_started";
+  return "processing";
 }
 
 function withTrailingSlash(value: string): string {

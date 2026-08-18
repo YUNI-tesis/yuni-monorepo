@@ -129,6 +129,7 @@ export type VoiceSessionsServiceDependencies = {
   liveAvatarProvider: Pick<AvatarProvider, "createLiteSessionToken">;
   elevenLabsAgentProvider: Pick<ElevenLabsAgentProvider, "syncAvatarAgent">;
   conversationTitleGenerator?: ConversationTitleGenerator;
+  backgroundSyncEnabled?: boolean;
 };
 
 export function createVoiceSessionsService(dependencies: VoiceSessionsServiceDependencies) {
@@ -150,9 +151,9 @@ export function createVoiceSessionsService(dependencies: VoiceSessionsServiceDep
       const liveAvatarConfig =
         access.type === "shared" ? parseSharedLiveAvatarConfig(avatar) : parseLiveAvatarConfig(avatar);
       const providerAgentId =
-        access.type === "owner"
+        access.type === "owner" && !dependencies.backgroundSyncEnabled
           ? (await syncAvatarAgent(dependencies, userId, avatar, { force: false })).providerAgentId
-          : getReadySharedProviderAgentId(avatar);
+          : getUsableProviderAgentId(avatar, access.type);
       const conversation = await dependencies.conversationsRepository.createPrivateForParticipant({
         ownerId: userId,
         avatarAgentId: avatar.id,
@@ -242,11 +243,24 @@ export function createVoiceSessionsService(dependencies: VoiceSessionsServiceDep
 function getReadySharedProviderAgentId(avatar: AvatarAgentRecord): string {
   const parsedVoiceConfig = VoiceConfigSchema.safeParse(avatar.voiceConfig);
 
-  if (!parsedVoiceConfig.success || avatar.providerSyncStatus !== "synced" || !avatar.providerAgentId) {
+  if (
+    !parsedVoiceConfig.success ||
+    !avatar.providerAgentId ||
+    (avatar.providerSyncStatus !== "synced" && !avatar.providerLastUsableAt)
+  ) {
     throw new SharedAvatarNotReadyError();
   }
 
   return avatar.providerAgentId;
+}
+
+function getUsableProviderAgentId(avatar: AvatarAgentRecord, accessType: "owner" | "shared") {
+  try {
+    return getReadySharedProviderAgentId(avatar);
+  } catch (error) {
+    if (accessType === "shared") throw error;
+    throw new VoiceSessionConfigurationError("El avatar todavía está preparando su contexto de voz");
+  }
 }
 
 function parseSharedLiveAvatarConfig(avatar: AvatarAgentRecord) {
@@ -303,6 +317,7 @@ async function syncAvatarAgent(
       providerSyncError: null,
       providerSyncedAt: sync.synced ? new Date() : avatar.providerSyncedAt,
       providerSyncFingerprint: sync.providerSyncFingerprint,
+      providerLastUsableAt: new Date(),
     });
 
     return sync;

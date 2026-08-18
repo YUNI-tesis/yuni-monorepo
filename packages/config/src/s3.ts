@@ -9,6 +9,8 @@ export type S3Config = {
   secretAccessKey: string;
   endpoint?: string;
   publicBaseUrl?: string;
+  forcePathStyle: boolean;
+  presignTtlSeconds: number;
 };
 
 function optionalUrl(value: string | undefined): string | undefined {
@@ -26,6 +28,8 @@ export function createS3Config(env: RawEnv): S3Config {
     secretAccessKey: env.S3_SECRET_ACCESS_KEY ?? "",
     ...(endpoint ? { endpoint } : {}),
     ...(publicBaseUrl ? { publicBaseUrl } : {}),
+    forcePathStyle: env.S3_FORCE_PATH_STYLE ?? Boolean(endpoint),
+    presignTtlSeconds: env.S3_PRESIGN_TTL_SECONDS,
   };
 }
 

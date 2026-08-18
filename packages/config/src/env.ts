@@ -38,6 +38,7 @@ const RawEnvSchema = z.object({
   ELEVENLABS_AGENT_LLM_MODEL: z.string().trim().min(1).default("gpt-4o-mini"),
   ELEVENLABS_AGENT_TTS_MODEL: z.string().trim().min(1).default("eleven_v3"),
   ELEVENLABS_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().default(30000),
+  ELEVENLABS_RAG_MAX_DOCUMENTS_LENGTH: z.coerce.number().int().positive().default(10000),
 
   LIVEAVATAR_API_KEY: z.string().optional(),
   LIVEAVATAR_BASE_URL: z.url().default("https://api.liveavatar.com"),
@@ -52,6 +53,8 @@ const RawEnvSchema = z.object({
   S3_SECRET_ACCESS_KEY: z.string().optional(),
   S3_ENDPOINT: z.url().optional().or(z.literal("")),
   S3_PUBLIC_BASE_URL: z.url().optional().or(z.literal("")),
+  S3_FORCE_PATH_STYLE: BooleanStringSchema.optional(),
+  S3_PRESIGN_TTL_SECONDS: z.coerce.number().int().positive().max(3600).default(900),
 
   PUBLIC_SESSION_MAX_MINUTES: z.coerce.number().int().positive().default(5),
   PUBLIC_SESSION_MAX_MESSAGES: z.coerce.number().int().positive().max(20).default(20),

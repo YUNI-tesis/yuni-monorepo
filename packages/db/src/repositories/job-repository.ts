@@ -1,4 +1,4 @@
-import type { JobType, Prisma, PrismaClient } from "@prisma/client";
+import { Prisma, type JobType, type PrismaClient } from "@prisma/client";
 import type { CreateJobInput } from "@yuni/domain";
 
 type Db = PrismaClient;
@@ -13,35 +13,41 @@ export function createJobRepository(db: Db) {
         ...(input.ownerId ? { ownerId: input.ownerId } : {}),
         ...(input.avatarAgentId ? { avatarAgentId: input.avatarAgentId } : {}),
         ...(input.runAfter ? { runAfter: input.runAfter } : {}),
+        ...(input.dedupeKey ? { dedupeKey: input.dedupeKey } : {}),
       };
 
-      return db.job.create({
-        data,
+      if (!input.dedupeKey) return db.job.create({ data });
+
+      return db.job.upsert({
+        where: { dedupeKey: input.dedupeKey },
+        create: data,
+        update: {},
       });
     },
 
-    claimNext(type?: JobType) {
-      return db.$transaction(async (tx: Prisma.TransactionClient) => {
-        const job = await tx.job.findFirst({
-          where: {
-            status: "queued",
-            ...(type ? { type } : {}),
-            OR: [{ runAfter: null }, { runAfter: { lte: new Date() } }],
-          },
-          orderBy: { createdAt: "asc" },
-        });
-
-        if (!job) return null;
-
-        return tx.job.update({
-          where: { id: job.id },
-          data: {
-            status: "running",
-            attempts: { increment: 1 },
-            startedAt: new Date(),
-          },
-        });
-      });
+    async claimNext(workerId = "worker", type?: JobType) {
+      const typeFilter = type ? Prisma.sql`AND "type" = ${type}::"JobType"` : Prisma.empty;
+      const jobs = await db.$queryRaw<Array<Prisma.JobGetPayload<Record<string, never>>>>`
+        UPDATE "Job"
+        SET "status" = 'running'::"JobStatus",
+            "attempts" = "attempts" + 1,
+            "startedAt" = NOW(),
+            "lockedAt" = NOW(),
+            "lockedBy" = ${workerId},
+            "updatedAt" = NOW()
+        WHERE "id" = (
+          SELECT "id"
+          FROM "Job"
+          WHERE "status" = 'queued'::"JobStatus"
+            AND ("runAfter" IS NULL OR "runAfter" <= NOW())
+            ${typeFilter}
+          ORDER BY "createdAt" ASC
+          FOR UPDATE SKIP LOCKED
+          LIMIT 1
+        )
+        RETURNING *
+      `;
+      return jobs[0] ?? null;
     },
 
     markRunning(id: string) {
@@ -54,14 +60,63 @@ export function createJobRepository(db: Db) {
     markDone(id: string) {
       return db.job.update({
         where: { id },
-        data: { status: "done", finishedAt: new Date() },
+        data: {
+          status: "done",
+          finishedAt: new Date(),
+          lockedAt: null,
+          lockedBy: null,
+          errorMessage: null,
+        },
       });
     },
 
     markFailed(id: string, errorMessage: string) {
       return db.job.update({
         where: { id },
-        data: { status: "failed", errorMessage, finishedAt: new Date() },
+        data: {
+          status: "failed",
+          errorMessage,
+          finishedAt: new Date(),
+          lockedAt: null,
+          lockedBy: null,
+        },
+      });
+    },
+
+    requeue(id: string, runAfter: Date, errorMessage: string) {
+      return db.job.update({
+        where: { id },
+        data: {
+          status: "queued",
+          runAfter,
+          errorMessage,
+          startedAt: null,
+          lockedAt: null,
+          lockedBy: null,
+        },
+      });
+    },
+
+    retry(id: string) {
+      return db.job.update({
+        where: { id },
+        data: {
+          status: "queued",
+          attempts: 0,
+          runAfter: new Date(),
+          errorMessage: null,
+          startedAt: null,
+          finishedAt: null,
+          lockedAt: null,
+          lockedBy: null,
+        },
+      });
+    },
+
+    recoverStalled(lockedBefore: Date) {
+      return db.job.updateMany({
+        where: { status: "running", lockedAt: { lt: lockedBefore } },
+        data: { status: "queued", lockedAt: null, lockedBy: null, startedAt: null },
       });
     },
   };

@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { Badge, Button, Card, ErrorState, LoadingState, PageHeader } from "@yuni/ui";
 import { useAvatarList } from "../../hooks/useAvatarList";
 import { formatAvatarStatusLabel, formatProviderSyncLabel } from "../../lib/avatar-dashboard";
-import type { ApiAvatar } from "../../lib/api/avatar-api";
+import type { ApiAvatarSummary } from "../../lib/api/avatar-api";
 import styles from "./Interact.module.css";
 
 export function InteractList() {
@@ -53,6 +53,6 @@ export function InteractList() {
   );
 }
 
-function formatSyncStatus(status: ApiAvatar["providerSyncStatus"]) {
+function formatSyncStatus(status: ApiAvatarSummary["providerSyncStatus"]) {
   return formatProviderSyncLabel(status).toLowerCase();
 }

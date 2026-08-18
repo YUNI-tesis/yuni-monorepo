@@ -75,8 +75,8 @@ export function createPublicSessionsService(dependencies: PublicSessionsServiceD
       const liveAvatar = LiveAvatarConfigSchema.safeParse(link.avatarAgent.liveAvatarConfig);
       if (
         !liveAvatar.success ||
-        link.avatarAgent.providerSyncStatus !== "synced" ||
-        !link.avatarAgent.providerAgentId
+        !link.avatarAgent.providerAgentId ||
+        (link.avatarAgent.providerSyncStatus !== "synced" && !link.avatarAgent.providerLastUsableAt)
       ) {
         throw new PublicVoiceUnavailableError();
       }
@@ -214,10 +214,7 @@ export function createPublicSessionsService(dependencies: PublicSessionsServiceD
       const realtimeSession = session.realtimeSessions[0];
       if (!conversation || !realtimeSession) throw new NotFoundError("Public session not found");
 
-      if (
-        !realtimeSession.providerStoppedAt &&
-        realtimeSession.providerSessionTokenCiphertext
-      ) {
+      if (!realtimeSession.providerStoppedAt && realtimeSession.providerSessionTokenCiphertext) {
         try {
           const providerSessionToken = dependencies.providerTokenProtector.decrypt(
             realtimeSession.providerSessionTokenCiphertext
@@ -317,23 +314,22 @@ function scheduleExpiry(
 ) {
   const schedule = dependencies.schedule ?? scheduleUnref;
   schedule(() => {
-    void stopProviderSession(dependencies, input)
-      .finally(() => {
-        schedule(() => {
-          void dependencies.repository
-            .expireIfActive({
+    void stopProviderSession(dependencies, input).finally(() => {
+      schedule(() => {
+        void dependencies.repository
+          .expireIfActive({
+            publicSessionId: input.publicSessionId,
+            conversationId: input.conversationId,
+            realtimeSessionId: input.realtimeSessionId,
+          })
+          .catch((error) =>
+            logger.error("Could not clean up expired public session", {
               publicSessionId: input.publicSessionId,
-              conversationId: input.conversationId,
-              realtimeSessionId: input.realtimeSessionId,
+              error: summarizeProviderError(error),
             })
-            .catch((error) =>
-              logger.error("Could not clean up expired public session", {
-                publicSessionId: input.publicSessionId,
-                error: summarizeProviderError(error),
-              })
-            );
-        }, EXPIRY_CLEANUP_GRACE_MS);
-      });
+          );
+      }, EXPIRY_CLEANUP_GRACE_MS);
+    });
   }, input.delayMs);
 }
 

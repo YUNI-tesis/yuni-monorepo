@@ -1,9 +1,9 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Button, Card, ErrorState, PageHeader } from "@yuni/ui";
-import { createAvatar } from "../../lib/api/avatar-api";
+import { createAvatar, updateAvatar, uploadAvatarDocument } from "../../lib/api/avatar-api";
 import { ApiClientError } from "../../lib/api/http-client";
 import { buildCreateAvatarRequest, useAvatarBuilder } from "../../hooks/useAvatarBuilder";
 import { useElevenLabsVoiceOptions } from "../../hooks/useElevenLabsVoiceOptions";
@@ -24,6 +24,8 @@ export function AvatarBuilder() {
   const voiceOptions = useElevenLabsVoiceOptions();
   const builder = useAvatarBuilder(liveAvatarOptions.options, voiceOptions.options);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [createdAvatarId, setCreatedAvatarId] = useState<string | null>(null);
+  const uploadedFiles = useRef(new Set<string>());
 
   async function saveAvatar() {
     if (isSubmitting || !builder.validateAll()) {
@@ -33,9 +35,21 @@ export function AvatarBuilder() {
     setIsSubmitting(true);
 
     try {
-      const { avatar } = await createAvatar(
-        buildCreateAvatarRequest(builder.state, builder.selectedLiveAvatar, builder.selectedVoice)
+      const request = buildCreateAvatarRequest(
+        builder.state,
+        builder.selectedLiveAvatar,
+        builder.selectedVoice
       );
+      const { avatar } = createdAvatarId
+        ? await updateAvatar(createdAvatarId, request)
+        : await createAvatar(request);
+      if (!createdAvatarId) setCreatedAvatarId(avatar.id);
+      for (const file of builder.state.files) {
+        const key = `${file.name}:${file.size}:${file.lastModified}`;
+        if (uploadedFiles.current.has(key)) continue;
+        await uploadAvatarDocument(avatar.id, file);
+        uploadedFiles.current.add(key);
+      }
       invalidateAvatarListCache();
       router.push(`/avatars/${avatar.id}`);
       router.refresh();
@@ -72,7 +86,9 @@ export function AvatarBuilder() {
           {builder.currentStep === "Review" ? <ReviewStep builder={builder} /> : null}
         </div>
 
-        {builder.errors.form ? <ErrorState title="No pudimos guardar" description={builder.errors.form} /> : null}
+        {builder.errors.form ? (
+          <ErrorState title="No pudimos guardar" description={builder.errors.form} />
+        ) : null}
 
         <div className={styles.actions}>
           <Button variant="secondary" onClick={builder.goBack} disabled={!builder.canGoBack || isSubmitting}>

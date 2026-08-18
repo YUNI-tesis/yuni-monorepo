@@ -12,6 +12,8 @@ accepted
 
 2026-06-12
 
+Implementation amendment: 2026-08-17.
+
 Amended by [0009-product-navigation-sharing-background-sync.md](0009-product-navigation-sharing-background-sync.md): la Knowledge Base sigue siendo la proyeccion provider-first para el MVP, pero la sincronizacion debe ejecutarse en background con reintentos automaticos. La UI normal no debe exponer controles tecnicos de force-sync como accion principal.
 
 ## Context
@@ -31,6 +33,8 @@ ElevenLabs Agents ofrece Knowledge Base como mecanismo propio para que sus Agent
 Usar ElevenLabs Knowledge Base como mecanismo provider-first para el MVP conversacional, empezando por sincronizar el contexto textual del avatar y luego documentos subidos por el creador.
 
 YUNI sigue siendo la fuente de verdad. La Knowledge Base de ElevenLabs es una proyeccion sincronizada para llamadas con ElevenLabs Agents. El RAG propio de YUNI queda como etapa posterior para independencia de provider y otros canales.
+
+La implementacion usa una estrategia hibrida: el texto breve se asocia con `usage_mode: "prompt"`; los archivos originales se asocian con `usage_mode: "auto"` y se indexan con `multilingual_e5_large_instruct`. El limite de contexto recuperado del Agent queda configurable y parte de 10.000. YUNI conserva los originales en S3-compatible storage para poder reintentar, migrar de provider y completar cleanup sin pedir nuevamente el archivo al creador.
 
 ## Rationale
 
@@ -84,6 +88,6 @@ Mitigacion: mantener YUNI como fuente de verdad, registrar estados de sync, ejec
 
 ## Open questions
 
-- Conviene usar `e5_mistral_7b_instruct` o `multilingual_e5_large_instruct` para mejor recuperacion en espanol?
-- ElevenLabs debe recibir el archivo original o texto extraido por YUNI para cada tipo de documento?
+- Resuelto: usar `multilingual_e5_large_instruct` por el alcance multilingue/espanol del producto.
+- Resuelto para el MVP: ElevenLabs recibe el archivo original; `DocumentChunk` no se puebla todavia.
 - Que documentos se pueden usar en avatars publicos cuando llegue share/public?

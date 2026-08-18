@@ -11,6 +11,7 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@prisma/client": "^5.22.0",
     "@hono/node-server": "^1.19.6",
     "@hono/zod-validator": "^0.8.0",
     "@yuni/ai": "workspace:*",
@@ -19,6 +20,7 @@
     "@yuni/db": "workspace:*",
     "@yuni/domain": "workspace:*",
     "@yuni/observability": "workspace:*",
+    "@yuni/storage": "workspace:*",
     "@yuni/voice": "workspace:*",
     "bcryptjs": "^3.0.3",
     "hono": "^4.10.7",

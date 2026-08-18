@@ -4,10 +4,17 @@ import { describe, expect, it } from "vitest";
 import HomePage from "./app/page";
 
 describe("public home page", () => {
-  it("links visitors to the private dashboard", () => {
+  it("renders the thesis narrative and links visitors to the demo", () => {
     const html = renderToStaticMarkup(createElement(HomePage));
 
-    expect(html).toContain("Ir a dashboard");
-    expect(html).toContain("href=\"/dashboard\"");
+    expect(html).toContain("La IA deja de");
+    expect(html).toContain("Se convierte en presencia");
+    expect(html).toContain("Conversar no alcanza");
+    expect(html).toContain("De una idea");
+    expect(html).toContain("Una experiencia humana");
+    expect(html).toContain("Lucas");
+    expect(html).toContain("Santiago");
+    expect(html).toContain('href="#experiencia"');
+    expect(html).toContain('href="/dashboard"');
   });
 });

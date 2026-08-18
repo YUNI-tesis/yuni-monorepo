@@ -45,6 +45,84 @@ function jsonResponse(body: unknown, init: ResponseInit = {}) {
 }
 
 describe("@yuni/voice ElevenLabsAgentProvider", () => {
+  it("creates and updates text knowledge base documents", async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({ id: "doc-text-1", name: "Context" }))
+      .mockResolvedValueOnce(jsonResponse({ id: "doc-text-1", name: "Context v2" }));
+    const provider = new ElevenLabsAgentProvider({ config, fetch: fetcher });
+
+    await expect(provider.createTextDocument("Context", "Unique fact")).resolves.toEqual({
+      id: "doc-text-1",
+      name: "Context",
+    });
+    await provider.updateTextDocument("doc-text-1", "Context v2", "Updated fact");
+
+    expect(fetcher).toHaveBeenNthCalledWith(
+      1,
+      new URL("https://api.elevenlabs.test/v1/convai/knowledge-base/text"),
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ name: "Context", text: "Unique fact" }),
+      })
+    );
+    expect(fetcher).toHaveBeenNthCalledWith(
+      2,
+      new URL("https://api.elevenlabs.test/v1/convai/knowledge-base/doc-text-1"),
+      expect.objectContaining({ method: "PATCH" })
+    );
+  });
+
+  it("uploads file documents as multipart without overriding its boundary", async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({ id: "doc-file-1", name: "Guide" }));
+    const provider = new ElevenLabsAgentProvider({ config, fetch: fetcher });
+
+    await provider.createFileDocument({
+      name: "Guide",
+      fileName: "guide.md",
+      mimeType: "text/markdown",
+      bytes: new TextEncoder().encode("# Guide"),
+    });
+
+    const init = fetcher.mock.calls[0]?.[1];
+    expect(init?.body).toBeInstanceOf(FormData);
+    expect(init?.headers).not.toHaveProperty("Content-Type");
+    expect(init?.headers).toMatchObject({ "xi-api-key": "elevenlabs-key" });
+  });
+
+  it("builds a hybrid Knowledge Base payload and removes duplicated inline context", () => {
+    const input = {
+      ...avatarInput,
+      includeInlineContext: false,
+      knowledgeBase: [
+        { type: "text", name: "Context", id: "text-1", usage_mode: "prompt" },
+        { type: "file", name: "Guide", id: "file-1", usage_mode: "auto" },
+      ],
+    } satisfies AvatarAgentProviderSyncInput;
+    const payload = createElevenLabsAgentPayload(input, { ...config, ragMaxDocumentsLength: 9_000 });
+
+    expect(payload.conversation_config.agent.prompt.knowledge_base).toEqual(input.knowledgeBase);
+    expect(payload.conversation_config.agent.prompt.rag).toEqual({
+      enabled: true,
+      embedding_model: "multilingual_e5_large_instruct",
+      max_documents_length: 9_000,
+    });
+    expect(payload.conversation_config.agent.prompt.prompt).not.toContain(avatarInput.context);
+    expect(createProviderSyncFingerprint(input)).not.toBe(createProviderSyncFingerprint(avatarInput));
+  });
+
+  it("normalizes RAG indexing responses", async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({ status: "processing" }))
+      .mockResolvedValueOnce(jsonResponse({ indexes: [{ status: "completed" }] }));
+    const provider = new ElevenLabsAgentProvider({ config, fetch: fetcher });
+    await expect(provider.computeRagIndex("file-1")).resolves.toBe("processing");
+    await expect(provider.getRagIndex("file-1")).resolves.toBe("ready");
+  });
+
   it("creates an ElevenLabs agent from an avatar", async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(jsonResponse({ agent_id: "agent-1" }));
     const provider = new ElevenLabsAgentProvider({ config, fetch: fetcher });
@@ -180,7 +258,9 @@ describe("@yuni/voice ElevenLabsAgentProvider", () => {
 
     expect(fetcher).toHaveBeenNthCalledWith(
       1,
-      new URL("https://api.elevenlabs.test/v2/voices?voice_type=saved&page_size=100&sort=name&sort_direction=asc"),
+      new URL(
+        "https://api.elevenlabs.test/v2/voices?voice_type=saved&page_size=100&sort=name&sort_direction=asc"
+      ),
       expect.objectContaining({ method: "GET" })
     );
     expect(fetcher).toHaveBeenNthCalledWith(
@@ -424,10 +504,14 @@ describe("@yuni/voice ElevenLabsAgentProvider", () => {
   });
 
   it("changes the fingerprint when the TTS model changes", () => {
-    expect(
-      createProviderSyncFingerprint(avatarInput, { ttsModelId: "eleven_v3" })
-    ).not.toBe(
+    expect(createProviderSyncFingerprint(avatarInput, { ttsModelId: "eleven_v3" })).not.toBe(
       createProviderSyncFingerprint(avatarInput, { ttsModelId: ELEVENLABS_EXPRESSIVE_TTS_FALLBACK_MODEL })
+    );
+  });
+
+  it("changes the fingerprint when the RAG configuration changes", () => {
+    expect(createProviderSyncFingerprint(avatarInput, { ragMaxDocumentsLength: 10_000 })).not.toBe(
+      createProviderSyncFingerprint(avatarInput, { ragMaxDocumentsLength: 20_000 })
     );
   });
 
@@ -494,9 +578,9 @@ describe("@yuni/voice ElevenLabsAgentProvider", () => {
   it("summarizes provider failures without leaking request secrets", async () => {
     const provider = new ElevenLabsAgentProvider({
       config,
-      fetch: vi.fn<typeof fetch>().mockResolvedValueOnce(
-        jsonResponse({ message: "invalid agent config" }, { status: 422 })
-      ),
+      fetch: vi
+        .fn<typeof fetch>()
+        .mockResolvedValueOnce(jsonResponse({ message: "invalid agent config" }, { status: 422 })),
     });
 
     await expect(provider.syncAvatarAgent(avatarInput)).rejects.toThrow(
@@ -507,12 +591,14 @@ describe("@yuni/voice ElevenLabsAgentProvider", () => {
   it("surfaces nested ElevenLabs provider detail messages", async () => {
     const provider = new ElevenLabsAgentProvider({
       config,
-      fetch: vi.fn<typeof fetch>().mockResolvedValueOnce(
-        jsonResponse(
-          { detail: { status: "voice_not_found", message: "Voice does not exist or is not available." } },
-          { status: 400 }
-        )
-      ),
+      fetch: vi
+        .fn<typeof fetch>()
+        .mockResolvedValueOnce(
+          jsonResponse(
+            { detail: { status: "voice_not_found", message: "Voice does not exist or is not available." } },
+            { status: 400 }
+          )
+        ),
     });
 
     await expect(provider.syncAvatarAgent(avatarInput)).rejects.toThrow(

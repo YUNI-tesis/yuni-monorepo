@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { createAvatarAgentRepository, type PrismaClientInstance } from "@yuni/db";
 import type {
   AgentProvider,
@@ -24,6 +25,10 @@ export type AvatarAgentRecord = {
   providerSyncError: string | null;
   providerSyncedAt: Date | null;
   providerSyncFingerprint: string | null;
+  providerLastUsableAt?: Date | null;
+  providerContextDocumentId?: string | null;
+  providerContextSyncStatus?: "pending" | "syncing" | "synced" | "failed" | "deleting";
+  providerContextFingerprint?: string | null;
   status: AvatarStatus;
   createdAt: Date;
   updatedAt: Date;
@@ -37,12 +42,8 @@ export type AvatarAgentDto = {
   context: string;
   voiceConfig: VoiceConfig;
   liveAvatarConfig: LiveAvatarConfig;
-  agentProvider: AgentProvider;
-  providerAgentId: string | null;
-  providerSyncStatus: ProviderSyncStatus;
-  providerSyncError: string | null;
-  providerSyncedAt: string | null;
-  providerSyncFingerprint: string | null;
+  providerStatus: "preparing" | "ready" | "needs_attention";
+  hasPreviousUsableVersion: boolean;
   status: AvatarStatus;
   createdAt: string;
   updatedAt: string;
@@ -86,6 +87,7 @@ export type AvatarAccessRecord =
 
 export type AvatarsRepository = {
   create(ownerId: string, input: CreateAvatarAgentInput): Promise<AvatarAgentRecord>;
+  createWithProviderJobs?(ownerId: string, input: CreateAvatarAgentInput): Promise<AvatarAgentRecord>;
   listByOwner(ownerId: string): Promise<AvatarAgentRecord[]>;
   listSharedByUser?(participantUserId: string): Promise<AvatarAgentRecord[]>;
   findByIdForOwner(ownerId: string, avatarId: string): Promise<AvatarAgentRecord | null>;
@@ -100,6 +102,7 @@ export type AvatarsRepository = {
       providerSyncError?: string | null;
       providerSyncedAt?: Date | null;
       providerSyncFingerprint?: string | null;
+      providerLastUsableAt?: Date | null;
     }
   ): Promise<AvatarAgentRecord>;
   updateForOwner(
@@ -107,11 +110,134 @@ export type AvatarsRepository = {
     avatarId: string,
     input: UpdateAvatarAgentInput
   ): Promise<AvatarAgentRecord>;
+  updateWithProviderJobs?(
+    ownerId: string,
+    avatarId: string,
+    input: UpdateAvatarAgentInput
+  ): Promise<AvatarAgentRecord>;
   deleteForOwner(ownerId: string, avatarId: string): Promise<AvatarAgentRecord>;
+  deleteWithCleanup?(ownerId: string, avatarId: string): Promise<AvatarAgentRecord>;
 };
 
 export function createAvatarsRepository(prisma: PrismaClientInstance): AvatarsRepository {
-  return createAvatarAgentRepository(prisma);
+  const repository = createAvatarAgentRepository(prisma);
+  return {
+    ...repository,
+    async createWithProviderJobs(ownerId, input) {
+      return prisma.$transaction(async (tx) => {
+        const created = await createAvatarAgentRepository(tx).create(ownerId, input);
+        const avatar = await tx.avatarAgent.update({
+          where: { id: created.id },
+          data: { providerSyncStatus: "syncing", providerSyncError: null },
+        });
+        const contextFingerprint = hashContext(avatar.context);
+        await tx.job.create({
+          data: {
+            ownerId,
+            avatarAgentId: avatar.id,
+            type: "avatar_context_provider_sync",
+            payload: { avatarId: avatar.id },
+            dedupeKey: `avatar-context:${avatar.id}:${contextFingerprint}`,
+            maxAttempts: 8,
+          },
+        });
+        return avatar;
+      });
+    },
+    async updateWithProviderJobs(ownerId, avatarId, input) {
+      return prisma.$transaction(async (tx) => {
+        const avatarRepository = createAvatarAgentRepository(tx);
+        const current = await tx.avatarAgent.findFirst({ where: { id: avatarId, ownerId } });
+        if (!current) {
+          const { OwnershipError } = await import("@yuni/domain");
+          throw new OwnershipError();
+        }
+        const contextChanged = input.context !== undefined && input.context !== current.context;
+        await avatarRepository.updateForOwner(ownerId, avatarId, input);
+        const avatar = await tx.avatarAgent.update({
+          where: { id: avatarId },
+          data: {
+            providerSyncStatus: "syncing",
+            providerSyncError: null,
+            ...(contextChanged
+              ? {
+                  providerContextSyncStatus: input.context ? ("pending" as const) : ("deleting" as const),
+                  providerContextError: null,
+                }
+              : {}),
+          },
+        });
+        await tx.job.create({
+          data: contextChanged
+            ? {
+                ownerId,
+                avatarAgentId: avatar.id,
+                type: "avatar_context_provider_sync",
+                payload: { avatarId: avatar.id },
+                dedupeKey: `avatar-context:${avatar.id}:${hashContext(avatar.context)}:${avatar.updatedAt.getTime()}`,
+                maxAttempts: 8,
+              }
+            : {
+                ownerId,
+                avatarAgentId: avatar.id,
+                type: "agent_provider_sync",
+                payload: { avatarId: avatar.id },
+                dedupeKey: `agent-sync:${avatar.id}:${hashAgentDraft(avatar)}:${avatar.updatedAt.getTime()}`,
+                maxAttempts: 8,
+              },
+        });
+        return avatar;
+      });
+    },
+    async deleteWithCleanup(ownerId, avatarId) {
+      return prisma.$transaction(async (tx) => {
+        const avatar = await tx.avatarAgent.findFirst({
+          where: { id: avatarId, ownerId },
+          include: { documents: { include: { providerSync: true } } },
+        });
+        if (!avatar) {
+          const { OwnershipError } = await import("@yuni/domain");
+          throw new OwnershipError();
+        }
+        await tx.job.create({
+          data: {
+            ownerId,
+            avatarAgentId: avatarId,
+            type: "avatar_provider_cleanup",
+            maxAttempts: 12,
+            dedupeKey: `avatar-cleanup:${avatarId}`,
+            payload: {
+              providerAgentId: avatar.providerAgentId,
+              providerContextDocumentId: avatar.providerContextDocumentId,
+              documents: avatar.documents.map((document) => ({
+                storageKey: document.storageKey,
+                providerDocumentId: document.providerSync?.providerDocumentId ?? null,
+              })),
+            },
+          },
+        });
+        return tx.avatarAgent.delete({ where: { id: avatarId } });
+      });
+    },
+  };
+}
+
+function hashContext(value: string) {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function hashAgentDraft(avatar: AvatarAgentRecord) {
+  return createHash("sha256")
+    .update(
+      JSON.stringify({
+        name: avatar.name,
+        description: avatar.description,
+        instructions: avatar.instructions,
+        context: avatar.context,
+        voiceConfig: avatar.voiceConfig,
+      })
+    )
+    .digest("hex");
 }
 
 export function toAvatarAgentDto(record: AvatarAgentRecord): AvatarAgentDto {
@@ -123,12 +249,13 @@ export function toAvatarAgentDto(record: AvatarAgentRecord): AvatarAgentDto {
     context: record.context,
     voiceConfig: record.voiceConfig as VoiceConfig,
     liveAvatarConfig: record.liveAvatarConfig as LiveAvatarConfig,
-    agentProvider: record.agentProvider,
-    providerAgentId: record.providerAgentId,
-    providerSyncStatus: record.providerSyncStatus,
-    providerSyncError: record.providerSyncError,
-    providerSyncedAt: record.providerSyncedAt?.toISOString() ?? null,
-    providerSyncFingerprint: record.providerSyncFingerprint,
+    providerStatus:
+      record.providerSyncStatus === "synced" || record.providerLastUsableAt
+        ? "ready"
+        : record.providerSyncStatus === "failed"
+          ? "needs_attention"
+          : "preparing",
+    hasPreviousUsableVersion: Boolean(record.providerLastUsableAt),
     status: record.status,
     createdAt: record.createdAt.toISOString(),
     updatedAt: record.updatedAt.toISOString(),
