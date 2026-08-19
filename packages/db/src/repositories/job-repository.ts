@@ -97,6 +97,43 @@ export function createJobRepository(db: Db) {
       });
     },
 
+    defer(id: string, runAfter: Date, reason: string) {
+      return db.job.update({
+        where: { id },
+        data: {
+          status: "queued",
+          attempts: { decrement: 1 },
+          runAfter,
+          errorMessage: reason,
+          startedAt: null,
+          lockedAt: null,
+          lockedBy: null,
+        },
+      });
+    },
+
+    heartbeat(id: string, workerId: string) {
+      return db.job.updateMany({
+        where: { id, status: "running", lockedBy: workerId },
+        data: { lockedAt: new Date() },
+      });
+    },
+
+    runWithAvatarLock<T>(avatarId: string, operation: () => Promise<T>) {
+      return db.$transaction(
+        async (tx) => {
+          const rows = await tx.$queryRaw<Array<{ acquired: boolean }>>`
+            SELECT pg_try_advisory_xact_lock(
+              hashtextextended(${`avatar-provider:${avatarId}`}, 0)
+            ) AS "acquired"
+          `;
+          if (!rows[0]?.acquired) return { acquired: false as const };
+          return { acquired: true as const, value: await operation() };
+        },
+        { maxWait: 5_000, timeout: 5 * 60_000 }
+      );
+    },
+
     retry(id: string) {
       return db.job.update({
         where: { id },

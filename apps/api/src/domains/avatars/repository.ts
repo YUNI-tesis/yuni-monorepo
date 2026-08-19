@@ -136,7 +136,7 @@ export function createAvatarsRepository(prisma: PrismaClientInstance): AvatarsRe
             ownerId,
             avatarAgentId: avatar.id,
             type: "avatar_context_provider_sync",
-            payload: { avatarId: avatar.id },
+            payload: { avatarId: avatar.id, contextFingerprint },
             dedupeKey: `avatar-context:${avatar.id}:${contextFingerprint}`,
             maxAttempts: 8,
           },
@@ -173,7 +173,7 @@ export function createAvatarsRepository(prisma: PrismaClientInstance): AvatarsRe
                 ownerId,
                 avatarAgentId: avatar.id,
                 type: "avatar_context_provider_sync",
-                payload: { avatarId: avatar.id },
+                payload: { avatarId: avatar.id, contextFingerprint: hashContext(avatar.context) },
                 dedupeKey: `avatar-context:${avatar.id}:${hashContext(avatar.context)}:${avatar.updatedAt.getTime()}`,
                 maxAttempts: 8,
               }
