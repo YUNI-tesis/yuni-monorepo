@@ -10,6 +10,13 @@
   transform-origin: 50% 58%;
 }
 
+.logoShell {
+  display: grid;
+  width: 100%;
+  transform-origin: 50% 58%;
+  will-change: transform;
+}
+
 .logo {
   display: block;
   width: 100%;
@@ -63,6 +70,17 @@
 
 .root[data-interactive="true"]:active {
   cursor: grabbing;
+}
+
+.root[data-draggable="true"] {
+  outline: none;
+  touch-action: none;
+  user-select: none;
+}
+
+.root[data-dragging="true"] {
+  position: relative;
+  z-index: 1000;
 }
 
 @keyframes backBodyJelly {
@@ -139,5 +157,9 @@
 
   .logo [data-yuni-eyes] {
     transition: none;
+  }
+
+  .logoShell {
+    will-change: auto;
   }
 }
