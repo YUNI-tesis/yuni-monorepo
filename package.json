@@ -24,6 +24,7 @@
     "db:migrate:deploy": "pnpm --filter @yuni/db db:migrate:deploy",
     "db:reset": "pnpm db:migrate:dev && pnpm db:seed",
     "db:seed": "pnpm --filter @yuni/db db:seed",
+    "db:seed:cleanup": "pnpm --filter @yuni/db db:seed:cleanup",
     "db:studio": "pnpm --filter @yuni/db db:studio"
   },
   "devDependencies": {

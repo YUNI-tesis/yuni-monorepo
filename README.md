@@ -71,6 +71,24 @@ Para reiniciar la DB de desarrollo desde migraciones y seed:
 pnpm db:reset
 ```
 
+La seed del dashboard es idempotente y recrea únicamente sus registros con fechas relativas al día
+de ejecución. Incluye actividad actual e histórica, participantes recurrentes, conversaciones de
+texto y voz, una sesión fallida, accesos sin uso y un avatar con error de sincronización. Todos sus
+IDs usan el prefijo `dashboard-seed-`, y los demás datos locales no se modifican.
+
+Para verla, iniciá sesión con:
+
+```txt
+Email: dashboard-seed@yuni.local
+Password: demo-password
+```
+
+Para eliminar por completo los usuarios y datos creados por esta seed:
+
+```bash
+pnpm db:seed:cleanup
+```
+
 Para apagar servicios:
 
 ```bash
