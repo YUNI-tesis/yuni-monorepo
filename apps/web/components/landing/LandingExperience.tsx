@@ -1,7 +1,14 @@
 "use client";
 
 import Lenis from "lenis";
-import { motion, useReducedMotion, useScroll, useSpring, useTransform, type MotionValue } from "motion/react";
+import {
+  motion,
+  useReducedMotion,
+  useScroll,
+  useSpring,
+  useTransform,
+  type MotionValue,
+} from "motion/react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import React, {
@@ -13,6 +20,7 @@ import React, {
 } from "react";
 import { YuniLogo } from "../brand/YuniLogo";
 import { architectureLayers, capabilities, presenceStages, productMoments } from "./content";
+import { CapabilityIcon } from "./CapabilityIcon";
 import styles from "./Landing.module.css";
 import { LivingYuniLogo } from "./LivingYuniLogo";
 import { SpotlightCard } from "./SpotlightCard";
@@ -249,6 +257,148 @@ function PresenceVisual({
         {Array.from({ length: 28 }, (_, index) => (
           <i key={index} />
         ))}
+      </div>
+    </div>
+  );
+}
+
+function ThesisConvergence({ reducedMotion }: { reducedMotion: boolean }) {
+  const lineMotion = reducedMotion
+    ? {}
+    : {
+        initial: { pathLength: 0, opacity: 0 },
+        whileInView: { pathLength: 1, opacity: 1 },
+        viewport: { once: true, amount: 0.55 },
+        transition: { duration: 1.2, ease: [0.16, 1, 0.3, 1] as const },
+      };
+
+  return (
+    <div className={styles.thesisConvergence}>
+      <div className={styles.convergenceAuthors} aria-label="Autores de la tesis">
+        <p>Una tesis de</p>
+        <article className={styles.convergenceAuthorLucas}>
+          <span aria-hidden="true" />
+          <h3>Lucas Lovaglio</h3>
+        </article>
+        <article className={styles.convergenceAuthorSantiago}>
+          <span aria-hidden="true" />
+          <h3>Santiago Peres</h3>
+        </article>
+      </div>
+
+      <svg
+        className={styles.convergenceLines}
+        viewBox="0 0 760 460"
+        preserveAspectRatio="none"
+        aria-hidden="true"
+      >
+        <defs>
+          <linearGradient id="thesis-lucas" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0" stopColor="#71d0de" stopOpacity="0.24" />
+            <stop offset="0.72" stopColor="#71d0de" />
+            <stop offset="1" stopColor="#c776e4" />
+          </linearGradient>
+          <linearGradient id="thesis-santiago" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0" stopColor="#f09a87" stopOpacity="0.24" />
+            <stop offset="0.72" stopColor="#f09a87" />
+            <stop offset="1" stopColor="#c776e4" />
+          </linearGradient>
+          <filter id="thesis-glow" x="-20%" y="-80%" width="140%" height="260%">
+            <feGaussianBlur stdDeviation="7" />
+          </filter>
+        </defs>
+
+        <path className={styles.convergenceGuide} d="M150 135 C340 135 350 220 536 230 C586 233 616 230 660 230" />
+        <path className={styles.convergenceGuide} d="M150 330 C340 330 350 244 536 230 C586 226 616 230 660 230" />
+        <path
+          className={`${styles.convergenceGlow} ${styles.convergenceGlowLucas}`}
+          d="M150 135 C340 135 350 220 536 230 C586 233 616 230 660 230"
+        />
+        <path
+          className={`${styles.convergenceGlow} ${styles.convergenceGlowSantiago}`}
+          d="M150 330 C340 330 350 244 536 230 C586 226 616 230 660 230"
+        />
+        <motion.path
+          className={`${styles.convergenceLine} ${styles.convergenceLineLucas}`}
+          d="M150 135 C340 135 350 220 536 230 C586 233 616 230 660 230"
+          {...lineMotion}
+        />
+        <motion.path
+          className={`${styles.convergenceLine} ${styles.convergenceLineSantiago}`}
+          d="M150 330 C340 330 350 244 536 230 C586 226 616 230 660 230"
+          {...lineMotion}
+        />
+      </svg>
+
+      <span className={`${styles.convergenceSignal} ${styles.convergenceSignalOne}`} aria-hidden="true" />
+      <span className={`${styles.convergenceSignal} ${styles.convergenceSignalTwo}`} aria-hidden="true" />
+      <span className={styles.convergenceMeeting} aria-hidden="true" />
+
+      <div className={styles.convergenceCore} aria-hidden="true">
+        <span />
+        <LivingYuniLogo className={styles.convergenceCreature} dragEnabled mood="awake" />
+        <strong>YUNI</strong>
+      </div>
+    </div>
+  );
+}
+
+function FinalSignal({ reducedMotion }: { reducedMotion: boolean }) {
+  const signalRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const signal = signalRef.current;
+    const section = signal?.parentElement;
+    const finePointer = window.matchMedia("(pointer: fine)").matches;
+
+    if (!signal || !section || reducedMotion || !finePointer) return;
+
+    const updateSignal = (event: PointerEvent) => {
+      const bounds = section.getBoundingClientRect();
+      const normalizedX = Math.min(Math.max((event.clientX - bounds.left) / bounds.width, 0.08), 0.92);
+      signal.style.setProperty("--final-signal-x", `${normalizedX * 100}%`);
+    };
+
+    const resetSignal = () => signal.style.setProperty("--final-signal-x", "50%");
+
+    section.addEventListener("pointermove", updateSignal);
+    section.addEventListener("pointerleave", resetSignal);
+
+    return () => {
+      section.removeEventListener("pointermove", updateSignal);
+      section.removeEventListener("pointerleave", resetSignal);
+    };
+  }, [reducedMotion]);
+
+  return (
+    <div ref={signalRef} className={styles.finalSignal} aria-hidden="true">
+      <div className={styles.finalSignalFrame}>
+        <span className={`${styles.finalSignalCorner} ${styles.finalSignalCornerTopLeft}`} />
+        <span className={`${styles.finalSignalCorner} ${styles.finalSignalCornerTopRight}`} />
+        <span className={`${styles.finalSignalCorner} ${styles.finalSignalCornerBottomLeft}`} />
+        <span className={`${styles.finalSignalCorner} ${styles.finalSignalCornerBottomRight}`} />
+      </div>
+      <div className={styles.finalSignalHorizon}>
+        <span className={styles.finalSignalLabel}>Señal en vivo</span>
+        <span className={styles.finalSignalStatus}>Lista para conversar</span>
+        <span className={styles.finalSignalAxis} />
+        <div className={styles.finalSignalWave}>
+          {Array.from({ length: 64 }, (_, index) => {
+            const height = 18 + ((index * 17 + index * index * 7) % 70);
+            return (
+              <i
+                key={index}
+                style={
+                  {
+                    "--final-bar-height": `${height}%`,
+                    "--final-bar-delay": `${index * -0.037}s`,
+                  } as CSSProperties
+                }
+              />
+            );
+          })}
+        </div>
+        <span className={styles.finalSignalTracker} />
       </div>
     </div>
   );
@@ -504,18 +654,9 @@ export function LandingExperience() {
             <Reveal reducedMotion={reducedMotion}>
               <p className={styles.eyebrow}>La visión</p>
               <h2 id="capability-title">
-                Una plataforma.
-                <br />
-                Múltiples formas
-                <br />
-                de presencia.
+                <span>Una plataforma.</span>
+                <span>Muchas formas de conectar.</span>
               </h2>
-            </Reveal>
-            <Reveal className={styles.capabilityCopy} delay={0.1} reducedMotion={reducedMotion}>
-              <p>
-                YUNI reúne creación, inteligencia, interacción y aprendizaje dentro de un mismo lenguaje de
-                producto.
-              </p>
             </Reveal>
           </div>
 
@@ -526,10 +667,11 @@ export function LandingExperience() {
                   className={styles.capabilityCard}
                   spotlightColor={index % 2 ? "rgba(100, 195, 215, 0.18)" : "rgba(190, 106, 220, 0.2)"}
                 >
-                  <span>{capability.number}</span>
-                  <div className={styles.capabilityGlyph} aria-hidden="true">
-                    <i />
-                    <i />
+                  <div className={styles.capabilityCardHeader}>
+                    <span className={styles.capabilityIcon}>
+                      <CapabilityIcon name={capability.icon} />
+                    </span>
+                    <span className={styles.capabilityNumber}>{capability.number}</span>
                   </div>
                   <h3>{capability.title}</h3>
                   <p>{capability.description}</p>
@@ -540,55 +682,39 @@ export function LandingExperience() {
         </section>
 
         <section id="tesis" className={styles.thesisSection} aria-labelledby="thesis-title">
-          <Threads amplitude={0.08} enableMouseInteraction={false} />
           <div className={styles.thesisInner}>
             <Reveal className={styles.thesisMeta} reducedMotion={reducedMotion}>
               <span>Proyecto final</span>
               <span>2026</span>
             </Reveal>
-            <Reveal className={styles.thesisTitle} delay={0.06} reducedMotion={reducedMotion}>
-              <p className={styles.eyebrow}>La tesis detrás del producto</p>
-              <h2 id="thesis-title">
-                Construir presencia
-                <br />
-                también es investigar.
-              </h2>
-              <p>
-                YUNI nace del cruce entre diseño de experiencia, sistemas distribuidos e inteligencia
-                artificial conversacional.
-              </p>
-            </Reveal>
-            <div className={styles.authors}>
-              <Reveal delay={0.1} reducedMotion={reducedMotion}>
-                <span>CO-FOUNDER</span>
-                <h3>
-                  Lucas
+            <div className={styles.thesisStage}>
+              <Reveal className={styles.thesisTitle} delay={0.06} reducedMotion={reducedMotion}>
+                <p className={styles.eyebrow}>La tesis detrás del producto</p>
+                <h2 id="thesis-title">
+                  Dos autores.
                   <br />
-                  Lovaglio
-                </h3>
+                  Una pregunta.
+                </h2>
+                <p className={styles.thesisQuestion}>¿Qué hace que una IA se sienta viva?</p>
+                <p className={styles.thesisAnswer}>
+                  YUNI fue nuestra forma de responderla: identidad, contexto y voz reunidos en una experiencia real.
+                </p>
               </Reveal>
-              <Reveal delay={0.18} reducedMotion={reducedMotion}>
-                <span>CO-FOUNDER</span>
-                <h3>
-                  Santiago
-                  <br />
-                  Peres
-                </h3>
+              <Reveal className={styles.thesisVisual} delay={0.12} reducedMotion={reducedMotion}>
+                <ThesisConvergence reducedMotion={reducedMotion} />
               </Reveal>
             </div>
           </div>
         </section>
 
         <section className={styles.finalCta} aria-labelledby="cta-title">
-          <div className={styles.finalOrb} aria-hidden="true">
-            <LivingYuniLogo className={styles.finalCreature} interactive={false} />
-          </div>
+          <FinalSignal reducedMotion={reducedMotion} />
           <Reveal className={styles.finalContent} reducedMotion={reducedMotion}>
             <p className={styles.eyebrow}>El próximo capítulo es en vivo</p>
             <h2 id="cta-title">
               Ahora, conocé
               <br />
-              YUNI en acción.
+              <span className={styles.finalWordmark}>YUNI</span> en acción.
             </h2>
             <Link className={`${styles.button} ${styles.finalButton}`} href="/dashboard" prefetch={false}>
               Explorar la demo
@@ -596,12 +722,20 @@ export function LandingExperience() {
             </Link>
           </Reveal>
           <footer className={styles.footer}>
-            <Link className={styles.brand} href="/" aria-label="YUNI, inicio">
-              <YuniLogo />
-              <span>YUNI</span>
-            </Link>
-            <p>Avatares de IA con identidad, contexto y voz.</p>
-            <span>© 2026</span>
+            <div className={styles.footerHeading}>
+              <p>Trabajo final de grado</p>
+              <span>2026</span>
+            </div>
+
+            <div className={styles.footerDetails} aria-label="Datos académicos de la tesis">
+              <p className={styles.footerAuthors}>
+                Lucas Lovaglio <span aria-hidden="true">×</span> Santiago Peres
+              </p>
+              <p>Ingeniería Informática</p>
+              <p>
+                Facultad de Ingeniería <span aria-hidden="true">·</span> Universidad Austral
+              </p>
+            </div>
           </footer>
         </section>
       </main>

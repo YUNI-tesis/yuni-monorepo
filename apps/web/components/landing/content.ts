@@ -91,45 +91,68 @@ export const architectureLayers = [
   },
 ] as const;
 
+export type CapabilityIconName =
+  | "identity"
+  | "voice"
+  | "avatar"
+  | "context"
+  | "sharing"
+  | "activity"
+  | "group"
+  | "privacy";
+
 export const capabilities = [
   {
     number: "01",
-    title: "Multiagente",
-    description: "Múltiples identidades con propósitos y configuraciones independientes.",
+    icon: "identity",
+    title: "Identidad configurable",
+    description: "Propósito, personalidad, voz y apariencia para cada avatar.",
   },
   {
     number: "02",
-    title: "Voz natural",
-    description: "Conversaciones expresivas que suceden en tiempo real.",
+    icon: "voice",
+    title: "Voz en tiempo real",
+    description: "Conversaciones por voz con respuesta e interrupciones naturales.",
   },
   {
     number: "03",
-    title: "Avatares vivos",
-    description: "Apariencia, gesto y voz reunidos en una misma presencia.",
+    icon: "avatar",
+    title: "Avatar en vivo",
+    description: "Rostro, gesto y voz sincronizados durante cada interacción.",
   },
   {
     number: "04",
-    title: "Contexto propio",
-    description: "Conocimiento y documentos que vuelven relevante cada respuesta.",
+    icon: "context",
+    title: "Contexto documental",
+    description: "Texto y documentos procesados como conocimiento propio.",
   },
   {
     number: "05",
-    title: "Sharing seguro",
-    description: "Links e invitaciones con identidad y permisos explícitos.",
+    icon: "sharing",
+    title: "Compartir con control",
+    description: "Links e invitaciones que se pueden activar, revocar y administrar.",
   },
   {
     number: "06",
-    title: "Actividad",
-    description: "Señales para entender uso, recurrencia y conversaciones.",
+    icon: "activity",
+    title: "Actividad y transcripciones",
+    description: "Participantes, conversaciones y mensajes listos para revisar.",
   },
   {
     number: "07",
-    title: "Guardrails",
-    description: "Límites y controles que protegen el alcance de cada avatar.",
+    icon: "group",
+    title: "Conversaciones grupales",
+    description: "Dos o tres avatares coordinan sus turnos en una misma llamada.",
   },
   {
     number: "08",
-    title: "Costos visibles",
-    description: "Uso y consumo convertidos en información para decidir mejor.",
+    icon: "privacy",
+    title: "Privacidad y límites",
+    description: "Consentimiento, permisos y límites de sesión para cuidar cada acceso.",
   },
-] as const;
+] as const satisfies ReadonlyArray<{
+  number: string;
+  icon: CapabilityIconName;
+  title: string;
+  description: string;
+}>;
