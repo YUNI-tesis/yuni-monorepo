@@ -8,6 +8,10 @@ No reemplaza a [docs/plan-prompts/](../plan-prompts/). Los planes describen que 
 
 - [decision-records/](decision-records/): registros numerados de decisiones de arquitectura, UX, costos, seguridad, integracion e implementacion.
 
+## Arquitectura grupal vigente
+
+Las llamadas grupales usan sesiones LiveAvatar LITE independientes, ElevenLabs Agents atómicos y un floor persistente de YUNI. La decisión y sus límites están en [ADR 0019](decision-records/0019-strict-floor-independent-liveavatar-group-sessions.md); la guía operativa está en [llamadas grupales con ElevenLabs y LiveAvatar](../integrations/group-calls-elevenlabs-liveavatar.md).
+
 ## Workflow Del Equipo
 
 Cada vez que se termina una feature o plan:

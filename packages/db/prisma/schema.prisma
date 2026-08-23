@@ -18,13 +18,15 @@ model User {
 
   avatarAgents         AvatarAgent[]
   shareLinks           ShareLink[]
-  ownedAccessGrants    AccessGrant[]   @relation("AccessGrantOwner")
-  receivedAccessGrants AccessGrant[]   @relation("AccessGrantParticipant")
-  publicSessions       PublicSession[] @relation("PublicSessionParticipant")
+  ownedAccessGrants    AccessGrant[]       @relation("AccessGrantOwner")
+  receivedAccessGrants AccessGrant[]       @relation("AccessGrantParticipant")
+  publicSessions       PublicSession[]     @relation("PublicSessionParticipant")
   conversations        Conversation[]
   documents            Document[]
   usageEvents          UsageEvent[]
   jobs                 Job[]
+  avatarGroups         AvatarGroup[]       @relation("AvatarGroupOwner")
+  groupVoiceSessions   GroupVoiceSession[] @relation("GroupVoiceSessionOwner")
 
   @@index([email])
 }
@@ -55,16 +57,27 @@ model AvatarAgent {
   createdAt                   DateTime           @default(now())
   updatedAt                   DateTime           @updatedAt
 
-  owner            User              @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  shareLinks       ShareLink[]
-  accessGrants     AccessGrant[]
-  conversations    Conversation[]
-  publicSessions   PublicSession[]
-  realtimeSessions RealtimeSession[]
-  documents        Document[]
-  documentChunks   DocumentChunk[]
-  usageEvents      UsageEvent[]
-  jobs             Job[]
+  owner                  User                    @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  shareLinks             ShareLink[]
+  accessGrants           AccessGrant[]
+  conversations          Conversation[]
+  publicSessions         PublicSession[]
+  realtimeSessions       RealtimeSession[]
+  documents              Document[]
+  documentChunks         DocumentChunk[]
+  usageEvents            UsageEvent[]
+  jobs                   Job[]
+  avatarGroupMembers     AvatarGroupMember[]
+  conversationAvatars    ConversationAvatar[]
+  spokenMessages         Message[]               @relation("MessageSpeakerAvatar")
+  groupVoiceParticipants GroupVoiceParticipant[]
+  groupPlannedTurns      GroupPlannedTurn[]
+
+  groupProviderAgentId         String?
+  groupProviderSyncFingerprint String?
+  groupProviderSyncStatus      ProviderSyncStatus @default(not_synced)
+  groupProviderSyncError       String?
+  groupProviderSyncedAt        DateTime?
 
   @@index([ownerId])
   @@index([ownerId, status])
@@ -107,10 +120,12 @@ model AccessGrant {
   createdAt         DateTime          @default(now())
   updatedAt         DateTime          @updatedAt
 
-  avatarAgent     AvatarAgent    @relation(fields: [avatarAgentId], references: [id], onDelete: Cascade)
-  owner           User           @relation("AccessGrantOwner", fields: [ownerId], references: [id], onDelete: Cascade)
-  participantUser User?          @relation("AccessGrantParticipant", fields: [participantUserId], references: [id], onDelete: SetNull)
-  conversations   Conversation[]
+  avatarAgent         AvatarAgent          @relation(fields: [avatarAgentId], references: [id], onDelete: Cascade)
+  owner               User                 @relation("AccessGrantOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  participantUser     User?                @relation("AccessGrantParticipant", fields: [participantUserId], references: [id], onDelete: SetNull)
+  conversations       Conversation[]
+  avatarGroupMembers  AvatarGroupMember[]
+  conversationAvatars ConversationAvatar[]
 
   @@unique([avatarAgentId, participantEmail])
   @@index([ownerId, avatarAgentId])
@@ -126,6 +141,7 @@ model Conversation {
   participantEmail String?
   publicSessionId  String?                @unique
   shareLinkId      String?
+  avatarGroupId    String?
   visibility       ConversationVisibility
   mode             ConversationMode
   status           ConversationStatus     @default(active)
@@ -134,34 +150,225 @@ model Conversation {
   createdAt        DateTime               @default(now())
   updatedAt        DateTime               @updatedAt
 
-  owner            User?             @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  avatarAgent      AvatarAgent       @relation(fields: [avatarAgentId], references: [id], onDelete: Cascade)
-  accessGrant      AccessGrant?      @relation(fields: [accessGrantId], references: [id], onDelete: SetNull)
-  publicSession    PublicSession?    @relation(fields: [publicSessionId], references: [id], onDelete: SetNull)
-  shareLink        ShareLink?        @relation(fields: [shareLinkId], references: [id], onDelete: SetNull)
-  messages         Message[]
-  realtimeSessions RealtimeSession[]
-  usageEvents      UsageEvent[]
+  owner               User?                @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  avatarAgent         AvatarAgent          @relation(fields: [avatarAgentId], references: [id], onDelete: Cascade)
+  accessGrant         AccessGrant?         @relation(fields: [accessGrantId], references: [id], onDelete: SetNull)
+  publicSession       PublicSession?       @relation(fields: [publicSessionId], references: [id], onDelete: SetNull)
+  shareLink           ShareLink?           @relation(fields: [shareLinkId], references: [id], onDelete: SetNull)
+  messages            Message[]
+  realtimeSessions    RealtimeSession[]
+  usageEvents         UsageEvent[]
+  avatarGroup         AvatarGroup?         @relation(fields: [avatarGroupId], references: [id], onDelete: SetNull)
+  conversationAvatars ConversationAvatar[]
+  groupVoiceSession   GroupVoiceSession?
 
   @@index([ownerId, avatarAgentId, lastMessageAt])
   @@index([avatarAgentId])
   @@index([accessGrantId])
   @@index([publicSessionId])
   @@index([shareLinkId])
+  @@index([avatarGroupId])
   @@index([visibility])
 }
 
 model Message {
-  id             String      @id @default(cuid())
+  id              String      @id @default(cuid())
+  conversationId  String
+  role            MessageRole
+  content         String
+  metadata        Json?
+  speakerAvatarId String?
+  sourceEventId   String?
+  createdAt       DateTime    @default(now())
+
+  conversation    Conversation     @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  speakerAvatar   AvatarAgent?     @relation("MessageSpeakerAvatar", fields: [speakerAvatarId], references: [id], onDelete: SetNull)
+  groupVoiceRound GroupVoiceRound?
+
+  @@unique([conversationId, sourceEventId])
+  @@index([conversationId, createdAt])
+  @@index([speakerAvatarId])
+}
+
+model AvatarGroup {
+  id        String   @id @default(cuid())
+  ownerId   String
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  owner         User                @relation("AvatarGroupOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  members       AvatarGroupMember[]
+  conversations Conversation[]
+  voiceSessions GroupVoiceSession[]
+
+  @@index([ownerId, updatedAt])
+}
+
+model AvatarGroupMember {
+  id            String   @id @default(cuid())
+  avatarGroupId String
+  avatarAgentId String
+  accessGrantId String?
+  position      Int
+  createdAt     DateTime @default(now())
+
+  avatarGroup AvatarGroup  @relation(fields: [avatarGroupId], references: [id], onDelete: Cascade)
+  avatarAgent AvatarAgent  @relation(fields: [avatarAgentId], references: [id], onDelete: Cascade)
+  accessGrant AccessGrant? @relation(fields: [accessGrantId], references: [id], onDelete: SetNull)
+
+  @@unique([avatarGroupId, avatarAgentId])
+  @@unique([avatarGroupId, position])
+  @@index([avatarAgentId])
+  @@index([accessGrantId])
+}
+
+model ConversationAvatar {
+  id             String   @id @default(cuid())
   conversationId String
-  role           MessageRole
-  content        String
-  metadata       Json?
-  createdAt      DateTime    @default(now())
+  avatarAgentId  String
+  accessGrantId  String?
+  position       Int
+  createdAt      DateTime @default(now())
 
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  avatarAgent  AvatarAgent  @relation(fields: [avatarAgentId], references: [id], onDelete: Cascade)
+  accessGrant  AccessGrant? @relation(fields: [accessGrantId], references: [id], onDelete: SetNull)
 
-  @@index([conversationId, createdAt])
+  @@unique([conversationId, avatarAgentId])
+  @@unique([conversationId, position])
+  @@index([avatarAgentId])
+  @@index([accessGrantId])
+}
+
+model GroupVoiceSession {
+  id                  String                  @id @default(cuid())
+  avatarGroupId       String
+  conversationId      String                  @unique
+  ownerId             String
+  status              GroupVoiceSessionStatus @default(connecting)
+  expiresAt           DateTime
+  lastHeartbeatAt     DateTime                @default(now())
+  startedAt           DateTime                @default(now())
+  endedAt             DateTime?
+  errorMessage        String?
+  orchestrationPhase  GroupOrchestrationPhase @default(listening)
+  floorOwnerAvatarId  String?
+  floorTurnId         String?
+  floorLeaseExpiresAt DateTime?
+  rollingSummary      String                  @default("")
+  contextVersion      Int                     @default(0)
+
+  avatarGroup              AvatarGroup                         @relation(fields: [avatarGroupId], references: [id], onDelete: Cascade)
+  conversation             Conversation                        @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  owner                    User                                @relation("GroupVoiceSessionOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  participants             GroupVoiceParticipant[]
+  rounds                   GroupVoiceRound[]
+  providerEvents           GroupVoiceProviderEvent[]
+  participantFailureEvents GroupVoiceParticipantFailureEvent[]
+
+  @@index([avatarGroupId])
+  @@index([ownerId, status])
+  @@index([status, expiresAt])
+  @@index([orchestrationPhase, floorLeaseExpiresAt])
+}
+
+model GroupVoiceRound {
+  id                  String                @id @default(cuid())
+  groupVoiceSessionId String
+  userMessageId       String                @unique
+  sourceEventId       String
+  status              GroupVoiceRoundStatus @default(deliberating)
+  intent              String
+  routingPlan         Json?
+  contextVersion      Int
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+  completedAt         DateTime?
+
+  groupVoiceSession GroupVoiceSession  @relation(fields: [groupVoiceSessionId], references: [id], onDelete: Cascade)
+  userMessage       Message            @relation(fields: [userMessageId], references: [id], onDelete: Cascade)
+  plannedTurns      GroupPlannedTurn[]
+
+  @@unique([groupVoiceSessionId, sourceEventId])
+  @@index([groupVoiceSessionId, createdAt])
+  @@index([status])
+}
+
+model GroupPlannedTurn {
+  id              String                 @id @default(cuid())
+  roundId         String
+  avatarAgentId   String
+  position        Int
+  status          GroupPlannedTurnStatus @default(queued)
+  instructionText String
+  responseText    String?
+  startedAt       DateTime?
+  completedAt     DateTime?
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+
+  round       GroupVoiceRound @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  avatarAgent AvatarAgent     @relation(fields: [avatarAgentId], references: [id], onDelete: Cascade)
+
+  @@unique([roundId, position])
+  @@unique([roundId, avatarAgentId])
+  @@index([avatarAgentId])
+  @@index([status, createdAt])
+}
+
+model GroupVoiceProviderEvent {
+  id                  String                 @id @default(cuid())
+  groupVoiceSessionId String
+  sourceEventId       String
+  avatarAgentId       String
+  turnId              String?
+  type                GroupProviderEventType
+  payload             Json?
+  createdAt           DateTime               @default(now())
+
+  groupVoiceSession GroupVoiceSession @relation(fields: [groupVoiceSessionId], references: [id], onDelete: Cascade)
+
+  @@unique([groupVoiceSessionId, sourceEventId])
+  @@index([groupVoiceSessionId, createdAt])
+  @@index([turnId])
+}
+
+model GroupVoiceParticipantFailureEvent {
+  id                   String   @id @default(cuid())
+  groupVoiceSessionId  String
+  sourceEventId        String
+  avatarAgentId        String
+  participantAttemptId String?
+  expectedTurnId       String?
+  reason               String
+  createdAt            DateTime @default(now())
+
+  groupVoiceSession GroupVoiceSession @relation(fields: [groupVoiceSessionId], references: [id], onDelete: Cascade)
+
+  @@unique([groupVoiceSessionId, sourceEventId])
+  @@index([groupVoiceSessionId, createdAt])
+  @@index([avatarAgentId])
+  @@index([participantAttemptId], map: "GroupVoiceParticipantFailureEvent_attempt_idx")
+}
+
+model GroupVoiceParticipant {
+  id                  String                      @id @default(cuid())
+  groupVoiceSessionId String
+  avatarAgentId       String
+  realtimeSessionId   String?                     @unique
+  status              GroupVoiceParticipantStatus @default(connecting)
+  errorMessage        String?
+  createdAt           DateTime                    @default(now())
+  endedAt             DateTime?
+
+  groupVoiceSession GroupVoiceSession @relation(fields: [groupVoiceSessionId], references: [id], onDelete: Cascade)
+  avatarAgent       AvatarAgent       @relation(fields: [avatarAgentId], references: [id], onDelete: Cascade)
+  realtimeSession   RealtimeSession?  @relation(fields: [realtimeSessionId], references: [id], onDelete: SetNull)
+
+  @@unique([groupVoiceSessionId, avatarAgentId])
+  @@index([avatarAgentId])
+  @@index([status])
 }
 
 model PublicSession {
@@ -207,9 +414,10 @@ model RealtimeSession {
   endedAt                        DateTime?
   errorMessage                   String?
 
-  conversation  Conversation?  @relation(fields: [conversationId], references: [id], onDelete: SetNull)
-  publicSession PublicSession? @relation(fields: [publicSessionId], references: [id], onDelete: SetNull)
-  avatarAgent   AvatarAgent    @relation(fields: [avatarAgentId], references: [id], onDelete: Cascade)
+  conversation          Conversation?          @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  publicSession         PublicSession?         @relation(fields: [publicSessionId], references: [id], onDelete: SetNull)
+  avatarAgent           AvatarAgent            @relation(fields: [avatarAgentId], references: [id], onDelete: Cascade)
+  groupVoiceParticipant GroupVoiceParticipant?
 
   @@index([conversationId])
   @@index([publicSessionId])
@@ -401,6 +609,57 @@ enum PublicSessionStatus {
 }
 
 enum RealtimeSessionStatus {
+  connecting
+  active
+  ended
+  errored
+}
+
+enum GroupVoiceSessionStatus {
+  connecting
+  active
+  ended
+  errored
+}
+
+enum GroupOrchestrationPhase {
+  listening
+  deliberating
+  queued
+  speaking
+  committing
+  ended
+  errored
+}
+
+enum GroupVoiceRoundStatus {
+  deliberating
+  queued
+  speaking
+  completed
+  cancelled
+  failed
+}
+
+enum GroupPlannedTurnStatus {
+  queued
+  claimed
+  speaking
+  completed
+  interrupted
+  failed
+  skipped
+}
+
+enum GroupProviderEventType {
+  agent_response
+  agent_response_correction
+  speak_started
+  speak_ended
+  interruption
+}
+
+enum GroupVoiceParticipantStatus {
   connecting
   active
   ended

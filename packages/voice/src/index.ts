@@ -63,7 +63,9 @@ export type ElevenLabsConnectorSyncConfig = {
 
 export type ProviderSyncFingerprintOptions = {
   syncConfig?: ElevenLabsConnectorSyncConfig;
+  agentLlmModel?: string;
   ttsModelId?: string;
+  effectiveVoiceId?: string;
   ragEmbeddingModel?: "multilingual_e5_large_instruct";
   ragMaxDocumentsLength?: number;
 };
@@ -89,6 +91,10 @@ export const LIVEAVATAR_ELEVENLABS_SYNC_CONFIG = {
   },
 } satisfies ElevenLabsConnectorSyncConfig;
 
+// ElevenLabs rejects an empty first message. The group UI silences this readiness cue
+// and only enables participant audio after the initial turn has finished.
+const GROUP_READY_FIRST_MESSAGE = "Conectado.";
+
 export type AvatarAgentProviderSyncInput = {
   id: string;
   name: string;
@@ -100,6 +106,7 @@ export type AvatarAgentProviderSyncInput = {
   providerSyncFingerprint: string | null;
   knowledgeBase?: ElevenLabsKnowledgeBaseReference[];
   includeInlineContext?: boolean;
+  sessionMode?: "direct" | "group";
 };
 
 export type ElevenLabsKnowledgeBaseReference = {
@@ -171,7 +178,6 @@ export class ElevenLabsAgentProvider {
 
   private readonly config: ElevenLabsConfig;
   private readonly fetcher: typeof fetch;
-
   constructor(options: ElevenLabsAgentProviderOptions = {}) {
     this.config = options.config ?? elevenLabsConfig;
     this.fetcher = options.fetch ?? fetch;
@@ -180,15 +186,21 @@ export class ElevenLabsAgentProvider {
   async syncAvatarAgent(input: AvatarAgentProviderSyncInput): Promise<AvatarAgentProviderSyncResult> {
     const config = this.requireConfig();
     this.requireVoiceConfig(input, config);
-    const requestedFingerprint = createProviderSyncFingerprint(input, {
-      ttsModelId: config.agentTtsModel,
+    const effectiveVoiceId = resolveElevenLabsVoiceId(input, config);
+    const effectiveFingerprintOptions = {
+      agentLlmModel: config.agentLlmModel,
+      effectiveVoiceId,
       ragMaxDocumentsLength: config.ragMaxDocumentsLength ?? 10_000,
+    } satisfies ProviderSyncFingerprintOptions;
+    const requestedFingerprint = createProviderSyncFingerprint(input, {
+      ...effectiveFingerprintOptions,
+      ttsModelId: config.agentTtsModel,
     });
     const fallbackTtsModel = getExpressiveTtsFallbackModel(config.agentTtsModel);
     const fallbackFingerprint = fallbackTtsModel
       ? createProviderSyncFingerprint(input, {
+          ...effectiveFingerprintOptions,
           ttsModelId: fallbackTtsModel,
-          ragMaxDocumentsLength: config.ragMaxDocumentsLength ?? 10_000,
         })
       : null;
 
@@ -257,6 +269,15 @@ export class ElevenLabsAgentProvider {
     return voices;
   }
 
+  async createScribeRealtimeToken(): Promise<{ token: string; expiresInSeconds: number }> {
+    const body = await this.request("/v1/single-use-token/realtime_scribe", { method: "POST" });
+    const token = isRecord(body) ? readString(body.token) : null;
+    if (!token) {
+      throw new ElevenLabsProviderError("ElevenLabs did not return a Scribe token");
+    }
+    return { token, expiresInSeconds: 900 };
+  }
+
   async createAgent(payload: ElevenLabsAgentPayload): Promise<string> {
     const body = await this.request("/v1/convai/agents/create", {
       method: "POST",
@@ -311,8 +332,10 @@ export class ElevenLabsAgentProvider {
     bytes: Uint8Array;
   }): Promise<ElevenLabsKnowledgeBaseDocument> {
     const form = new FormData();
+    const fileBytes = new Uint8Array(input.bytes.byteLength);
+    fileBytes.set(input.bytes);
     form.append("name", input.name);
-    form.append("file", new Blob([input.bytes], { type: input.mimeType }), input.fileName);
+    form.append("file", new Blob([fileBytes.buffer], { type: input.mimeType }), input.fileName);
     const body = await this.request("/v1/convai/knowledge-base/file", {
       method: "POST",
       body: form,
@@ -346,7 +369,16 @@ export class ElevenLabsAgentProvider {
   }
 
   private async syncProviderAgent(agentId: string | null, payload: ElevenLabsAgentPayload): Promise<string> {
-    return agentId ? await this.updateAgent(agentId, payload) : await this.createAgent(payload);
+    if (!agentId) return await this.createAgent(payload);
+
+    try {
+      return await this.updateAgent(agentId, payload);
+    } catch (error) {
+      if (error instanceof ElevenLabsProviderError && error.statusCode === 404) {
+        return await this.createAgent(payload);
+      }
+      throw error;
+    }
   }
 
   private requireConfig(): ElevenLabsConfig {
@@ -466,7 +498,7 @@ export type ElevenLabsAgentPayload = {
       soft_timeout_config: {
         timeout_seconds: number;
         message: string;
-        use_llm_generated_message: true;
+        use_llm_generated_message: boolean;
       };
       mode: "turn";
     };
@@ -485,26 +517,27 @@ export function createProviderSyncFingerprint(
   options: ProviderSyncFingerprintOptions = {}
 ): string {
   const syncConfig = options.syncConfig ?? LIVEAVATAR_ELEVENLABS_SYNC_CONFIG;
+  const fingerprintInput = {
+    ...input,
+    knowledgeBase: [...(input.knowledgeBase ?? [])].sort(compareKnowledgeBaseReferences),
+  };
+  const effectivePayload = createElevenLabsAgentPayloadWithRuntime(
+    fingerprintInput,
+    {
+      defaultVoiceId: resolveFingerprintVoiceId(input, options),
+      agentLlmModel: options.agentLlmModel ?? "default",
+      agentTtsModel: options.ttsModelId ?? "default",
+      ragMaxDocumentsLength: options.ragMaxDocumentsLength ?? 10_000,
+    },
+    syncConfig,
+    options.ragEmbeddingModel ?? "multilingual_e5_large_instruct"
+  );
 
   return createHash("sha256")
     .update(
       JSON.stringify({
         provider: "elevenlabs_agents",
-        syncConfig,
-        ttsModelId: options.ttsModelId ?? "default",
-        rag: {
-          embeddingModel: options.ragEmbeddingModel ?? "multilingual_e5_large_instruct",
-          maxDocumentsLength: options.ragMaxDocumentsLength ?? 10_000,
-        },
-        name: input.name,
-        description: input.description,
-        instructions: input.instructions,
-        context: input.context,
-        voiceConfig: input.voiceConfig,
-        includeInlineContext: input.includeInlineContext ?? true,
-        knowledgeBase: [...(input.knowledgeBase ?? [])].sort((left, right) =>
-          left.id.localeCompare(right.id)
-        ),
+        payload: effectivePayload,
       })
     )
     .digest("hex");
@@ -517,8 +550,25 @@ export function createElevenLabsAgentPayload(
     "defaultVoiceId" | "agentLlmModel" | "agentTtsModel" | "ragMaxDocumentsLength"
   >
 ): ElevenLabsAgentPayload {
+  return createElevenLabsAgentPayloadWithRuntime(
+    input,
+    config,
+    LIVEAVATAR_ELEVENLABS_SYNC_CONFIG,
+    "multilingual_e5_large_instruct"
+  );
+}
+
+function createElevenLabsAgentPayloadWithRuntime(
+  input: AvatarAgentProviderSyncInput,
+  config: Pick<
+    ElevenLabsConfig,
+    "defaultVoiceId" | "agentLlmModel" | "agentTtsModel" | "ragMaxDocumentsLength"
+  >,
+  syncConfig: ElevenLabsConnectorSyncConfig,
+  ragEmbeddingModel: "multilingual_e5_large_instruct"
+): ElevenLabsAgentPayload {
   const voiceId = resolveElevenLabsVoiceId(input, config);
-  const ttsConfig = createElevenLabsTtsConfig(config.agentTtsModel, voiceId);
+  const ttsConfig = createElevenLabsTtsConfig(config.agentTtsModel, voiceId, syncConfig);
 
   return {
     name: `YUNI - ${input.name}`,
@@ -527,11 +577,14 @@ export function createElevenLabsAgentPayload(
       asr: {
         quality: "high",
         provider: "scribe_realtime",
-        user_input_audio_format: LIVEAVATAR_ELEVENLABS_SYNC_CONFIG.userInputAudioFormat,
+        user_input_audio_format: syncConfig.userInputAudioFormat,
         keywords: [],
       },
       agent: {
-        first_message: `Hola, soy ${input.name}. En que puedo ayudarte?`,
+        first_message:
+          input.sessionMode === "group"
+            ? GROUP_READY_FIRST_MESSAGE
+            : `Hola, soy ${input.name}. En que puedo ayudarte?`,
         language: "es",
         disable_first_message_interruptions: false,
         prompt: {
@@ -549,7 +602,7 @@ export function createElevenLabsAgentPayload(
             ? {
                 rag: {
                   enabled: true as const,
-                  embedding_model: "multilingual_e5_large_instruct" as const,
+                  embedding_model: ragEmbeddingModel,
                   max_documents_length: config.ragMaxDocumentsLength ?? 10_000,
                 },
               }
@@ -559,21 +612,31 @@ export function createElevenLabsAgentPayload(
       },
       tts: ttsConfig,
       turn: {
-        turn_timeout: LIVEAVATAR_ELEVENLABS_SYNC_CONFIG.turn.turnTimeout,
+        turn_timeout: input.sessionMode === "group" ? 30 : syncConfig.turn.turnTimeout,
         silence_end_call_timeout: -1,
-        turn_eagerness: LIVEAVATAR_ELEVENLABS_SYNC_CONFIG.turn.turnEagerness,
-        interruption_ignore_terms: [...LIVEAVATAR_ELEVENLABS_SYNC_CONFIG.turn.interruptionIgnoreTerms],
-        soft_timeout_config: {
-          timeout_seconds: LIVEAVATAR_ELEVENLABS_SYNC_CONFIG.turn.softTimeoutSeconds,
-          message: LIVEAVATAR_ELEVENLABS_SYNC_CONFIG.turn.softTimeoutMessage,
-          use_llm_generated_message: LIVEAVATAR_ELEVENLABS_SYNC_CONFIG.turn.useLlmGeneratedSoftTimeout,
-        },
+        turn_eagerness: syncConfig.turn.turnEagerness,
+        interruption_ignore_terms: [...syncConfig.turn.interruptionIgnoreTerms],
+        ...(input.sessionMode === "group"
+          ? {
+              soft_timeout_config: {
+                timeout_seconds: -1,
+                message: "Procesando la siguiente intervención.",
+                use_llm_generated_message: false,
+              },
+            }
+          : {
+              soft_timeout_config: {
+                timeout_seconds: syncConfig.turn.softTimeoutSeconds,
+                message: syncConfig.turn.softTimeoutMessage,
+                use_llm_generated_message: syncConfig.turn.useLlmGeneratedSoftTimeout,
+              },
+            }),
         mode: "turn",
       },
       conversation: {
-        text_only: LIVEAVATAR_ELEVENLABS_SYNC_CONFIG.textOnly,
+        text_only: syncConfig.textOnly,
         max_duration_seconds: 600,
-        client_events: [...LIVEAVATAR_ELEVENLABS_SYNC_CONFIG.clientEvents],
+        client_events: [...syncConfig.clientEvents],
       },
       language_presets: {},
       vad: {},
@@ -598,14 +661,37 @@ function resolveElevenLabsVoiceId(
   return config.defaultVoiceId;
 }
 
+function resolveFingerprintVoiceId(
+  input: AvatarAgentProviderSyncInput,
+  options: ProviderSyncFingerprintOptions
+) {
+  if (input.voiceConfig.provider === "elevenlabs") {
+    return input.voiceConfig.voiceId;
+  }
+  return options.effectiveVoiceId?.trim() || "default";
+}
+
+function compareKnowledgeBaseReferences(
+  left: ElevenLabsKnowledgeBaseReference,
+  right: ElevenLabsKnowledgeBaseReference
+) {
+  return (
+    left.id.localeCompare(right.id) ||
+    left.type.localeCompare(right.type) ||
+    left.name.localeCompare(right.name) ||
+    left.usage_mode.localeCompare(right.usage_mode)
+  );
+}
+
 function createElevenLabsTtsConfig(
   modelId: string,
-  voiceId: string
+  voiceId: string,
+  syncConfig: ElevenLabsConnectorSyncConfig
 ): ElevenLabsAgentPayload["conversation_config"]["tts"] {
   const baseConfig = {
     model_id: modelId,
     voice_id: voiceId,
-    agent_output_audio_format: LIVEAVATAR_ELEVENLABS_SYNC_CONFIG.agentOutputAudioFormat,
+    agent_output_audio_format: syncConfig.agentOutputAudioFormat,
     optimize_streaming_latency: 3,
   } satisfies ElevenLabsAgentPayload["conversation_config"]["tts"];
 
@@ -615,9 +701,9 @@ function createElevenLabsTtsConfig(
 
   return {
     ...baseConfig,
-    speed: LIVEAVATAR_ELEVENLABS_SYNC_CONFIG.voiceSettings.speed,
-    stability: LIVEAVATAR_ELEVENLABS_SYNC_CONFIG.voiceSettings.stability,
-    similarity_boost: LIVEAVATAR_ELEVENLABS_SYNC_CONFIG.voiceSettings.similarityBoost,
+    speed: syncConfig.voiceSettings.speed,
+    stability: syncConfig.voiceSettings.stability,
+    similarity_boost: syncConfig.voiceSettings.similarityBoost,
     pronunciation_dictionary_locators: [],
   };
 }
@@ -636,9 +722,12 @@ function buildPrompt(
 ): string {
   const description = input.description.trim() || "Sin descripcion adicional.";
   const context = input.context.trim() || "No hay contexto personalizado adicional cargado en YUNI.";
-  const expressiveDeliveryRule = options.expressiveTagsEnabled
-    ? "- Puedes usar tags expresivos de ElevenLabs con moderacion: [laughs] para humor, [sighs] para alivio o preocupacion, [slow] para remarcar algo importante y [excited] para entusiasmo breve."
-    : "- Modula el tono con lenguaje natural y puntuacion, sin escribir tags expresivos como [laughs], [sighs], [slow] o [excited].";
+  const expressiveDeliveryRule =
+    input.sessionMode === "group"
+      ? "- Modula el tono con lenguaje natural y puntuación. No escribas tags expresivos, sonidos no verbales ni onomatopeyas."
+      : options.expressiveTagsEnabled
+        ? "- Puedes usar tags expresivos de ElevenLabs con moderacion: [laughs] para humor, [sighs] para alivio o preocupacion, [slow] para remarcar algo importante y [excited] para entusiasmo breve."
+        : "- Modula el tono con lenguaje natural y puntuacion, sin escribir tags expresivos como [laughs], [sighs], [slow] o [excited].";
 
   const identityAndInstructions = [
     `Sos ${input.name}, un avatar conversacional creado en YUNI.`,
@@ -653,14 +742,33 @@ function buildPrompt(
   return [
     ...identityAndInstructions,
     "Reglas de conversacion:",
+    ...(input.sessionMode === "group"
+      ? [
+          "- Estás en una llamada grupal. El mensaje de usuario que recibís en cada turno es una instrucción privada del director, no una frase para repetir literalmente.",
+          "- Antes de cada turno recibís por separado el roster y el transcript compartido. Usalos para reconocer a los demás participantes y continuar la misma conversación.",
+          "- Respondé la instrucción usando tu identidad, tu contexto y tu propia Knowledge Base de ElevenLabs. No inventes conocimiento de otro avatar.",
+          "- Hablá solamente una vez durante tu turno, con un máximo estricto de 55 palabras, y cedé la palabra al terminar.",
+          "- Incorporá naturalmente acuerdos o desacuerdos visibles en el transcript, sin repetir lo que ya se dijo ni explicar el mecanismo de dirección.",
+          "- Si el usuario pide que todos se presenten, hacé únicamente tu presentación breve y no cierres con una pregunta genérica.",
+          "- No saludes, no uses muletillas u onomatopeyas y no intentes tomar turnos adicionales.",
+        ]
+      : []),
     "- Responde de forma breve, natural y conversacional: 1 a 3 frases por defecto.",
     "- Usa el idioma del usuario.",
     "- Si el contexto no alcanza, dilo con claridad y no inventes datos.",
     "- Haz como maximo una pregunta de seguimiento cuando ayude a avanzar.",
-    "- Usa muletillas cortas solo cuando aporten naturalidad, por ejemplo: 'mmm', 'claro', 'entiendo' o 'a ver'. No las uses en todas las respuestas.",
+    ...(input.sessionMode === "group"
+      ? []
+      : [
+          "- Usa muletillas cortas solo cuando aporten naturalidad, por ejemplo: 'mmm', 'claro', 'entiendo' o 'a ver'. No las uses en todas las respuestas.",
+        ]),
     "- Adapta el tono emocional al usuario: si esta frustrado, responde calmo y empatico; si comparte algo bueno, responde con calidez; si pide pasos tecnicos, habla claro y medido.",
     expressiveDeliveryRule,
-    "- Si el usuario interrumpe, prioriza el nuevo pedido, retoma sin pedir disculpas largas y no repitas toda la respuesta anterior.",
+    ...(input.sessionMode === "group"
+      ? []
+      : [
+          "- Si el usuario interrumpe, prioriza el nuevo pedido, retoma sin pedir disculpas largas y no repitas toda la respuesta anterior.",
+        ]),
     "- No menciones detalles internos de YUNI, ElevenLabs o LiveAvatar salvo que el usuario pregunte.",
   ].join("\n");
 }

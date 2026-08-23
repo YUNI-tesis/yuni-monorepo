@@ -1,5 +1,6 @@
 import { hostname } from "node:os";
-import { hasS3Config, serverConfig } from "@yuni/config";
+import { LiveAvatarProvider, createProviderTokenProtector } from "@yuni/avatars";
+import { authConfig, hasS3Config, serverConfig } from "@yuni/config";
 import { prisma } from "@yuni/db";
 import { createLogger } from "@yuni/observability";
 import { S3ObjectStorage } from "@yuni/storage";
@@ -9,14 +10,16 @@ import { createKnowledgeBaseWorker } from "./knowledge-base-worker";
 const logger = createLogger("@yuni/worker");
 
 export async function startWorker() {
-  if (!hasS3Config()) {
-    logger.error("S3 is not configured; knowledge base worker cannot start");
-    return () => undefined;
+  const storage = hasS3Config() ? new S3ObjectStorage() : undefined;
+  if (!storage) {
+    logger.warn("S3 is not configured; storage-backed jobs will remain queued");
   }
   const worker = createKnowledgeBaseWorker({
     db: prisma,
-    storage: new S3ObjectStorage(),
+    ...(storage ? { storage } : {}),
     provider: new ElevenLabsAgentProvider(),
+    liveAvatarProvider: new LiveAvatarProvider(),
+    providerTokenProtector: createProviderTokenProtector(authConfig.secret),
     workerId: `${hostname()}:${process.pid}`,
   });
   let stopped = false;

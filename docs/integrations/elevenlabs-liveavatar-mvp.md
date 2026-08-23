@@ -1,6 +1,6 @@
 # ElevenLabs + LiveAvatar MVP
 
-Esta guia documenta como configurar ElevenLabs y LiveAvatar para probar el MVP de llamada privada de YUNI. El objetivo es que un creador pueda abrir `/interact/[avatarId]`, iniciar una llamada con un avatar LiveAvatar LITE y conversar con un ElevenLabs Agent sincronizado desde el contexto textual de YUNI.
+Esta guia documenta como configurar ElevenLabs y LiveAvatar para probar el MVP de llamada privada individual de YUNI. El objetivo es que un creador pueda abrir `/interact/[avatarId]`, iniciar una llamada con un avatar LiveAvatar LITE y conversar con un ElevenLabs Agent sincronizado desde el contexto textual de YUNI. Para dos o tres avatares, ver [Llamadas grupales con ElevenLabs y LiveAvatar](group-calls-elevenlabs-liveavatar.md).
 
 ## Resumen
 
@@ -326,10 +326,10 @@ Contrato importante para LiveAvatar:
   - `vad_score`
 - `conversation_config.agent.prompt.llm` debe estar definido
 - `conversation_config.turn.turn_eagerness` queda en `patient`
-- `conversation_config.turn.turn_timeout` queda en `10`
-- `conversation_config.turn.soft_timeout_config` usa un filler natural y `use_llm_generated_message`
+- en Agents directos, `conversation_config.turn.turn_timeout` queda en `10` y `soft_timeout_config` usa un filler natural con `use_llm_generated_message`
+- en Agents grupales, `turn_timeout` queda en `30`, el máximo admitido, y `soft_timeout_config` queda deshabilitado con `-1`
 - `conversation_config.turn.interruption_ignore_terms` incluye backchannels cortos como `si`, `ajá`, `ok`, `dale`, `claro`, `mmm` y `eh`
-- el Agent ID devuelto por ElevenLabs se guarda como `providerAgentId`
+- el Agent directo devuelto por ElevenLabs se guarda como `providerAgentId`; la variante grupal se guarda separadamente como `groupProviderAgentId`
 
 El fingerprint de sync incluye esta configuracion del connector. Si se cambia la lista de eventos o el contrato PCM, el Agent existente se vuelve a parchear aunque el texto del avatar no haya cambiado.
 

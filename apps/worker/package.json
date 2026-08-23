@@ -11,11 +11,15 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@yuni/avatars": "workspace:*",
     "@yuni/config": "workspace:*",
     "@yuni/db": "workspace:*",
     "@yuni/domain": "workspace:*",
     "@yuni/observability": "workspace:*",
     "@yuni/storage": "workspace:*",
     "@yuni/voice": "workspace:*"
+  },
+  "devDependencies": {
+    "@prisma/client": "^5.22.0"
   }
 }

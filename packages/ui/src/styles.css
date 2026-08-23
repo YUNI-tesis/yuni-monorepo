@@ -244,7 +244,7 @@
 }
 
 .yuni-button--md {
-  min-height: 42px;
+  min-height: 44px;
   padding: 10px 16px;
 }
 
@@ -255,8 +255,8 @@
 }
 
 .yuni-icon-button {
-  width: 42px;
-  height: 42px;
+  width: 44px;
+  height: 44px;
   padding: 0;
 }
 

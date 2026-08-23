@@ -16,11 +16,12 @@ import {
   createPublicSessionRepository,
   createRealtimeSessionRepository,
   createJobRepository,
+  createAvatarGroupRepository,
   prisma,
 } from "@yuni/db";
 import { S3ObjectStorage } from "@yuni/storage";
 import { ElevenLabsAgentProvider } from "@yuni/voice";
-import { createOpenAiConversationTitleGenerator } from "@yuni/ai";
+import { createOpenAiConversationTitleGenerator, createOpenAiGroupOrchestrator } from "@yuni/ai";
 import { createLogger } from "@yuni/observability";
 import { createAuthController, type AuthControllerDependencies } from "./domains/auth/controller.js";
 import { passwordService } from "./domains/auth/password.js";
@@ -78,6 +79,11 @@ import {
   type AvatarContextControllerDependencies,
 } from "./domains/context/controller.js";
 import { createAvatarContextRepository } from "./domains/context/repository.js";
+import {
+  createAvatarGroupsController,
+  type AvatarGroupsControllerDependencies,
+} from "./domains/avatar-groups/controller.js";
+import { createAvatarGroupsService } from "./domains/avatar-groups/service.js";
 
 export type AppDependencies = {
   auth: AuthControllerDependencies;
@@ -92,11 +98,13 @@ export type AppDependencies = {
   dashboard?: CreatorDashboardControllerDependencies;
   publicSessions?: PublicSessionsControllerDependencies;
   context?: AvatarContextControllerDependencies;
+  avatarGroups?: AvatarGroupsControllerDependencies;
 };
 
 const liveAvatarProvider = new LiveAvatarProvider();
 const elevenLabsAgentProvider = new ElevenLabsAgentProvider();
 const conversationTitleGenerator = createOpenAiConversationTitleGenerator();
+const groupOrchestrator = createOpenAiGroupOrchestrator();
 const publicSessionRateLimiter = createInMemoryPublicSessionRateLimiter({
   maxPerAvatar: rateLimitConfig.maxPublicSessionsPerAvatarPerHour,
   maxPerIpAndLink: rateLimitConfig.maxPublicSessionsPerIpPerHour,
@@ -162,6 +170,15 @@ const defaultDependencies: AppDependencies = {
   context: {
     repository: createAvatarContextRepository(prisma),
     ...(hasS3Config() ? { storage: new S3ObjectStorage() } : {}),
+  },
+  avatarGroups: {
+    repository: createAvatarGroupRepository(prisma),
+    messagesRepository: createMessageRepository(prisma),
+    liveAvatarProvider,
+    elevenLabsAgentProvider,
+    orchestrator: groupOrchestrator,
+    providerTokenProtector: createProviderTokenProtector(authConfig.secret),
+    maxMinutes: 10,
   },
 };
 
@@ -237,6 +254,9 @@ export function createApp(dependencies: AppDependencies = defaultDependencies) {
   if (dependencies.context) {
     app.route("/", createAvatarContextController(dependencies.context));
   }
+  if (dependencies.avatarGroups) {
+    app.route("/", createAvatarGroupsController(dependencies.avatarGroups));
+  }
 
   return app;
 }
@@ -255,6 +275,30 @@ export function startPublicSessionMaintenance(intervalMs = 15_000) {
       await service.cleanupExpired();
     } catch (error) {
       logger.error("Public session maintenance failed", {
+        error: error instanceof Error ? error.message : "Unknown cleanup error",
+      });
+    } finally {
+      running = false;
+    }
+  };
+  void cleanup();
+  const timer = setInterval(() => void cleanup(), intervalMs);
+  timer.unref?.();
+  return () => clearInterval(timer);
+}
+
+export function startGroupVoiceSessionMaintenance(intervalMs = 15_000) {
+  const dependencies = defaultDependencies.avatarGroups;
+  if (!dependencies) return () => undefined;
+  const service = createAvatarGroupsService(dependencies);
+  let running = false;
+  const cleanup = async () => {
+    if (running) return;
+    running = true;
+    try {
+      await service.cleanupExpired();
+    } catch (error) {
+      logger.error("Group voice session maintenance failed", {
         error: error instanceof Error ? error.message : "Unknown cleanup error",
       });
     } finally {

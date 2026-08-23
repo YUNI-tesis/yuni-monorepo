@@ -13,3 +13,4 @@ export * from "./schemas/voice-session";
 export * from "./schemas/document";
 export * from "./schemas/usage-event";
 export * from "./schemas/job";
+export * from "./schemas/avatar-group";
