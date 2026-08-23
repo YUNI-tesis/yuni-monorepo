@@ -12,6 +12,8 @@ describe("@yuni/ai conversation titles", () => {
       config: {
         apiKey: "",
         defaultModel: "gpt-4.1-mini",
+        groupRouterModel: "gpt-5.4-nano",
+        groupRouterTimeoutMs: 3000,
         defaultRealtimeModel: "gpt-4o-realtime-preview",
         embeddingsModel: "text-embedding-3-small",
       },
@@ -38,6 +40,8 @@ describe("@yuni/ai conversation titles", () => {
       config: {
         apiKey: "sk-test",
         defaultModel: "gpt-4.1-mini",
+        groupRouterModel: "gpt-5.4-nano",
+        groupRouterTimeoutMs: 3000,
         defaultRealtimeModel: "gpt-4o-realtime-preview",
         embeddingsModel: "text-embedding-3-small",
       },
@@ -76,6 +80,8 @@ describe("@yuni/ai conversation titles", () => {
         messages: [{ role: "user", content: "Necesito practicar derivadas para el parcial." }],
       })
     ).toBe("Necesito practicar derivadas para el parcial");
-    expect(fallbackConversationTitle({ avatarName: "Tutor Demo", messages: [] })).toBe("Llamada sin mensajes");
+    expect(fallbackConversationTitle({ avatarName: "Tutor Demo", messages: [] })).toBe(
+      "Llamada sin mensajes"
+    );
   });
 });

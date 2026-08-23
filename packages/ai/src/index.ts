@@ -1,5 +1,7 @@
 import { hasOpenAiConfig, openAiConfig, type OpenAiConfig } from "@yuni/config";
 
+export * from "./group-orchestrator.js";
+
 export type AiProviderName = "openai";
 
 export interface AiProvider {
@@ -62,11 +64,7 @@ export function createOpenAiConversationTitleGenerator(
               "Responde solo el titulo, sin comillas, sin punto final y con maximo 6 palabras.",
               "Usa espanol si la conversacion es mayormente en espanol; si no, conserva el idioma dominante.",
             ].join(" "),
-            input: [
-              input.avatarName ? `Avatar: ${input.avatarName}` : null,
-              "Transcripcion:",
-              transcript,
-            ]
+            input: [input.avatarName ? `Avatar: ${input.avatarName}` : null, "Transcripcion:", transcript]
               .filter(Boolean)
               .join("\n"),
           }),
@@ -87,7 +85,9 @@ export function createOpenAiConversationTitleGenerator(
 }
 
 export function fallbackConversationTitle(input: ConversationTitleInput): string {
-  const firstUserMessage = input.messages.find((message) => message.role === "user" && hasUsefulContent(message));
+  const firstUserMessage = input.messages.find(
+    (message) => message.role === "user" && hasUsefulContent(message)
+  );
   const firstUsefulMessage = firstUserMessage ?? input.messages.find(hasUsefulContent);
   const fallbackFromMessage = firstUsefulMessage ? titleFromContent(firstUsefulMessage.content) : null;
 

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 const sessionCookieName = "yuni_session";
-const privateRoutePrefixes = ["/dashboard", "/avatars", "/interact"];
+const privateRoutePrefixes = ["/dashboard", "/avatars", "/groups", "/interact"];
 const authRoutes = ["/auth/login", "/auth/register"];
 
 function isPrivateRoute(pathname: string) {
@@ -28,5 +28,12 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/avatars/:path*", "/interact/:path*", "/auth/login", "/auth/register"],
+  matcher: [
+    "/dashboard/:path*",
+    "/avatars/:path*",
+    "/groups/:path*",
+    "/interact/:path*",
+    "/auth/login",
+    "/auth/register",
+  ],
 };

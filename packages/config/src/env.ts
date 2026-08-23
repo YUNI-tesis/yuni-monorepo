@@ -29,6 +29,8 @@ const RawEnvSchema = z.object({
 
   OPENAI_API_KEY: z.string().optional(),
   OPENAI_DEFAULT_MODEL: z.string().min(1).default("gpt-4.1-mini"),
+  OPENAI_GROUP_ROUTER_MODEL: z.string().trim().min(1).default("gpt-5.4-nano"),
+  OPENAI_GROUP_ROUTER_TIMEOUT_MS: z.coerce.number().int().positive().default(3000),
   OPENAI_REALTIME_MODEL: z.string().min(1).default("gpt-4o-realtime-preview"),
   OPENAI_EMBEDDINGS_MODEL: z.string().min(1).default("text-embedding-3-small"),
 

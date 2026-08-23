@@ -3,11 +3,7 @@ import { ConfigError } from "./errors";
 import { createAuthConfig, requireAuthConfig } from "./auth";
 import { createClientEnv } from "./client";
 import { createDatabaseConfig } from "./database";
-import {
-  createElevenLabsConfig,
-  requireElevenLabsConfig,
-  requireElevenLabsDefaultVoice,
-} from "./elevenlabs";
+import { createElevenLabsConfig, requireElevenLabsConfig, requireElevenLabsDefaultVoice } from "./elevenlabs";
 import { parseRawEnv } from "./env";
 import { createLiveAvatarConfig, requireLiveAvatarElevenLabsConnectorConfig } from "./live-avatar";
 import { createOpenAiConfig, requireOpenAiConfig } from "./openai";
@@ -80,6 +76,29 @@ describe("@yuni/config", () => {
     const config = createOpenAiConfig(env);
 
     expect(() => requireOpenAiConfig(config)).toThrow(ConfigError);
+  });
+
+  it("applies dedicated group router defaults", () => {
+    const env = parseRawEnv({});
+    const config = createOpenAiConfig(env);
+
+    expect(config.groupRouterModel).toBe("gpt-5.4-nano");
+    expect(config.groupRouterTimeoutMs).toBe(3000);
+  });
+
+  it("accepts group router model and timeout overrides", () => {
+    const env = parseRawEnv({
+      OPENAI_GROUP_ROUTER_MODEL: "gpt-5.4-nano-2026-03-17",
+      OPENAI_GROUP_ROUTER_TIMEOUT_MS: "4500",
+    });
+    const config = createOpenAiConfig(env);
+
+    expect(config.groupRouterModel).toBe("gpt-5.4-nano-2026-03-17");
+    expect(config.groupRouterTimeoutMs).toBe(4500);
+  });
+
+  it("rejects an invalid group router timeout", () => {
+    expect(() => parseRawEnv({ OPENAI_GROUP_ROUTER_TIMEOUT_MS: "0" })).toThrow(ConfigError);
   });
 
   it("fails when requiring ElevenLabs without API key", () => {

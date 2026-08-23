@@ -12,6 +12,7 @@ Decision source: [0009-product-navigation-sharing-background-sync.md](../thesis/
 - Las sesiones publicas se atribuyen a `participantEmail` y opcionalmente `participantUserId`.
 - La sincronizacion de Agent/Knowledge Base corre en background con retries automaticos.
 - La UI normal solo muestra fallos o procesamiento relevante de contexto/documentos.
+- `Grupos` reúne llamadas privadas de dos o tres avatares con posiciones fijas, Agents atómicos y floor estricto según [ADR 0019](../thesis/decision-records/0019-strict-floor-independent-liveavatar-group-sessions.md).
 
 ## Estado Actual
 
@@ -22,6 +23,7 @@ Decision source: [0009-product-navigation-sharing-background-sync.md](../thesis/
 - Implementado parcialmente: actividad owner por Access Grant con conversaciones y transcripts; costos, usage y actividad publica siguen pendientes.
 - Pendiente: contexto/documentos reales, progreso, sesiones publicas identificadas y hardening.
 - La estrategia recomendada para MVP sigue siendo validar temprano la experiencia conversacional con ElevenLabs Agents + LiveAvatar LITE, sin esperar a completar RAG propio.
+- Implementado: router semántico, floor estricto, attempts por conexión y cleanup durable de llamadas grupales con sesiones LiveAvatar LITE independientes (`37`).
 
 ## Regla De Trabajo Para Dos Personas
 
@@ -37,27 +39,42 @@ Decision source: [0009-product-navigation-sharing-background-sync.md](../thesis/
 
 ## Backlog Priorizado
 
-| Prioridad | Plan                                                                                      | Tipo                        | Depende de                                           | Resultado                                                      |
-| --------- | ----------------------------------------------------------------------------------------- | --------------------------- | ---------------------------------------------------- | -------------------------------------------------------------- |
-| P0        | `12A-app-shell-navigation-dashboard`                                                      | app shell/product structure | `00-13`                                              | Inicio y Mis avatares como navegacion central                  |
-| P0        | ajustar `18-interact-shell-ui` a accion contextual                                        | UI/voz                      | `12A`, `24B` actual                                  | llamada fullscreen desde avatar, sin nav top-level obligatoria |
-| P1        | `15-share-links-api`                                                                      | API/share identity          | avatar domain                                        | links con email e invitaciones/grants                          |
-| P1        | `19-private-conversations-api`                                                            | API/conversacion            | implementado owner/shared; publico depende de `23`   | conversaciones aisladas por identidad efectiva                 |
-| P1        | `17-share-tab-ui`                                                                         | UI/share                    | `15`                                                 | gestion de links e invitaciones en perfil                      |
+| Prioridad | Plan                                                                                      | Tipo                        | Depende de                                            | Resultado                                                      |
+| --------- | ----------------------------------------------------------------------------------------- | --------------------------- | ----------------------------------------------------- | -------------------------------------------------------------- |
+| P0        | `12A-app-shell-navigation-dashboard`                                                      | app shell/product structure | `00-13`                                               | Inicio y Mis avatares como navegacion central                  |
+| P0        | ajustar `18-interact-shell-ui` a accion contextual                                        | UI/voz                      | `12A`, `24B` actual                                   | llamada fullscreen desde avatar, sin nav top-level obligatoria |
+| P1        | `15-share-links-api`                                                                      | API/share identity          | avatar domain                                         | links con email e invitaciones/grants                          |
+| P1        | `19-private-conversations-api`                                                            | API/conversacion            | implementado owner/shared; publico depende de `23`    | conversaciones aisladas por identidad efectiva                 |
+| P1        | `17-share-tab-ui`                                                                         | UI/share                    | `15`                                                  | gestion de links e invitaciones en perfil                      |
 | P1        | `16-share-metrics-api`                                                                    | API/actividad               | dashboard y uso listos; falta costo/link/grant (`27`) | métricas por avatar/email y alertas accionables                |
 | P1        | actividad del perfil owner                                                                | UI/actividad                | implementada por email con dashboard de uso           | transcripts y seguimiento descriptivo por participante         |
-| P2        | `14-documents-filedrop-shell`                                                             | UI/contexto                 | `09`                                                 | tab Contexto preparada                                         |
-| P2        | `28-s3-storage-adapter`                                                                   | storage                     | contrato storage acordado                            | storage listo para documentos                                  |
-| P2        | `29-document-upload-api`                                                                  | API/documentos              | `14`, `28`                                           | documentos reales subibles y procesables                       |
-| P2        | `30-document-ingestion-worker`                                                            | worker/contexto             | `28`, `29`                                           | chunks creados y estados de documento                          |
-| P2        | `24C-elevenlabs-knowledge-base-context-sync`                                              | provider/contexto           | `24B`; archivos requieren `28/29/30`                 | contexto/documentos sincronizados en background                |
-| P3        | `20-private-chat-ui`, `25-private-text-chat-api`                                          | chat autenticado            | `18`, `19`, `24`                                     | chat owner/shared con historial                                |
-| P3        | `21-public-link-resolver-api`, `22-public-avatar-ui`, `23-public-session-api`             | publico identificado        | implementado                                         | link publico con email, consentimiento y sesion atribuible     |
-| P3        | `26-public-text-chat-api`                                                                 | publico/chat                | `23`, `25` contract                                  | chat publico atribuido a email                                 |
-| P3        | `27-usage-cost-tracking`                                                                  | usage/costos                | flujos reales                                        | costos y uso por owner/link/grant/email                        |
-| P4        | `31-rag-retriever-integration`                                                            | AI/RAG propio               | `30`                                                 | contexto propio recuperable con permisos                       |
-| P4        | `32-realtime-service-foundation`, `33-realtime-private-voice`, `34-realtime-public-voice` | realtime/voz                | `34` implementado sobre LiveAvatar; resto parcial    | voz owner/shared/public coherente                              |
-| P4        | `35-limits-rate-limits`, `36-hardening-observability`                                     | cierre                      | flujos reales                                        | MVP medible, seguro y defendible                               |
+| P2        | `14-documents-filedrop-shell`                                                             | UI/contexto                 | `09`                                                  | tab Contexto preparada                                         |
+| P2        | `28-s3-storage-adapter`                                                                   | storage                     | contrato storage acordado                             | storage listo para documentos                                  |
+| P2        | `29-document-upload-api`                                                                  | API/documentos              | `14`, `28`                                            | documentos reales subibles y procesables                       |
+| P2        | `30-document-ingestion-worker`                                                            | worker/contexto             | `28`, `29`                                            | chunks creados y estados de documento                          |
+| P2        | `24C-elevenlabs-knowledge-base-context-sync`                                              | provider/contexto           | `24B`; archivos requieren `28/29/30`                  | contexto/documentos sincronizados en background                |
+| P3        | `20-private-chat-ui`, `25-private-text-chat-api`                                          | chat autenticado            | `18`, `19`, `24`                                      | chat owner/shared con historial                                |
+| P3        | `21-public-link-resolver-api`, `22-public-avatar-ui`, `23-public-session-api`             | publico identificado        | implementado                                          | link publico con email, consentimiento y sesion atribuible     |
+| P3        | `26-public-text-chat-api`                                                                 | publico/chat                | `23`, `25` contract                                   | chat publico atribuido a email                                 |
+| P3        | `27-usage-cost-tracking`                                                                  | usage/costos                | flujos reales                                         | costos y uso por owner/link/grant/email                        |
+| P4        | `31-rag-retriever-integration`                                                            | AI/RAG propio               | `30`                                                  | contexto propio recuperable con permisos                       |
+| P4        | `32-realtime-service-foundation`, `33-realtime-private-voice`, `34-realtime-public-voice` | realtime/voz                | `34` implementado sobre LiveAvatar; resto parcial     | voz owner/shared/public coherente                              |
+| P4        | `35-limits-rate-limits`, `36-hardening-observability`                                     | cierre                      | flujos reales                                         | MVP medible, seguro y defendible                               |
+| P4        | `37-group-call-floor-hardening`                                                           | grupos/voz                  | Agents grupales y floor persistente                   | un solo hablante audible, routing semántico y cleanup          |
+
+## Evaluación futura
+
+### Evaluar una sala multiavatar compartida con BYO LiveKit
+
+Esta tarea no cambia la arquitectura vigente y sólo comenzará después de estabilizar el floor independiente. Criterios de entrada y aceptación:
+
+- spike aislado con dos avatares en LiveKit Cloud Build;
+- mantener el connector nativo de ElevenLabs;
+- confirmar RAG, voz y TTS propios de cada Agent;
+- verificar control backend de tracks y comandos direccionables;
+- comparar latencia, costo y complejidad contra sesiones independientes;
+- no asumir un bridge PCM;
+- solicitar a LiveAvatar el POC o contrato de API correspondiente antes de elegir arquitectura.
 
 ## Que Es Paralelizable
 

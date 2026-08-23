@@ -12,6 +12,7 @@ import {
   rememberPrivacyChoiceForAvatar,
   shouldShowInteractDiagnostics,
 } from "./components/interact/InteractCall";
+import { CallParticipantStage } from "./components/interact/CallExperience";
 import { interruptActiveLiveAvatarSession, type LiveAvatarDiagnostics } from "./hooks/useLiveAvatarSession";
 import type { ApiConversationDetail, ApiConversationSummary } from "./lib/api/avatar-api";
 
@@ -132,6 +133,43 @@ describe("Interact contextual UI", () => {
     expect(html).not.toContain("Transcript");
   });
 
+  it("uses the same adaptive stage for one or several participants", () => {
+    const createParticipant = (id: string, name: string) => ({
+      id,
+      name,
+      status: "ready" as const,
+      statusLabel: "Listo",
+      attachMediaElement: vi.fn(),
+    });
+    const single = renderToStaticMarkup(
+      createElement(CallParticipantStage, {
+        label: "Llamada individual",
+        participants: [createParticipant("avatar-1", "Ada")],
+        dock: createElement("span", null, "Controles"),
+      })
+    );
+    const group = renderToStaticMarkup(
+      createElement(CallParticipantStage, {
+        label: "Llamada grupal",
+        participants: [
+          { ...createParticipant("avatar-1", "Ada"), mediaMuted: true },
+          { ...createParticipant("avatar-2", "Alan"), mediaMuted: true },
+          { ...createParticipant("avatar-3", "Grace"), mediaMuted: true },
+        ],
+        dock: createElement("span", null, "Controles"),
+      })
+    );
+
+    expect(single).toContain('data-count="1"');
+    expect(single.match(/<video/g)).toHaveLength(1);
+    expect(single).not.toContain('muted=""');
+    expect(group).toContain('data-count="3"');
+    expect(group.match(/<video/g)).toHaveLength(3);
+    expect(group.match(/muted=""/g)).toHaveLength(3);
+    expect(group.indexOf("Ada")).toBeLessThan(group.indexOf("Alan"));
+    expect(group.indexOf("Alan")).toBeLessThan(group.indexOf("Grace"));
+  });
+
   it.each([
     ["idle", true, "Iniciar llamada", false],
     ["starting", false, "Iniciando llamada", true],
@@ -211,6 +249,37 @@ describe("Interact contextual UI", () => {
     expect(html).toContain("Transcripcion literal");
     expect(html).toContain("Hola, quiero practicar derivadas.");
     expect(html).toContain("Perfecto, empecemos con una regla simple.");
+  });
+
+  it("shows the actual speaker name in a multi-participant history", () => {
+    const html = renderToStaticMarkup(
+      createElement(InteractConversationHistoryPanel, {
+        avatarName: "Equipo docente",
+        summaries: [conversationSummary],
+        summariesStatus: "ready",
+        summariesError: null,
+        selectedConversationId: "conversation-1",
+        detail: {
+          id: "conversation-1",
+          title: "Presentaciones",
+          messages: [
+            {
+              id: "message-group-1",
+              role: "assistant",
+              content: "Soy Juana, tutora de contabilidad.",
+              speakerName: "Juana Balance",
+            },
+          ],
+        },
+        detailStatus: "ready",
+        detailError: null,
+        onRefresh: vi.fn(),
+        onSelectConversation: vi.fn(),
+      })
+    );
+
+    expect(html).toContain("Juana Balance");
+    expect(html).toContain("Soy Juana, tutora de contabilidad.");
   });
 
   it("renders controlled empty history state", () => {
