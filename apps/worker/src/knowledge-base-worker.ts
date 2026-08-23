@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { AvatarProviderError, type AvatarProvider, type ProviderTokenProtector } from "@yuni/avatars";
 import type { PrismaClientInstance } from "@yuni/db";
 import { createJobRepository } from "@yuni/db";
 import { MAX_DOCUMENT_SIZE_BYTES, VoiceConfigSchema } from "@yuni/domain";
@@ -40,7 +41,7 @@ type SyncAgentOptions = {
 
 export type KnowledgeBaseWorkerDependencies = {
   db: PrismaClientInstance;
-  storage: ObjectStorage;
+  storage?: ObjectStorage;
   provider: Pick<
     ElevenLabsAgentProvider,
     | "createTextDocument"
@@ -52,6 +53,8 @@ export type KnowledgeBaseWorkerDependencies = {
     | "syncAvatarAgent"
     | "deleteAgent"
   >;
+  liveAvatarProvider?: Pick<AvatarProvider, "stopSession">;
+  providerTokenProtector?: ProviderTokenProtector;
   workerId: string;
   now?: () => Date;
 };
@@ -59,6 +62,21 @@ export type KnowledgeBaseWorkerDependencies = {
 export function createKnowledgeBaseWorker(dependencies: KnowledgeBaseWorkerDependencies) {
   const jobs = createJobRepository(dependencies.db);
   const now = dependencies.now ?? (() => new Date());
+  const supportedJobTypes = dependencies.storage
+    ? ([
+        "session_cleanup",
+        "avatar_context_provider_sync",
+        "document_provider_sync",
+        "agent_provider_sync",
+        "provider_document_cleanup",
+        "avatar_provider_cleanup",
+      ] as const)
+    : (["session_cleanup", "avatar_context_provider_sync", "agent_provider_sync"] as const);
+
+  function requireStorage() {
+    if (!dependencies.storage) throw new Error("S3 is not configured for this job");
+    return dependencies.storage;
+  }
 
   async function syncAgent(avatarId: string, options: SyncAgentOptions = {}) {
     const avatar = await dependencies.db.avatarAgent.findUnique({
@@ -240,7 +258,7 @@ export function createKnowledgeBaseWorker(dependencies: KnowledgeBaseWorkerDepen
     let providerDocumentId = document.providerSync?.providerDocumentId ?? null;
     if (!providerDocumentId) {
       await upsertDocumentSync(documentId, { status: "uploading", errorMessage: null });
-      const bytes = await dependencies.storage.download(document.storageKey, MAX_DOCUMENT_SIZE_BYTES);
+      const bytes = await requireStorage().download(document.storageKey, MAX_DOCUMENT_SIZE_BYTES);
       const external = await dependencies.provider.createFileDocument({
         name: document.fileName,
         fileName: document.fileName,
@@ -348,7 +366,7 @@ export function createKnowledgeBaseWorker(dependencies: KnowledgeBaseWorkerDepen
         dependencies.provider.deleteKnowledgeBaseDocument(document.providerSync!.providerDocumentId!, true)
       );
     }
-    await dependencies.storage.delete(document.storageKey);
+    await requireStorage().delete(document.storageKey);
     await dependencies.db.document.delete({ where: { id: documentId } });
   }
 
@@ -364,16 +382,21 @@ export function createKnowledgeBaseWorker(dependencies: KnowledgeBaseWorkerDepen
       document = await dependencies.db.document.findUnique({ where: { id: documentId } });
     }
     if (!document || document.uploadConfirmedAt || document.status !== "deleting") return;
-    await dependencies.storage.delete(document.storageKey);
+    await requireStorage().delete(document.storageKey);
     await dependencies.db.document.deleteMany({
       where: { id: documentId, uploadConfirmedAt: null },
     });
   }
 
   async function cleanupAvatar(payload: Record<string, unknown>) {
-    const providerAgentId = readString(payload.providerAgentId);
-    if (providerAgentId)
+    const agentIds = new Set(
+      [readString(payload.providerAgentId), readString(payload.groupProviderAgentId)].filter(
+        (id): id is string => Boolean(id)
+      )
+    );
+    for (const providerAgentId of agentIds) {
       await ignoreProviderNotFound(() => dependencies.provider.deleteAgent(providerAgentId));
+    }
     const ids = new Set<string>();
     const contextId = readString(payload.providerContextDocumentId);
     if (contextId) ids.add(contextId);
@@ -389,8 +412,35 @@ export function createKnowledgeBaseWorker(dependencies: KnowledgeBaseWorkerDepen
     for (const item of documents) {
       if (!isRecord(item)) continue;
       const storageKey = readString(item.storageKey);
-      if (storageKey) await dependencies.storage.delete(storageKey);
+      if (storageKey) await requireStorage().delete(storageKey);
     }
+  }
+
+  async function cleanupSession(payload: Record<string, unknown>) {
+    const realtimeSessionId = readString(payload.realtimeSessionId);
+    const ciphertext = readString(payload.providerSessionTokenCiphertext);
+    if (payload.version !== 1 || payload.provider !== "liveavatar" || !realtimeSessionId || !ciphertext) {
+      throw new Error("Invalid LiveAvatar session cleanup payload");
+    }
+    if (!dependencies.liveAvatarProvider?.stopSession || !dependencies.providerTokenProtector) {
+      throw new Error("LiveAvatar session cleanup is not configured");
+    }
+    const token = dependencies.providerTokenProtector.decrypt(ciphertext);
+    try {
+      await dependencies.liveAvatarProvider.stopSession(token);
+    } catch (error) {
+      if (!(error instanceof AvatarProviderError) || (error.status !== 404 && error.status !== 409)) {
+        throw error;
+      }
+    }
+    await dependencies.db.realtimeSession.updateMany({
+      where: {
+        id: realtimeSessionId,
+        providerSessionTokenCiphertext: ciphertext,
+        providerStoppedAt: null,
+      },
+      data: { providerStoppedAt: now(), providerSessionTokenCiphertext: null },
+    });
   }
 
   async function execute(job: NonNullable<Awaited<ReturnType<typeof jobs.claimNext>>>) {
@@ -415,6 +465,9 @@ export function createKnowledgeBaseWorker(dependencies: KnowledgeBaseWorkerDepen
         return;
       case "avatar_provider_cleanup":
         await cleanupAvatar(payload);
+        return;
+      case "session_cleanup":
+        await cleanupSession(payload);
         return;
       default:
         return;
@@ -468,10 +521,11 @@ export function createKnowledgeBaseWorker(dependencies: KnowledgeBaseWorkerDepen
       return jobs.recoverStalled(lockedBefore);
     },
     async runOnce() {
-      const job = await jobs.claimNext(dependencies.workerId);
+      const job = await jobs.claimNext(dependencies.workerId, [...supportedJobTypes]);
       if (!job) return false;
       const payload = isRecord(job.payload) ? job.payload : {};
-      const lockAvatarId = readString(payload.avatarId) ?? job.avatarAgentId;
+      const lockAvatarId =
+        job.type === "session_cleanup" ? null : (readString(payload.avatarId) ?? job.avatarAgentId);
       const heartbeat = setInterval(() => {
         void jobs.heartbeat(job.id, dependencies.workerId).catch(() => undefined);
       }, 60_000);
@@ -483,7 +537,12 @@ export function createKnowledgeBaseWorker(dependencies: KnowledgeBaseWorkerDepen
         } else {
           await execute(job);
         }
-        await jobs.markDone(job.id);
+        await jobs.markDone(
+          job.id,
+          job.type === "session_cleanup"
+            ? { version: 1, provider: "liveavatar", status: "stopped" }
+            : undefined
+        );
       } catch (error) {
         const deferred =
           error instanceof RagStillProcessingError ||
@@ -515,6 +574,7 @@ export function createKnowledgeBaseWorker(dependencies: KnowledgeBaseWorkerDepen
     cleanupDocument,
     cleanupPendingUpload,
     cleanupAvatar,
+    cleanupSession,
   };
 }
 
@@ -539,11 +599,21 @@ function safeError(error: unknown) {
     if (error.statusCode && error.statusCode >= 500) return "ElevenLabs is temporarily unavailable";
     return "ElevenLabs rejected the knowledge base operation";
   }
+  if (error instanceof AvatarProviderError) {
+    if (error.status === 429) return "LiveAvatar rate limit reached";
+    if (error.status && error.status >= 500) return "LiveAvatar is temporarily unavailable";
+    return "LiveAvatar session cleanup failed";
+  }
   return error instanceof Error ? error.message.slice(0, 300) : "Knowledge base synchronization failed";
 }
 
 function isRetryableError(error: unknown) {
-  return isTransientElevenLabsError(error) || isTransientStorageError(error);
+  return (
+    isTransientElevenLabsError(error) ||
+    isTransientStorageError(error) ||
+    (error instanceof AvatarProviderError &&
+      (error.status === undefined || error.status === 408 || error.status === 429 || error.status >= 500))
+  );
 }
 
 function isTransientStorageError(error: unknown) {

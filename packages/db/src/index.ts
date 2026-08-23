@@ -1,5 +1,10 @@
 export { prisma, type PrismaClientInstance } from "./client";
 export { createAvatarAgentRepository } from "./repositories/avatar-agent-repository";
+export {
+  createAvatarGroupRepository,
+  enqueueSessionCleanup,
+  terminateGroupVoiceSessionsForDeletion,
+} from "./repositories/avatar-group-repository";
 export { createAccessGrantRepository } from "./repositories/access-grant-repository";
 export { createAvatarActivityRepository } from "./repositories/avatar-activity-repository";
 export { createConversationRepository } from "./repositories/conversation-repository";

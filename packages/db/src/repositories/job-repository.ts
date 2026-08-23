@@ -25,8 +25,14 @@ export function createJobRepository(db: Db) {
       });
     },
 
-    async claimNext(workerId = "worker", type?: JobType) {
-      const typeFilter = type ? Prisma.sql`AND "type" = ${type}::"JobType"` : Prisma.empty;
+    async claimNext(workerId = "worker", type?: JobType | JobType[]) {
+      const types = type === undefined ? null : Array.isArray(type) ? type : [type];
+      const typeFilter =
+        types === null
+          ? Prisma.empty
+          : types.length === 0
+            ? Prisma.sql`AND FALSE`
+            : Prisma.sql`AND "type" IN (${Prisma.join(types.map((item) => Prisma.sql`${item}::"JobType"`))})`;
       const jobs = await db.$queryRaw<Array<Prisma.JobGetPayload<Record<string, never>>>>`
         UPDATE "Job"
         SET "status" = 'running'::"JobStatus",
@@ -57,7 +63,7 @@ export function createJobRepository(db: Db) {
       });
     },
 
-    markDone(id: string) {
+    markDone(id: string, payload?: Prisma.InputJsonObject) {
       return db.job.update({
         where: { id },
         data: {
@@ -66,6 +72,7 @@ export function createJobRepository(db: Db) {
           lockedAt: null,
           lockedBy: null,
           errorMessage: null,
+          ...(payload ? { payload } : {}),
         },
       });
     },

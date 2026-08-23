@@ -18,6 +18,8 @@ describe("private app navigation", () => {
     ["/avatars/new", "avatars"],
     ["/avatars/avatar-1", "avatars"],
     ["/avatars/avatar-1/edit", "avatars"],
+    ["/groups", "groups"],
+    ["/groups/group-1", "groups"],
   ])("marks %s as %s", (pathname, expectedId) => {
     expect(getActivePrivateNavItem(pathname)?.id).toBe(expectedId);
   });
@@ -32,16 +34,19 @@ describe("private app navigation", () => {
 
     expect(html).toContain("Dashboard");
     expect(html).toContain("Mis avatares");
+    expect(html).toContain("Grupos");
     expect(html).not.toContain("Crear avatar");
     expect(html).not.toContain("Interact");
-    expect(html).toContain("aria-current=\"page\"");
-    expect(html).toContain("href=\"/avatars\"");
+    expect(html).toContain('aria-current="page"');
+    expect(html).toContain('href="/avatars"');
   });
 
   it("identifies private routes for the persistent app chrome", () => {
     expect(isPrivatePathname("/")).toBe(false);
     expect(isPrivatePathname("/dashboard")).toBe(true);
     expect(isPrivatePathname("/avatars/avatar-1/edit")).toBe(true);
+    expect(isPrivatePathname("/groups")).toBe(true);
+    expect(isPrivatePathname("/groups/group-1")).toBe(true);
     expect(isPrivatePathname("/interact/avatar-1")).toBe(true);
     expect(isPrivatePathname("/auth/login")).toBe(false);
     expect(isPrivatePathname("/design-system")).toBe(false);
@@ -53,6 +58,8 @@ describe("private app navigation", () => {
     ["/avatars/new", "1180px"],
     ["/avatars/avatar-1", "1280px"],
     ["/avatars/avatar-1/edit", "1180px"],
+    ["/groups", "1280px"],
+    ["/groups/group-1", "1440px"],
     ["/interact", "1280px"],
     ["/interact/avatar-1", "1440px"],
   ])("uses %s max width for %s", (pathname, maxWidth) => {
@@ -62,6 +69,8 @@ describe("private app navigation", () => {
   it.each([
     ["/dashboard", "standard"],
     ["/avatars/avatar-1", "standard"],
+    ["/groups", "standard"],
+    ["/groups/group-1", "focus"],
     ["/interact", "standard"],
     ["/interact/avatar-1", "focus"],
   ])("uses %s layout variant for %s", (pathname, variant) => {
@@ -71,7 +80,7 @@ describe("private app navigation", () => {
   it("renders the YUNI logo component", () => {
     const html = renderToStaticMarkup(createElement(YuniLogo, { "aria-hidden": true }));
 
-    expect(html).toContain("viewBox=\"0 0 95 81\"");
+    expect(html).toContain('viewBox="0 0 95 81"');
     expect(html).toContain("<ellipse");
   });
 

@@ -163,7 +163,7 @@ function ProductScene({ type }: { type: (typeof productMoments)[number]["scene"]
         </div>
         <div className={styles.callAvatar}>
           <span className={styles.callRing} />
-          <LivingYuniLogo className={styles.callCreature} mood="awake" />
+          <LivingYuniLogo className={styles.callCreature} interactive={false} mood="awake" />
         </div>
         <div className={styles.waveform}>
           {Array.from({ length: 22 }, (_, index) => (
@@ -243,14 +243,13 @@ function PresenceVisual({
         className={styles.presenceLogo}
         {...(reducedMotion ? {} : { style: { scale, rotate, boxShadow: glow } })}
       >
-        <LivingYuniLogo className={styles.presenceCreature} mood="awake" />
+        <LivingYuniLogo className={styles.presenceCreature} dragEnabled mood="awake" />
       </motion.div>
       <div className={styles.voiceBars}>
         {Array.from({ length: 28 }, (_, index) => (
           <i key={index} />
         ))}
       </div>
-      <span className={styles.visualCaption}>señal / identidad / presencia</span>
     </div>
   );
 }
@@ -353,23 +352,6 @@ export function LandingExperience() {
                 YUNI es una plataforma para crear avatares de IA con identidad, contexto y voz; compartirlos y
                 comprender cada interacción.
               </p>
-              <div className={styles.heroActions}>
-                <Link
-                  className={`${styles.button} ${styles.primaryButton}`}
-                  href="/dashboard"
-                  prefetch={false}
-                >
-                  Explorar la demo
-                  <ArrowIcon />
-                </Link>
-                <a
-                  className={`${styles.button} ${styles.secondaryButton}`}
-                  href="#experiencia"
-                  onClick={(event) => scrollToAnchor(event, "#experiencia")}
-                >
-                  Descubrir YUNI
-                </a>
-              </div>
             </motion.div>
             <motion.div
               className={styles.scrollCue}
@@ -386,23 +368,26 @@ export function LandingExperience() {
 
         <section id="idea" className={styles.problemSection} aria-labelledby="problem-title">
           <div className={styles.sectionGrid}>
-            <Reveal className={styles.sectionMarker} reducedMotion={reducedMotion}>
-              <span>01</span>
-              <p>El punto de partida</p>
-            </Reveal>
             <Reveal className={styles.problemContent} delay={0.08} reducedMotion={reducedMotion}>
               <p className={styles.eyebrow}>La oportunidad</p>
-              <h2 id="problem-title">Conversar no alcanza.</h2>
-              <p className={styles.problemLead}>
-                La inteligencia artificial ya sabe responder. El desafío es lograr que también pueda
-                representar una identidad, sostener su contexto y construir una relación.
-              </p>
+              <h2 id="problem-title" aria-label="Conversar no alcanza.">
+                <span>Conversar</span>
+                <span className={styles.problemAccent}>no alcanza.</span>
+              </h2>
             </Reveal>
-            <Reveal className={styles.problemAside} delay={0.16} reducedMotion={reducedMotion}>
-              <span className={styles.quoteMark}>“</span>
-              <p>¿Qué cambia cuando una respuesta tiene una voz, un rostro y una memoria compartida?</p>
-              <small>La pregunta que guía YUNI</small>
-            </Reveal>
+            <div className={styles.problemLower}>
+              <Reveal className={styles.problemLead} delay={0.12} reducedMotion={reducedMotion}>
+                <p>
+                  La inteligencia artificial ya sabe responder. El desafío es lograr que también pueda
+                  representar una identidad, sostener su contexto y construir una relación.
+                </p>
+              </Reveal>
+              <Reveal className={styles.problemAside} delay={0.16} reducedMotion={reducedMotion}>
+                <span className={styles.quoteMark}>“</span>
+                <p>¿Qué cambia cuando una respuesta tiene una voz, un rostro y una memoria compartida?</p>
+                <small>La pregunta que guía YUNI</small>
+              </Reveal>
+            </div>
           </div>
         </section>
 
@@ -417,7 +402,7 @@ export function LandingExperience() {
               <p className={styles.eyebrow}>El sistema cobra vida</p>
               <h2 id="presence-title">
                 De una idea
-                <br />a una presencia.
+                <br />a una experiencia.
               </h2>
               <p>Cuatro decisiones convierten una configuración en alguien con quien encontrarse.</p>
             </div>
@@ -447,17 +432,12 @@ export function LandingExperience() {
           <div className={styles.sectionHeading}>
             <Reveal reducedMotion={reducedMotion}>
               <p className={styles.eyebrow}>La experiencia completa</p>
-              <h2 id="product-title">
-                Creá. Compartí.
-                <br />
-                Conversá. Comprendé.
+              <h2 id="product-title" aria-label="Creá. Compartí. Conversá. Comprendé.">
+                <span>Creá.</span>
+                <span>Compartí.</span>
+                <span>Conversá.</span>
+                <span>Comprendé.</span>
               </h2>
-            </Reveal>
-            <Reveal className={styles.sectionHeadingCopy} delay={0.12} reducedMotion={reducedMotion}>
-              <p>
-                Un recorrido continuo desde la primera decisión del creador hasta la evidencia que deja cada
-                conversación.
-              </p>
             </Reveal>
           </div>
 
@@ -486,10 +466,6 @@ export function LandingExperience() {
           aria-labelledby="architecture-title"
         >
           <div className={styles.architectureHeading}>
-            <Reveal className={styles.sectionMarker} reducedMotion={reducedMotion}>
-              <span>04</span>
-              <p>La arquitectura</p>
-            </Reveal>
             <Reveal className={styles.architectureTitle} delay={0.08} reducedMotion={reducedMotion}>
               <p className={styles.eyebrow}>Complejidad que no se ve</p>
               <h2 id="architecture-title">

@@ -1,3 +1,4 @@
+import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
 import {
   type LiveAvatarConfig,
   liveAvatarConfig,
@@ -31,12 +32,14 @@ export interface AvatarProvider {
   readonly name: AvatarProviderName;
   listAvatars(): Promise<AvatarOption[]>;
   createLiteSessionToken(input: LiveAvatarLiteSessionTokenInput): Promise<LiveAvatarLiteSessionToken>;
+  stopSession?(sessionToken: string): Promise<void>;
 }
 
 export class AvatarProviderError extends Error {
   constructor(
     message: string,
-    readonly cause?: unknown
+    readonly cause?: unknown,
+    readonly status?: number
   ) {
     super(message);
     this.name = "AvatarProviderError";
@@ -168,16 +171,27 @@ export class LiveAvatarProvider implements AvatarProvider {
         throw new AvatarProviderError("Live Avatar request failed", error);
       }
 
-      const body = await response.json().catch((error: unknown) => {
+      if (response.ok && response.status === 204) return {};
+
+      let body: unknown;
+      try {
+        body = await response.json();
+      } catch (error) {
         if (isAbortError(error)) {
           throw new AvatarProviderTimeoutError("Live Avatar request timed out", error);
         }
-
+        if (!response.ok) {
+          throw new AvatarProviderError(`Live Avatar returned ${response.status}`, error, response.status);
+        }
         throw new AvatarProviderError("Live Avatar returned invalid JSON", error);
-      });
+      }
 
       if (!response.ok) {
-        throw new AvatarProviderError(formatLiveAvatarError(response.status, body));
+        throw new AvatarProviderError(
+          formatLiveAvatarError(response.status, body),
+          undefined,
+          response.status
+        );
       }
 
       const bodyError = readLiveAvatarBodyError(body);
@@ -190,6 +204,41 @@ export class LiveAvatarProvider implements AvatarProvider {
       clearTimeout(timeout);
     }
   }
+}
+
+export type ProviderTokenProtector = {
+  encrypt(token: string): string;
+  decrypt(ciphertext: string): string;
+};
+
+export function createProviderTokenProtector(secret: string): ProviderTokenProtector {
+  const key = createHash("sha256").update(secret).digest();
+
+  return {
+    encrypt(token) {
+      const iv = randomBytes(12);
+      const cipher = createCipheriv("aes-256-gcm", key, iv);
+      const encrypted = Buffer.concat([cipher.update(token, "utf8"), cipher.final()]);
+      return [
+        "v1",
+        iv.toString("base64url"),
+        cipher.getAuthTag().toString("base64url"),
+        encrypted.toString("base64url"),
+      ].join(".");
+    },
+    decrypt(ciphertext) {
+      const [version, encodedIv, encodedTag, encodedValue] = ciphertext.split(".");
+      if (version !== "v1" || !encodedIv || !encodedTag || !encodedValue) {
+        throw new Error("Invalid encrypted provider token");
+      }
+      const decipher = createDecipheriv("aes-256-gcm", key, Buffer.from(encodedIv, "base64url"));
+      decipher.setAuthTag(Buffer.from(encodedTag, "base64url"));
+      return Buffer.concat([
+        decipher.update(Buffer.from(encodedValue, "base64url")),
+        decipher.final(),
+      ]).toString("utf8");
+    },
+  };
 }
 
 export type MockAvatarProviderOptions = {
@@ -226,6 +275,9 @@ export class MockAvatarProvider implements AvatarProvider {
     };
   }
 
+  async stopSession(): Promise<void> {
+    if (this.error) throw this.error;
+  }
 }
 
 function withTrailingSlash(value: string): string {
@@ -376,7 +428,9 @@ function readLiveAvatarBodyMessage(body: unknown): string | null {
 
 function readLiveAvatarDataMessage(data: unknown): string | null {
   if (Array.isArray(data)) {
-    const messages = data.map(readLiveAvatarIssueMessage).filter((message): message is string => message !== null);
+    const messages = data
+      .map(readLiveAvatarIssueMessage)
+      .filter((message): message is string => message !== null);
 
     return messages.length > 0 ? messages.join("; ") : null;
   }

@@ -1,4 +1,4 @@
-export type PrivateNavItemId = "dashboard" | "avatars";
+export type PrivateNavItemId = "dashboard" | "avatars" | "groups";
 export type PrivatePageLayoutVariant = "standard" | "focus";
 
 export type PrivateNavItem = {
@@ -7,11 +7,12 @@ export type PrivateNavItem = {
   href: string;
 };
 
-const privateRoutePrefixes = ["/dashboard", "/avatars", "/interact"] as const;
+const privateRoutePrefixes = ["/dashboard", "/avatars", "/groups", "/interact"] as const;
 
 export const privateNavItems: PrivateNavItem[] = [
   { id: "dashboard", label: "Dashboard", href: "/dashboard" },
   { id: "avatars", label: "Mis avatares", href: "/avatars" },
+  { id: "groups", label: "Grupos", href: "/groups" },
 ];
 
 export function isPrivatePathname(pathname: string) {
@@ -23,7 +24,7 @@ export function getPrivatePageMaxWidth(pathname: string) {
     return "1180px";
   }
 
-  if (pathname.startsWith("/interact/")) {
+  if (pathname.startsWith("/interact/") || pathname.startsWith("/groups/")) {
     return "1440px";
   }
 
@@ -31,7 +32,7 @@ export function getPrivatePageMaxWidth(pathname: string) {
 }
 
 export function getPrivatePageLayoutVariant(pathname: string): PrivatePageLayoutVariant {
-  return pathname.startsWith("/interact/") ? "focus" : "standard";
+  return pathname.startsWith("/interact/") || pathname.startsWith("/groups/") ? "focus" : "standard";
 }
 
 export function isPrivateNavItemActive(pathname: string, item: PrivateNavItem) {
@@ -41,6 +42,10 @@ export function isPrivateNavItemActive(pathname: string, item: PrivateNavItem) {
 
   if (item.id === "avatars") {
     return pathname === item.href || pathname.startsWith("/avatars/");
+  }
+
+  if (item.id === "groups") {
+    return pathname === item.href || pathname.startsWith("/groups/");
   }
 
   return false;

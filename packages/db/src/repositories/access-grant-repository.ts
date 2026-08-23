@@ -1,4 +1,4 @@
-import type { AccessGrantStatus, Prisma, PrismaClient } from "@prisma/client";
+import { Prisma, type AccessGrantStatus, type PrismaClient } from "@prisma/client";
 import type { CreateAccessGrantInput } from "@yuni/domain";
 import { OwnershipError, SelfAccessGrantError } from "@yuni/domain";
 
@@ -44,41 +44,47 @@ export function createAccessGrantRepository(db: Db) {
       accessGrantId: string,
       status: AccessGrantStatus
     ) {
-      const current = await db.accessGrant.findFirst({
-        where: { id: accessGrantId, ownerId, avatarAgentId },
-      });
-      if (!current) throw new OwnershipError();
-
-      const participant =
-        status === "active" && current.participantUserId === null
-          ? await db.user.findUnique({
-              where: { email: current.participantEmail },
-              select: { id: true },
-            })
-          : null;
-
-      return db.accessGrant.update({
-        where: { id: accessGrantId },
-        data: {
-          status,
-          revokedAt: status === "revoked" ? new Date() : null,
-          ...(participant ? { participantUserId: participant.id } : {}),
-        },
-      });
-    },
-
-    deleteForAvatar(ownerId: string, avatarAgentId: string, accessGrantId: string) {
       return withTransaction(db, async (transaction) => {
+        await lockAccessGrant(transaction, accessGrantId);
         const current = await transaction.accessGrant.findFirst({
           where: { id: accessGrantId, ownerId, avatarAgentId },
         });
         if (!current) throw new OwnershipError();
 
-        const conversationCount = await transaction.conversation.count({
-          where: { accessGrantId },
-        });
+        const participant =
+          status === "active" && current.participantUserId === null
+            ? await transaction.user.findUnique({
+                where: { email: current.participantEmail },
+                select: { id: true },
+              })
+            : null;
 
-        if (conversationCount > 0) {
+        return transaction.accessGrant.update({
+          where: { id: accessGrantId },
+          data: {
+            status,
+            revokedAt: status === "revoked" ? new Date() : null,
+            ...(participant ? { participantUserId: participant.id } : {}),
+          },
+        });
+      });
+    },
+
+    deleteForAvatar(ownerId: string, avatarAgentId: string, accessGrantId: string) {
+      return withTransaction(db, async (transaction) => {
+        await lockAccessGrant(transaction, accessGrantId);
+        const current = await transaction.accessGrant.findFirst({
+          where: { id: accessGrantId, ownerId, avatarAgentId },
+        });
+        if (!current) throw new OwnershipError();
+
+        const [conversationCount, groupConversationCount, groupMembershipCount] = await Promise.all([
+          transaction.conversation.count({ where: { accessGrantId } }),
+          transaction.conversationAvatar.count({ where: { accessGrantId } }),
+          transaction.avatarGroupMember.count({ where: { accessGrantId } }),
+        ]);
+
+        if (conversationCount + groupConversationCount + groupMembershipCount > 0) {
           const accessGrant = await transaction.accessGrant.update({
             where: { id: accessGrantId },
             data: {
@@ -106,6 +112,12 @@ export function createAccessGrantRepository(db: Db) {
       });
     },
   };
+}
+
+async function lockAccessGrant(transaction: Prisma.TransactionClient, accessGrantId: string) {
+  await transaction.$queryRaw(
+    Prisma.sql`SELECT "id" FROM "AccessGrant" WHERE "id" = ${accessGrantId} FOR UPDATE`
+  );
 }
 
 async function withTransaction<T>(

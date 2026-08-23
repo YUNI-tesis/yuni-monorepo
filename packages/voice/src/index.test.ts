@@ -4,6 +4,7 @@ import {
   createProviderSyncFingerprint,
   ElevenLabsDefaultVoiceUnavailableError,
   ELEVENLABS_EXPRESSIVE_TTS_FALLBACK_MODEL,
+  ELEVENLABS_EXPRESSIVE_TTS_MODEL,
   ElevenLabsAgentProvider,
   ElevenLabsProviderError,
   ElevenLabsProviderUnavailableError,
@@ -41,6 +42,16 @@ function jsonResponse(body: unknown, init: ResponseInit = {}) {
     status: 200,
     headers: { "Content-Type": "application/json" },
     ...init,
+  });
+}
+
+function expectedSyncFingerprint(input: AvatarAgentProviderSyncInput, ttsModelId = config.agentTtsModel) {
+  return createProviderSyncFingerprint(input, {
+    agentLlmModel: config.agentLlmModel,
+    ttsModelId,
+    effectiveVoiceId:
+      input.voiceConfig.provider === "elevenlabs" ? input.voiceConfig.voiceId : config.defaultVoiceId,
+    ragMaxDocumentsLength: 10_000,
   });
 }
 
@@ -111,6 +122,75 @@ describe("@yuni/voice ElevenLabsAgentProvider", () => {
     });
     expect(payload.conversation_config.agent.prompt.prompt).not.toContain(avatarInput.context);
     expect(createProviderSyncFingerprint(input)).not.toBe(createProviderSyncFingerprint(avatarInput));
+  });
+
+  it("keeps the fingerprint stable when excluded context or ignored speaking rate changes", () => {
+    const withoutInlineContext = {
+      ...avatarInput,
+      includeInlineContext: false,
+      context: "Context version A",
+    } satisfies AvatarAgentProviderSyncInput;
+    const differentExcludedContext = {
+      ...withoutInlineContext,
+      context: "Context version B",
+    } satisfies AvatarAgentProviderSyncInput;
+    const differentIgnoredSpeakingRate = {
+      ...avatarInput,
+      voiceConfig: { ...avatarInput.voiceConfig, speakingRate: 1.75 },
+    } satisfies AvatarAgentProviderSyncInput;
+
+    expect(createProviderSyncFingerprint(withoutInlineContext)).toBe(
+      createProviderSyncFingerprint(differentExcludedContext)
+    );
+    expect(createProviderSyncFingerprint(avatarInput)).toBe(
+      createProviderSyncFingerprint(differentIgnoredSpeakingRate)
+    );
+  });
+
+  it("builds an atomic native group agent with its own Knowledge Base", () => {
+    const groupInput = {
+      ...avatarInput,
+      sessionMode: "group" as const,
+      knowledgeBase: [{ type: "file", name: "Guide", id: "file-1", usage_mode: "auto" as const }],
+    } satisfies AvatarAgentProviderSyncInput;
+    const payload = createElevenLabsAgentPayload(groupInput, config);
+
+    expect(payload.conversation_config.agent.first_message).toBe("Conectado.");
+    expect(payload.conversation_config.agent.prompt.prompt).toContain("instrucción privada del director");
+    expect(payload.conversation_config.agent.prompt.prompt).toContain(
+      "tu propia Knowledge Base de ElevenLabs"
+    );
+    expect(payload.conversation_config.agent.prompt.prompt).toContain(
+      "No escribas tags expresivos, sonidos no verbales ni onomatopeyas"
+    );
+    expect(payload.conversation_config.agent.prompt.prompt).not.toContain("[laughs]");
+    expect(payload.conversation_config.agent.prompt.llm).toBe("gpt-4o-mini");
+    expect(payload.conversation_config.agent.prompt.knowledge_base).toEqual(groupInput.knowledgeBase);
+    expect(payload.conversation_config.agent.prompt.tool_ids).toEqual([]);
+    expect(payload.conversation_config.turn.turn_timeout).toBe(30);
+    expect(payload.conversation_config.turn.soft_timeout_config).toEqual({
+      timeout_seconds: -1,
+      message: "Procesando la siguiente intervención.",
+      use_llm_generated_message: false,
+    });
+    expect(createProviderSyncFingerprint(groupInput)).not.toBe(createProviderSyncFingerprint(avatarInput));
+  });
+
+  it("creates a single-use Scribe token without exposing the API key", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(jsonResponse({ token: "sutkn-test" }));
+    const provider = new ElevenLabsAgentProvider({ config, fetch: fetcher });
+
+    await expect(provider.createScribeRealtimeToken()).resolves.toEqual({
+      token: "sutkn-test",
+      expiresInSeconds: 900,
+    });
+    expect(fetcher).toHaveBeenCalledWith(
+      new URL("https://api.elevenlabs.test/v1/single-use-token/realtime_scribe"),
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({ "xi-api-key": "elevenlabs-key" }),
+      })
+    );
   });
 
   it("normalizes RAG indexing responses", async () => {
@@ -331,8 +411,57 @@ describe("@yuni/voice ElevenLabsAgentProvider", () => {
     );
   });
 
+  it("recreates an existing agent only when its PATCH target no longer exists", async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        jsonResponse({ detail: { status: "not_found", message: "Agent not found" } }, { status: 404 })
+      )
+      .mockResolvedValueOnce(jsonResponse({ agent_id: "agent-recreated" }));
+    const provider = new ElevenLabsAgentProvider({ config, fetch: fetcher });
+
+    const result = await provider.syncAvatarAgent({
+      ...avatarInput,
+      providerAgentId: "agent-missing",
+      providerSyncFingerprint: "old",
+    });
+
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(fetcher).toHaveBeenNthCalledWith(
+      1,
+      new URL("https://api.elevenlabs.test/v1/convai/agents/agent-missing"),
+      expect.objectContaining({ method: "PATCH" })
+    );
+    expect(fetcher).toHaveBeenNthCalledWith(
+      2,
+      new URL("https://api.elevenlabs.test/v1/convai/agents/create"),
+      expect.objectContaining({ method: "POST" })
+    );
+    expect(fetcher.mock.calls[1]?.[1]?.body).toBe(fetcher.mock.calls[0]?.[1]?.body);
+    expect(result.providerAgentId).toBe("agent-recreated");
+    expect(result.synced).toBe(true);
+  });
+
+  it("does not recreate an existing agent after a non-404 PATCH failure", async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({ message: "temporarily unavailable" }, { status: 503 }));
+    const provider = new ElevenLabsAgentProvider({ config, fetch: fetcher });
+
+    await expect(
+      provider.syncAvatarAgent({
+        ...avatarInput,
+        providerAgentId: "agent-1",
+        providerSyncFingerprint: "old",
+      })
+    ).rejects.toThrow("ElevenLabs returned 503: temporarily unavailable");
+
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fetcher.mock.calls[0]?.[1]).toEqual(expect.objectContaining({ method: "PATCH" }));
+  });
+
   it("skips provider calls when fingerprint is already synced", async () => {
-    const fingerprint = createProviderSyncFingerprint(avatarInput, { ttsModelId: config.agentTtsModel });
+    const fingerprint = expectedSyncFingerprint(avatarInput);
     const fetcher = vi.fn<typeof fetch>();
     const provider = new ElevenLabsAgentProvider({ config, fetch: fetcher });
 
@@ -348,6 +477,39 @@ describe("@yuni/voice ElevenLabsAgentProvider", () => {
       providerSyncFingerprint: fingerprint,
       synced: false,
     });
+  });
+
+  it.each([
+    {
+      field: "LLM model",
+      staleFingerprint: createProviderSyncFingerprint(avatarInput, {
+        agentLlmModel: "old-model",
+        ttsModelId: config.agentTtsModel,
+        effectiveVoiceId: config.defaultVoiceId,
+      }),
+    },
+    {
+      field: "effective fallback voice",
+      staleFingerprint: createProviderSyncFingerprint(avatarInput, {
+        agentLlmModel: config.agentLlmModel,
+        ttsModelId: config.agentTtsModel,
+        effectiveVoiceId: "old-default-voice",
+      }),
+    },
+  ])("resyncs when the $field changes", async ({ staleFingerprint }) => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(jsonResponse({ agent_id: "agent-1" }));
+    const provider = new ElevenLabsAgentProvider({ config, fetch: fetcher });
+
+    const result = await provider.syncAvatarAgent({
+      ...avatarInput,
+      providerAgentId: "agent-1",
+      providerSyncFingerprint: staleFingerprint,
+    });
+
+    expect(staleFingerprint).not.toBe(expectedSyncFingerprint(avatarInput));
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fetcher.mock.calls[0]?.[1]).toEqual(expect.objectContaining({ method: "PATCH" }));
+    expect(result.providerSyncFingerprint).toBe(expectedSyncFingerprint(avatarInput));
   });
 
   it("falls back to Flash TTS when Expressive TTS is not allowed", async () => {
@@ -381,17 +543,13 @@ describe("@yuni/voice ElevenLabsAgentProvider", () => {
     expect(secondPayload.conversation_config.agent.prompt.prompt).toContain("sin escribir tags expresivos");
     expect(result).toEqual({
       providerAgentId: "agent-1",
-      providerSyncFingerprint: createProviderSyncFingerprint(avatarInput, {
-        ttsModelId: ELEVENLABS_EXPRESSIVE_TTS_FALLBACK_MODEL,
-      }),
+      providerSyncFingerprint: expectedSyncFingerprint(avatarInput, ELEVENLABS_EXPRESSIVE_TTS_FALLBACK_MODEL),
       synced: true,
     });
   });
 
   it("skips provider calls when fallback TTS fingerprint is already synced", async () => {
-    const fingerprint = createProviderSyncFingerprint(avatarInput, {
-      ttsModelId: ELEVENLABS_EXPRESSIVE_TTS_FALLBACK_MODEL,
-    });
+    const fingerprint = expectedSyncFingerprint(avatarInput, ELEVENLABS_EXPRESSIVE_TTS_FALLBACK_MODEL);
     const fetcher = vi.fn<typeof fetch>();
     const provider = new ElevenLabsAgentProvider({ config, fetch: fetcher });
 
@@ -484,11 +642,29 @@ describe("@yuni/voice ElevenLabsAgentProvider", () => {
     expect(currentFingerprint).not.toBe(previousFingerprint);
   });
 
-  it("changes the fingerprint when the expressive conversation preset changes", () => {
+  it("changes the fingerprint when an effective turn timeout changes", () => {
     const currentFingerprint = createProviderSyncFingerprint(avatarInput, {
       ttsModelId: config.agentTtsModel,
     });
     const previousFingerprint = createProviderSyncFingerprint(avatarInput, {
+      syncConfig: {
+        ...LIVEAVATAR_ELEVENLABS_SYNC_CONFIG,
+        turn: {
+          ...LIVEAVATAR_ELEVENLABS_SYNC_CONFIG.turn,
+          turnTimeout: LIVEAVATAR_ELEVENLABS_SYNC_CONFIG.turn.turnTimeout + 1,
+        },
+      },
+      ttsModelId: config.agentTtsModel,
+    });
+
+    expect(currentFingerprint).not.toBe(previousFingerprint);
+  });
+
+  it("ignores connector fields that do not affect the selected TTS payload", () => {
+    const currentFingerprint = createProviderSyncFingerprint(avatarInput, {
+      ttsModelId: ELEVENLABS_EXPRESSIVE_TTS_MODEL,
+    });
+    const ignoredPresetFingerprint = createProviderSyncFingerprint(avatarInput, {
       syncConfig: {
         ...LIVEAVATAR_ELEVENLABS_SYNC_CONFIG,
         version: LIVEAVATAR_ELEVENLABS_SYNC_CONFIG.version - 1,
@@ -497,10 +673,48 @@ describe("@yuni/voice ElevenLabsAgentProvider", () => {
           speed: 1,
         },
       },
-      ttsModelId: config.agentTtsModel,
+      ttsModelId: ELEVENLABS_EXPRESSIVE_TTS_MODEL,
     });
 
-    expect(currentFingerprint).not.toBe(previousFingerprint);
+    expect(currentFingerprint).toBe(ignoredPresetFingerprint);
+  });
+
+  it("changes the fingerprint when effective prompt, LLM, voice, or Knowledge Base changes", () => {
+    const nativeVoiceInput = {
+      ...avatarInput,
+      voiceConfig: { provider: "elevenlabs" as const, voiceId: "voice-a", speakingRate: 1 },
+    } satisfies AvatarAgentProviderSyncInput;
+    const knowledgeBaseInput = {
+      ...avatarInput,
+      knowledgeBase: [{ type: "file" as const, name: "Guide", id: "file-1", usage_mode: "auto" as const }],
+    } satisfies AvatarAgentProviderSyncInput;
+
+    expect(createProviderSyncFingerprint(avatarInput)).not.toBe(
+      createProviderSyncFingerprint({ ...avatarInput, instructions: "Use a different effective prompt." })
+    );
+    expect(createProviderSyncFingerprint(avatarInput, { agentLlmModel: "model-a" })).not.toBe(
+      createProviderSyncFingerprint(avatarInput, { agentLlmModel: "model-b" })
+    );
+    expect(createProviderSyncFingerprint(nativeVoiceInput)).not.toBe(
+      createProviderSyncFingerprint({
+        ...nativeVoiceInput,
+        voiceConfig: { ...nativeVoiceInput.voiceConfig, voiceId: "voice-b" },
+      })
+    );
+    expect(createProviderSyncFingerprint(avatarInput)).not.toBe(
+      createProviderSyncFingerprint(knowledgeBaseInput)
+    );
+  });
+
+  it("canonicalizes Knowledge Base order in the effective fingerprint", () => {
+    const documents = [
+      { type: "file" as const, name: "B", id: "file-b", usage_mode: "auto" as const },
+      { type: "text" as const, name: "A", id: "text-a", usage_mode: "prompt" as const },
+    ];
+
+    expect(createProviderSyncFingerprint({ ...avatarInput, knowledgeBase: documents })).toBe(
+      createProviderSyncFingerprint({ ...avatarInput, knowledgeBase: [...documents].reverse() })
+    );
   });
 
   it("changes the fingerprint when the TTS model changes", () => {
@@ -510,8 +724,13 @@ describe("@yuni/voice ElevenLabsAgentProvider", () => {
   });
 
   it("changes the fingerprint when the RAG configuration changes", () => {
-    expect(createProviderSyncFingerprint(avatarInput, { ragMaxDocumentsLength: 10_000 })).not.toBe(
-      createProviderSyncFingerprint(avatarInput, { ragMaxDocumentsLength: 20_000 })
+    const inputWithKnowledgeBase = {
+      ...avatarInput,
+      knowledgeBase: [{ type: "file" as const, name: "Guide", id: "file-1", usage_mode: "auto" as const }],
+    };
+
+    expect(createProviderSyncFingerprint(inputWithKnowledgeBase, { ragMaxDocumentsLength: 10_000 })).not.toBe(
+      createProviderSyncFingerprint(inputWithKnowledgeBase, { ragMaxDocumentsLength: 20_000 })
     );
   });
 

@@ -9,7 +9,12 @@
   --landing-primary-bright: #e5a0f5;
   --landing-accent: #71d0de;
   --landing-coral: #f09a87;
-  --landing-grid: minmax(20px, 1fr) repeat(12, minmax(0, 92px)) minmax(20px, 1fr);
+  --landing-gutter: 20px;
+  --landing-max-width: 1400px;
+  --landing-shell-width: min(calc(100% - (var(--landing-gutter) * 2)), var(--landing-max-width));
+  --landing-grid: minmax(var(--landing-gutter), 1fr) repeat(12, minmax(0, 116.6667px))
+    minmax(var(--landing-gutter), 1fr);
+  --landing-micro: 0.75rem;
   --landing-ease: cubic-bezier(0.16, 1, 0.3, 1);
 
   min-height: 100vh;
@@ -80,7 +85,7 @@
   display: grid;
   grid-template-columns: 1fr auto 1fr;
   align-items: center;
-  width: min(100% - 40px, 1400px);
+  width: var(--landing-shell-width);
   min-height: 76px;
   margin: 0 auto;
 }
@@ -236,7 +241,7 @@
   gap: 12px;
   margin: 0;
   color: rgba(248, 243, 239, 0.72);
-  font-size: 0.72rem;
+  font-size: var(--landing-micro);
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -291,35 +296,6 @@
   color: var(--landing-muted);
   font-size: clamp(1rem, 1.2vw, 1.2rem);
   line-height: 1.65;
-}
-
-.heroActions {
-  display: flex;
-  grid-column: 7 / -1;
-  justify-content: flex-end;
-  gap: 12px;
-}
-
-.primaryButton {
-  background: var(--landing-text);
-  color: var(--landing-bg) !important;
-}
-
-.primaryButton:hover {
-  background: var(--landing-accent);
-  box-shadow: 0 16px 46px rgba(113, 208, 222, 0.2);
-}
-
-.secondaryButton {
-  border-color: var(--landing-border);
-  background: rgba(248, 243, 239, 0.035);
-  color: var(--landing-text) !important;
-  backdrop-filter: blur(10px);
-}
-
-.secondaryButton:hover {
-  border-color: rgba(248, 243, 239, 0.34);
-  background: rgba(248, 243, 239, 0.08);
 }
 
 .heroHalo {
@@ -380,7 +356,7 @@
   align-items: center;
   gap: 14px;
   color: rgba(248, 243, 239, 0.48);
-  font-size: 0.64rem;
+  font-size: var(--landing-micro);
   font-weight: 650;
   letter-spacing: 0.13em;
   text-transform: uppercase;
@@ -424,20 +400,32 @@
 
 .problemSection {
   position: relative;
-  padding: clamp(140px, 18vw, 260px) 0;
+  overflow: hidden;
+  padding: clamp(120px, 12vw, 190px) 0;
   border-top: 1px solid rgba(248, 243, 239, 0.08);
   background:
-    radial-gradient(circle at 82% 62%, rgba(240, 154, 135, 0.07), transparent 22%), var(--landing-bg);
+    radial-gradient(circle at 86% 72%, rgba(199, 118, 228, 0.1), transparent 28%),
+    radial-gradient(circle at 13% 18%, rgba(113, 208, 222, 0.055), transparent 22%), var(--landing-bg);
 }
 
 .problemSection::before {
   position: absolute;
-  top: 0;
-  bottom: 0;
-  left: calc(50% - 1px);
-  width: 1px;
-  background: linear-gradient(transparent, rgba(248, 243, 239, 0.08), transparent);
+  right: -14vw;
+  bottom: -34vw;
+  width: min(62vw, 940px);
+  aspect-ratio: 1;
+  border: 1px solid rgba(113, 208, 222, 0.08);
+  border-radius: 50%;
+  box-shadow:
+    0 0 0 9vw rgba(199, 118, 228, 0.025),
+    0 0 0 18vw rgba(113, 208, 222, 0.018);
   content: "";
+  pointer-events: none;
+}
+
+.problemSection .sectionGrid {
+  position: relative;
+  z-index: 1;
 }
 
 .sectionMarker {
@@ -453,7 +441,7 @@
   border: 1px solid var(--landing-border);
   border-radius: 50%;
   color: var(--landing-accent);
-  font-size: 0.7rem;
+  font-size: var(--landing-micro);
   font-weight: 750;
 }
 
@@ -461,7 +449,7 @@
   max-width: 110px;
   margin: 14px 0 0;
   color: rgba(248, 243, 239, 0.46);
-  font-size: 0.67rem;
+  font-size: var(--landing-micro);
   font-weight: 700;
   letter-spacing: 0.1em;
   line-height: 1.5;
@@ -469,13 +457,14 @@
 }
 
 .problemContent {
-  grid-column: 4 / span 7;
+  grid-row: 1;
+  grid-column: 2 / span 12;
 }
 
 .eyebrow {
   margin: 0 0 22px;
   color: var(--landing-accent);
-  font-size: 0.72rem;
+  font-size: var(--landing-micro);
   font-weight: 760;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -497,42 +486,65 @@
 }
 
 .problemContent h2 {
-  font-size: clamp(4.8rem, 8vw, 9rem);
+  max-width: 10ch;
+  font-size: clamp(4.9rem, 7.7vw, 8.8rem);
 }
 
-.problemLead {
-  max-width: 720px;
-  margin: 52px 0 0 14%;
-  color: var(--landing-muted);
-  font-size: clamp(1.2rem, 1.8vw, 1.8rem);
-  line-height: 1.55;
+.problemContent h2 > span {
+  display: block;
 }
 
-.problemAside {
-  grid-column: 11 / span 3;
-  align-self: end;
-  margin-top: 180px;
-  padding-top: 20px;
+.problemAccent {
+  color: var(--landing-primary-bright);
+}
+
+.problemLower {
+  display: grid;
+  grid-row: 2;
+  grid-column: 2 / span 12;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  margin-top: clamp(72px, 7vw, 108px);
   border-top: 1px solid var(--landing-border);
 }
 
+.problemLead {
+  grid-column: 1 / span 7;
+  padding-top: 30px;
+}
+
+.problemLead p {
+  max-width: 650px;
+  margin: 0;
+  color: var(--landing-muted);
+  font-size: clamp(1.15rem, 1.45vw, 1.55rem);
+  line-height: 1.6;
+}
+
+.problemAside {
+  grid-column: 9 / span 4;
+  padding: 30px 0 8px clamp(28px, 3vw, 48px);
+  border-left: 1px solid var(--landing-border);
+}
+
 .quoteMark {
+  display: block;
   color: var(--landing-coral);
   font-family: "Syne Variable", Syne, sans-serif;
-  font-size: 3rem;
+  font-size: 2.4rem;
   line-height: 1;
 }
 
 .problemAside p {
-  margin: 4px 0 20px;
+  max-width: 32ch;
+  margin: 12px 0 28px;
   color: rgba(248, 243, 239, 0.86);
-  font-size: 0.98rem;
-  line-height: 1.65;
+  font-size: clamp(1rem, 1.12vw, 1.15rem);
+  line-height: 1.7;
 }
 
 .problemAside small {
-  color: rgba(248, 243, 239, 0.42);
-  font-size: 0.68rem;
+  color: rgba(248, 243, 239, 0.6);
+  font-size: var(--landing-micro);
   font-weight: 650;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -597,7 +609,7 @@
   left: 50%;
   display: grid;
   place-items: center;
-  width: 28%;
+  width: 32%;
   aspect-ratio: 1;
   border: 1px solid rgba(248, 243, 239, 0.14);
   border-radius: 50%;
@@ -607,7 +619,7 @@
 }
 
 .presenceCreature {
-  width: 61%;
+  width: 68%;
 }
 
 .presenceCreature svg {
@@ -717,7 +729,7 @@
   right: 3%;
   bottom: 1%;
   color: rgba(248, 243, 239, 0.34);
-  font-size: 0.58rem;
+  font-size: var(--landing-micro);
   font-weight: 700;
   letter-spacing: 0.15em;
   text-transform: uppercase;
@@ -747,14 +759,14 @@
   border: 1px solid var(--landing-border);
   border-radius: 999px;
   color: var(--landing-accent);
-  font-size: 0.66rem;
+  font-size: var(--landing-micro);
   font-weight: 800;
 }
 
 .stage > p:nth-of-type(1) {
   margin: 0 0 10px;
   color: rgba(248, 243, 239, 0.48);
-  font-size: 0.69rem;
+  font-size: var(--landing-micro);
   font-weight: 730;
   letter-spacing: 0.13em;
   text-transform: uppercase;
@@ -790,19 +802,58 @@
 }
 
 .sectionHeading > div:first-child {
-  grid-column: 2 / span 8;
+  grid-column: 2 / span 12;
 }
 
 .sectionHeading h2 {
+  width: 100%;
   font-size: clamp(4rem, 6.7vw, 8rem);
 }
 
-.sectionHeadingCopy {
-  grid-column: 11 / span 3;
-  align-self: end;
+.sectionHeading h2 > span {
+  display: grid;
+  grid-template-columns: max-content minmax(24px, 1fr);
+  gap: clamp(24px, 3vw, 58px);
+  align-items: center;
+  width: 100%;
 }
 
-.sectionHeadingCopy p,
+.sectionHeading h2 > span::after {
+  width: 100%;
+  height: 9px;
+  background:
+    radial-gradient(circle at right center, var(--action-trace) 0 3px, transparent 4px),
+    linear-gradient(90deg, transparent, var(--action-trace)) center / 100% 1px no-repeat;
+  content: "";
+  opacity: 0.56;
+  transform: scaleX(0.92);
+  transform-origin: left center;
+  transition:
+    opacity 500ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 700ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.sectionHeading h2 > span:nth-child(1) {
+  --action-trace: rgba(113, 208, 222, 0.86);
+}
+
+.sectionHeading h2 > span:nth-child(2) {
+  --action-trace: rgba(155, 162, 226, 0.78);
+}
+
+.sectionHeading h2 > span:nth-child(3) {
+  --action-trace: rgba(199, 118, 228, 0.82);
+}
+
+.sectionHeading h2 > span:nth-child(4) {
+  --action-trace: rgba(240, 154, 135, 0.84);
+}
+
+.sectionHeading h2 > span:hover::after {
+  opacity: 0.92;
+  transform: scaleX(1);
+}
+
 .capabilityCopy p {
   margin: 0;
   color: var(--landing-muted);
@@ -811,7 +862,7 @@
 }
 
 .productMoments {
-  width: min(100% - 40px, 1400px);
+  width: var(--landing-shell-width);
   margin: clamp(100px, 12vw, 180px) auto 0;
 }
 
@@ -904,7 +955,7 @@
   padding: 0 28px;
   border-bottom: 1px solid rgba(248, 243, 239, 0.09);
   color: rgba(248, 243, 239, 0.5);
-  font-size: 0.67rem;
+  font-size: var(--landing-micro);
   font-weight: 720;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -944,7 +995,7 @@
 .fieldLabel {
   margin: 17px 0 9px;
   color: rgba(248, 243, 239, 0.42);
-  font-size: 0.64rem;
+  font-size: var(--landing-micro);
   font-weight: 720;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -971,7 +1022,7 @@
   border-radius: 999px;
   background: rgba(113, 208, 222, 0.07);
   color: var(--landing-accent);
-  font-size: 0.7rem;
+  font-size: var(--landing-micro);
   font-style: normal;
 }
 
@@ -1061,7 +1112,7 @@
   border-radius: 50%;
   background: linear-gradient(135deg, rgba(199, 118, 228, 0.35), rgba(113, 208, 222, 0.2));
   color: var(--landing-text);
-  font-size: 0.68rem;
+  font-size: var(--landing-micro);
   font-weight: 750;
 }
 
@@ -1078,7 +1129,7 @@
 
 .accessList small {
   color: rgba(248, 243, 239, 0.4);
-  font-size: 0.67rem;
+  font-size: var(--landing-micro);
 }
 
 .accessList svg {
@@ -1114,7 +1165,7 @@
   align-items: center;
   gap: 9px;
   color: rgba(248, 243, 239, 0.6);
-  font-size: 0.67rem;
+  font-size: var(--landing-micro);
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -1203,7 +1254,7 @@
   display: flex;
   justify-content: space-between;
   color: rgba(248, 243, 239, 0.44);
-  font-size: 0.65rem;
+  font-size: var(--landing-micro);
   font-weight: 680;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -1239,7 +1290,7 @@
 
 .metricLine small {
   color: rgba(248, 243, 239, 0.42);
-  font-size: 0.65rem;
+  font-size: var(--landing-micro);
 }
 
 .metricLine strong {
@@ -1293,11 +1344,11 @@
   justify-content: space-between;
   margin-top: 12px;
   color: rgba(248, 243, 239, 0.35);
-  font-size: 0.62rem;
+  font-size: var(--landing-micro);
 }
 
 .architectureSection {
-  padding: clamp(130px, 15vw, 230px) 0;
+  padding: clamp(80px, 6vw, 104px) 0;
   background:
     linear-gradient(rgba(248, 243, 239, 0.026) 1px, transparent 1px),
     linear-gradient(90deg, rgba(248, 243, 239, 0.026) 1px, transparent 1px), #0b0512;
@@ -1305,7 +1356,7 @@
 }
 
 .architectureTitle {
-  grid-column: 5 / span 8;
+  grid-column: 2 / span 12;
 }
 
 .architectureTitle h2 {
@@ -1314,8 +1365,8 @@
 
 .architectureDiagram {
   position: relative;
-  width: min(100% - 40px, 1160px);
-  margin: clamp(90px, 10vw, 150px) auto 0;
+  width: var(--landing-shell-width);
+  margin: clamp(42px, 3.8vw, 56px) auto 0;
 }
 
 .architectureDiagram > div:not(.architectureSignal) {
@@ -1328,9 +1379,9 @@
   grid-template-columns: 70px minmax(0, 1fr) auto;
   gap: 28px;
   align-items: center;
-  min-height: 138px;
-  margin-bottom: 14px;
-  padding: 24px 30px;
+  min-height: 116px;
+  margin-bottom: 10px;
+  padding: 22px 30px;
   border: 1px solid var(--landing-border);
   border-radius: 18px;
   background: color-mix(in srgb, #100819 87%, transparent);
@@ -1356,7 +1407,7 @@
   border: 1px solid rgba(199, 118, 228, 0.26);
   border-radius: 50%;
   color: var(--landing-primary-bright);
-  font-size: 0.68rem;
+  font-size: var(--landing-micro);
   font-weight: 780;
 }
 
@@ -1391,7 +1442,7 @@
   border: 1px solid rgba(248, 243, 239, 0.09);
   border-radius: 999px;
   color: rgba(248, 243, 239, 0.53);
-  font-size: 0.64rem;
+  font-size: var(--landing-micro);
   font-weight: 650;
 }
 
@@ -1438,7 +1489,7 @@
 .capabilityGrid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  width: min(100% - 40px, 1400px);
+  width: var(--landing-shell-width);
   margin: clamp(100px, 11vw, 170px) auto 0;
   border-top: 1px solid var(--landing-border);
   border-left: 1px solid var(--landing-border);
@@ -1463,7 +1514,7 @@
 
 .capabilityCard > span {
   color: rgba(248, 243, 239, 0.35);
-  font-size: 0.65rem;
+  font-size: var(--landing-micro);
   font-weight: 750;
 }
 
@@ -1545,7 +1596,7 @@
   padding-bottom: 20px;
   border-bottom: 1px solid var(--landing-border);
   color: rgba(248, 243, 239, 0.4);
-  font-size: 0.68rem;
+  font-size: var(--landing-micro);
   font-weight: 720;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -1588,7 +1639,7 @@
 
 .authors span {
   color: var(--landing-accent);
-  font-size: 0.65rem;
+  font-size: var(--landing-micro);
   font-weight: 750;
   letter-spacing: 0.11em;
   text-transform: uppercase;
@@ -1685,9 +1736,9 @@
 .footer {
   position: absolute;
   z-index: 4;
-  right: 20px;
+  right: var(--landing-gutter);
   bottom: 0;
-  left: 20px;
+  left: var(--landing-gutter);
   display: grid;
   grid-template-columns: 1fr auto 1fr;
   align-items: center;
@@ -1699,7 +1750,7 @@
 .footer > span {
   margin: 0;
   color: rgba(248, 243, 239, 0.4);
-  font-size: 0.67rem;
+  font-size: var(--landing-micro);
   font-weight: 650;
   letter-spacing: 0.07em;
 }
@@ -1781,10 +1832,6 @@
 }
 
 @media (max-width: 1180px) {
-  .root {
-    --landing-grid: 28px repeat(12, minmax(0, 1fr)) 28px;
-  }
-
   .heroTitle {
     grid-column: 2 / span 12;
     font-size: clamp(4rem, 8vw, 7rem);
@@ -1793,14 +1840,6 @@
   .heroHalo {
     right: -5%;
     width: 46vw;
-  }
-
-  .problemContent {
-    grid-column: 4 / span 8;
-  }
-
-  .problemAside {
-    grid-column: 11 / span 3;
   }
 
   .presenceIntro {
@@ -1817,14 +1856,12 @@
     margin-left: 67%;
   }
 
-  .sectionHeadingCopy,
   .capabilityCopy {
     grid-column: 10 / span 4;
   }
 
   .capabilityGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    max-width: 1040px;
   }
 
   .capabilityCard {
@@ -1869,12 +1906,6 @@
     grid-column: 1 / span 7;
   }
 
-  .heroActions {
-    grid-column: 8 / -1;
-    flex-direction: column;
-    align-items: stretch;
-  }
-
   .scrollCue {
     display: none;
   }
@@ -1883,18 +1914,9 @@
     grid-column: 2 / span 2;
   }
 
-  .problemContent {
-    grid-column: 4 / span 10;
-  }
-
-  .problemAside {
-    grid-column: 7 / span 7;
-    margin-top: 100px;
-  }
-
   .presenceSection {
     min-height: auto;
-    padding: 130px 28px;
+    padding: 130px var(--landing-gutter);
   }
 
   .presenceSticky {
@@ -1943,12 +1965,7 @@
   }
 
   .sectionHeading > div:first-child {
-    grid-column: 2 / span 9;
-  }
-
-  .sectionHeadingCopy {
-    grid-column: 9 / span 5;
-    margin-top: 60px;
+    grid-column: 2 / span 12;
   }
 
   .productMoment,
@@ -1972,7 +1989,7 @@
   }
 
   .architectureTitle {
-    grid-column: 4 / span 10;
+    grid-column: 2 / span 12;
   }
 
   .architectureLayer {
@@ -2004,11 +2021,11 @@
 
 @media (max-width: 620px) {
   .root {
-    --landing-grid: 20px repeat(4, minmax(0, 1fr)) 20px;
+    --landing-grid: var(--landing-gutter) repeat(4, minmax(0, 1fr)) var(--landing-gutter);
   }
 
   .headerInner {
-    width: calc(100% - 28px);
+    width: var(--landing-shell-width);
     min-height: 68px;
   }
 
@@ -2024,7 +2041,7 @@
   .headerCta {
     min-height: 40px;
     padding: 0 14px;
-    font-size: 0.72rem;
+    font-size: var(--landing-micro);
   }
 
   .headerCta svg {
@@ -2040,11 +2057,11 @@
     display: flex;
     flex-direction: column;
     justify-content: space-between;
-    padding: 106px 20px 28px;
+    padding: 106px var(--landing-gutter) 28px;
   }
 
   .heroEyebrow {
-    font-size: 0.62rem;
+    font-size: var(--landing-micro);
   }
 
   .heroTitle {
@@ -2076,8 +2093,7 @@
     gap: 24px;
   }
 
-  .heroFooter > p,
-  .heroActions {
+  .heroFooter > p {
     grid-column: 1;
   }
 
@@ -2086,55 +2102,48 @@
     font-size: 0.94rem;
   }
 
-  .heroActions {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 8px;
-  }
-
-  .heroActions .button {
-    min-height: 48px;
-    padding: 0 13px;
-    font-size: 0.73rem;
-  }
-
-  .heroActions .button svg {
-    display: none;
-  }
-
   .problemSection {
-    padding: 130px 0;
+    padding: 112px 0 120px;
   }
 
   .problemSection::before {
     display: none;
   }
 
-  .sectionMarker {
-    grid-column: 2 / span 1;
-  }
-
   .problemContent {
     grid-column: 2 / span 4;
-    margin-top: 80px;
   }
 
   .problemContent h2 {
-    font-size: clamp(4.2rem, 21vw, 6rem);
+    max-width: none;
+    font-size: clamp(3.4rem, 15.5vw, 4.7rem);
+  }
+
+  .problemLower {
+    grid-column: 2 / span 4;
+    margin-top: 56px;
+    grid-template-columns: 1fr;
   }
 
   .problemLead {
-    margin: 38px 0 0;
-    font-size: 1.15rem;
+    grid-column: 1;
+    padding-top: 28px;
+  }
+
+  .problemLead p {
+    font-size: 1.08rem;
   }
 
   .problemAside {
-    grid-column: 3 / span 3;
-    margin-top: 90px;
+    grid-column: 1;
+    margin-top: 40px;
+    padding: 28px 0 0;
+    border-top: 1px solid var(--landing-border);
+    border-left: 0;
   }
 
   .presenceSection {
-    padding: 120px 20px;
+    padding: 120px var(--landing-gutter);
   }
 
   .presenceIntro h2 {
@@ -2159,6 +2168,10 @@
     padding: 120px 0;
   }
 
+  .architectureSection {
+    padding: 96px 0;
+  }
+
   .sectionHeading > div:first-child,
   .architectureTitle,
   .capabilityHeading > div:first-child {
@@ -2170,14 +2183,17 @@
     font-size: clamp(3rem, 12.4vw, 4.8rem);
   }
 
-  .sectionHeadingCopy,
   .capabilityCopy {
     grid-column: 2 / span 4;
     margin-top: 40px;
   }
 
+  .sectionHeading h2 > span {
+    gap: 18px;
+  }
+
   .productMoments {
-    width: calc(100% - 40px);
+    width: var(--landing-shell-width);
     margin-top: 90px;
   }
 
@@ -2237,7 +2253,7 @@
 
   .linkPreview {
     margin: 34px 20px 20px;
-    font-size: 0.66rem;
+    font-size: var(--landing-micro);
   }
 
   .accessList {
@@ -2257,21 +2273,13 @@
     height: 190px;
   }
 
-  .architectureHeading .sectionMarker {
-    margin-bottom: 70px;
-  }
-
-  .architectureTitle {
-    margin-top: 80px;
-  }
-
   .architectureTitle h2 {
     font-size: clamp(3.2rem, 14.5vw, 4.8rem);
   }
 
   .architectureDiagram {
-    width: calc(100% - 40px);
-    margin-top: 80px;
+    width: var(--landing-shell-width);
+    margin-top: 52px;
   }
 
   .architectureLayer {
@@ -2296,7 +2304,7 @@
 
   .capabilityGrid {
     grid-template-columns: 1fr;
-    width: calc(100% - 40px);
+    width: var(--landing-shell-width);
     margin-top: 80px;
   }
 
@@ -2350,7 +2358,7 @@
 
   .finalContent {
     min-height: calc(100svh - 128px);
-    padding: 120px 20px 150px;
+    padding: 120px var(--landing-gutter) 150px;
   }
 
   .finalContent h2 {
@@ -2362,8 +2370,8 @@
   }
 
   .footer {
-    right: 14px;
-    left: 14px;
+    right: var(--landing-gutter);
+    left: var(--landing-gutter);
     grid-template-columns: 1fr auto;
     min-height: 82px;
   }
@@ -2385,7 +2393,7 @@
 
   .presenceSection {
     min-height: auto;
-    padding: 140px 28px;
+    padding: 140px var(--landing-gutter);
   }
 
   .presenceSticky {

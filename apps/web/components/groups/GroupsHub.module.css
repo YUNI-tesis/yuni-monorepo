@@ -1,0 +1,103 @@
+.inlineError {
+  margin: 0;
+  border: 1px solid color-mix(in srgb, var(--yuni-color-danger) 42%, transparent);
+  border-radius: 14px;
+  padding: var(--yuni-space-3) var(--yuni-space-4);
+  background: var(--yuni-color-danger-soft);
+  color: var(--yuni-color-text);
+  line-height: 1.5;
+}
+
+.groupForm,
+.groupForm label,
+.groupForm fieldset {
+  display: grid;
+  gap: var(--yuni-space-3);
+}
+
+.groupForm label > span,
+.groupForm legend {
+  color: var(--yuni-color-text);
+  font-weight: 850;
+}
+
+.groupForm fieldset {
+  min-width: 0;
+  margin: 0;
+  border: 1px solid var(--yuni-color-border);
+  border-radius: 16px;
+  padding: var(--yuni-space-4);
+}
+
+.formHint {
+  margin: 0;
+  color: var(--yuni-color-text-muted);
+  font-size: var(--yuni-font-sm);
+}
+
+.avatarOptions {
+  display: grid;
+  max-height: min(42dvh, 360px);
+  gap: var(--yuni-space-2);
+  overflow-y: auto;
+  padding-right: var(--yuni-space-1);
+}
+
+.avatarOption {
+  min-height: 56px;
+  border: 1px solid var(--yuni-color-border);
+  border-radius: 14px;
+  padding: 9px 11px;
+  background: var(--yuni-color-surface-soft);
+}
+
+.avatarOptionLabel {
+  display: inline-grid;
+  min-width: 0;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--yuni-space-3);
+}
+
+.optionInitial {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--yuni-color-accent), var(--yuni-color-primary));
+  color: white;
+  font-size: 0.7rem;
+  font-weight: 900;
+}
+
+.avatarOptionLabel > span:last-child {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.avatarOptionLabel strong {
+  overflow: hidden;
+  color: var(--yuni-color-text);
+  font-size: var(--yuni-font-sm);
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.avatarOptionLabel small {
+  color: var(--yuni-color-text-muted);
+  font-size: var(--yuni-font-xs);
+}
+
+.noAvatars {
+  display: grid;
+  justify-items: start;
+  gap: var(--yuni-space-3);
+}
+
+.noAvatars p {
+  margin: 0;
+  color: var(--yuni-color-text-muted);
+}

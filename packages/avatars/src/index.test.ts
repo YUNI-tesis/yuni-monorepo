@@ -174,6 +174,26 @@ describe("@yuni/avatars", () => {
     );
   });
 
+  it("preserves the provider status when stopping an already-ended session returns an empty body", async () => {
+    const provider = new LiveAvatarProvider({
+      config,
+      fetch: vi.fn<typeof fetch>().mockResolvedValueOnce(new Response(null, { status: 404 })),
+    });
+
+    await expect(provider.stopSession("already-ended-token")).rejects.toMatchObject({
+      status: 404,
+    });
+  });
+
+  it("accepts an empty successful stop response", async () => {
+    const provider = new LiveAvatarProvider({
+      config,
+      fetch: vi.fn<typeof fetch>().mockResolvedValueOnce(new Response(null, { status: 204 })),
+    });
+
+    await expect(provider.stopSession("session-token")).resolves.toBeUndefined();
+  });
+
   it("requires the Live Avatar ElevenLabs connector secret before creating a session token", async () => {
     const provider = new LiveAvatarProvider({
       config: { ...config, elevenLabsSecretId: "" },
@@ -194,7 +214,10 @@ describe("@yuni/avatars", () => {
       fetch: vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({ error: "nope" }, { status: 500 })),
     });
 
-    await expect(provider.listAvatars()).rejects.toThrow(new AvatarProviderError("Live Avatar returned 500: nope"));
+    await expect(provider.listAvatars()).rejects.toMatchObject({
+      message: "Live Avatar returned 500: nope",
+      status: 500,
+    });
   });
 
   it("surfaces Live Avatar validation details from data arrays", async () => {
@@ -223,9 +246,10 @@ describe("@yuni/avatars", () => {
         avatarId: "liveavatar-1",
         elevenLabsAgentId: "agent-1",
       })
-    ).rejects.toThrow(
-      new AvatarProviderError("Live Avatar returned 400: avatar_id: This avatar is not supported in sandbox mode")
-    );
+    ).rejects.toMatchObject({
+      message: "Live Avatar returned 400: avatar_id: This avatar is not supported in sandbox mode",
+      status: 400,
+    });
   });
 
   it("surfaces Live Avatar application error messages from 200 responses", async () => {

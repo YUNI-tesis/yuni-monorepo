@@ -12,9 +12,12 @@ describe("public home page", () => {
     expect(html).toContain("Conversar no alcanza");
     expect(html).toContain("De una idea");
     expect(html).toContain("Una experiencia humana");
+    expect(html).toContain("<span>Creá.</span>");
+    expect(html).toContain("<span>Comprendé.</span>");
     expect(html).toContain("Lucas");
     expect(html).toContain("Santiago");
     expect(html).toContain('href="#experiencia"');
     expect(html).toContain('href="/dashboard"');
+    expect(html).toContain('data-draggable="true"');
   });
 });

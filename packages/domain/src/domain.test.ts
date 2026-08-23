@@ -4,6 +4,9 @@ import {
   CreateAccessGrantInputSchema,
   CreateAvatarAgentInputSchema,
   EndVoiceSessionInputSchema,
+  GroupProviderEventInputSchema,
+  GroupVoiceParticipantFailureInputSchema,
+  GroupVoiceTurnInputSchema,
   CreateShareLinkInputSchema,
   LiveAvatarConfigSchema,
   LoginInputSchema,
@@ -170,6 +173,51 @@ describe("@yuni/domain", () => {
     });
 
     expect(parsed.transcript).toHaveLength(1);
+  });
+
+  it("accepts only final human transcripts and typed provider events for group calls", () => {
+    expect(GroupVoiceTurnInputSchema.parse({ sourceEventId: "scribe-1", content: "Hola equipo" })).toEqual({
+      sourceEventId: "scribe-1",
+      content: "Hola equipo",
+    });
+    expect(() =>
+      GroupVoiceTurnInputSchema.parse({ sourceEventId: "avatar-1", source: "avatar", content: "No" })
+    ).toThrow();
+    expect(
+      GroupProviderEventInputSchema.parse({
+        sourceEventId: "event-1",
+        turnId: null,
+        avatarId: "avatar-1",
+        type: "speak_started",
+      }).type
+    ).toBe("speak_started");
+    expect(() =>
+      GroupProviderEventInputSchema.parse({
+        sourceEventId: "event-2",
+        turnId: null,
+        avatarId: "avatar-1",
+        type: "speak_ended",
+      })
+    ).toThrow();
+    expect(
+      GroupVoiceParticipantFailureInputSchema.parse({
+        sourceEventId: "participant:error:1",
+        participantAttemptId: "realtime-attempt-1",
+        reason: "stream_error",
+        expectedTurnId: "turn-1",
+      })
+    ).toEqual({
+      sourceEventId: "participant:error:1",
+      participantAttemptId: "realtime-attempt-1",
+      reason: "stream_error",
+      expectedTurnId: "turn-1",
+    });
+    expect(() =>
+      GroupVoiceParticipantFailureInputSchema.parse({
+        sourceEventId: "participant:error:2",
+        reason: "arbitrary provider message",
+      })
+    ).toThrow();
   });
 
   it("validates register input and normalizes email", () => {

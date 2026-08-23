@@ -1,5 +1,11 @@
 import { createHash } from "node:crypto";
-import { createAvatarAgentRepository, type PrismaClientInstance } from "@yuni/db";
+import { Prisma } from "@prisma/client";
+import {
+  createAvatarAgentRepository,
+  enqueueSessionCleanup,
+  terminateGroupVoiceSessionsForDeletion,
+  type PrismaClientInstance,
+} from "@yuni/db";
 import type {
   AgentProvider,
   AvatarStatus,
@@ -191,6 +197,27 @@ export function createAvatarsRepository(prisma: PrismaClientInstance): AvatarsRe
     },
     async deleteWithCleanup(ownerId, avatarId) {
       return prisma.$transaction(async (tx) => {
+        const snapshot = await tx.avatarAgent.findFirst({
+          where: { id: avatarId, ownerId },
+          select: {
+            id: true,
+            avatarGroupMembers: { select: { avatarGroupId: true } },
+          },
+        });
+        if (!snapshot) {
+          const { OwnershipError } = await import("@yuni/domain");
+          throw new OwnershipError();
+        }
+        await lockRows(tx, "AvatarAgent", [avatarId]);
+        const lockedMemberships = await tx.avatarGroupMember.findMany({
+          where: { avatarAgentId: avatarId },
+          select: { avatarGroupId: true },
+        });
+        await lockRows(
+          tx,
+          "AvatarGroup",
+          lockedMemberships.map((membership) => membership.avatarGroupId)
+        );
         const avatar = await tx.avatarAgent.findFirst({
           where: { id: avatarId, ownerId },
           include: { documents: { include: { providerSync: true } } },
@@ -198,6 +225,100 @@ export function createAvatarsRepository(prisma: PrismaClientInstance): AvatarsRe
         if (!avatar) {
           const { OwnershipError } = await import("@yuni/domain");
           throw new OwnershipError();
+        }
+
+        const affectedMemberships = await tx.avatarGroupMember.findMany({
+          where: { avatarAgentId: avatarId },
+          include: {
+            avatarGroup: {
+              include: { members: { orderBy: { position: "asc" } } },
+            },
+          },
+        });
+        const deletedGroupIds = affectedMemberships
+          .filter(
+            (membership) =>
+              membership.avatarGroup.members.filter((member) => member.id !== membership.id).length < 2
+          )
+          .map((membership) => membership.avatarGroupId);
+        const affectedSessionWhere: Prisma.GroupVoiceSessionWhereInput = {
+          OR: [
+            {
+              status: { in: ["connecting", "active"] },
+              participants: { some: { avatarAgentId: avatarId } },
+            },
+            ...(deletedGroupIds.length > 0 ? [{ avatarGroupId: { in: deletedGroupIds } }] : []),
+          ],
+        };
+        const affectedSessionIds = await tx.groupVoiceSession.findMany({
+          where: affectedSessionWhere,
+          select: { id: true },
+        });
+        const outstandingRealtimeSessions = await tx.realtimeSession.findMany({
+          where: {
+            avatarAgentId: avatarId,
+            providerSessionTokenCiphertext: { not: null },
+            providerStoppedAt: null,
+          },
+          include: {
+            conversation: { select: { ownerId: true } },
+            groupVoiceParticipant: {
+              select: { groupVoiceSession: { select: { ownerId: true } } },
+            },
+          },
+        });
+        for (const realtime of outstandingRealtimeSessions) {
+          await enqueueSessionCleanup(tx, {
+            realtimeSessionId: realtime.id,
+            providerSessionTokenCiphertext: realtime.providerSessionTokenCiphertext,
+            ownerId:
+              realtime.groupVoiceParticipant?.groupVoiceSession.ownerId ??
+              realtime.conversation?.ownerId ??
+              ownerId,
+            avatarAgentId: avatarId,
+          });
+        }
+        await terminateGroupVoiceSessionsForDeletion(tx, {
+          sessionIds: affectedSessionIds.map((session) => session.id),
+          errorMessage: "avatar_deleted",
+        });
+
+        const primaryGroupConversations = await tx.conversation.findMany({
+          where: {
+            avatarAgentId: avatarId,
+            conversationAvatars: { some: { avatarAgentId: { not: avatarId } } },
+          },
+          select: {
+            id: true,
+            conversationAvatars: {
+              where: { avatarAgentId: { not: avatarId } },
+              orderBy: { position: "asc" },
+              take: 1,
+              select: { avatarAgentId: true },
+            },
+          },
+        });
+        for (const conversation of primaryGroupConversations) {
+          const replacement = conversation.conversationAvatars[0];
+          if (replacement) {
+            await tx.conversation.update({
+              where: { id: conversation.id },
+              data: { avatarAgentId: replacement.avatarAgentId },
+            });
+          }
+        }
+
+        for (const membership of affectedMemberships) {
+          const remaining = membership.avatarGroup.members.filter((member) => member.id !== membership.id);
+          if (remaining.length < 2) {
+            await tx.avatarGroup.delete({ where: { id: membership.avatarGroupId } });
+            continue;
+          }
+          await tx.avatarGroupMember.delete({ where: { id: membership.id } });
+          for (const [position, member] of remaining.entries()) {
+            if (member.position === position) continue;
+            await tx.avatarGroupMember.update({ where: { id: member.id }, data: { position } });
+          }
         }
         await tx.job.create({
           data: {
@@ -208,6 +329,7 @@ export function createAvatarsRepository(prisma: PrismaClientInstance): AvatarsRe
             dedupeKey: `avatar-cleanup:${avatarId}`,
             payload: {
               providerAgentId: avatar.providerAgentId,
+              groupProviderAgentId: avatar.groupProviderAgentId,
               providerContextDocumentId: avatar.providerContextDocumentId,
               documents: avatar.documents.map((document) => ({
                 storageKey: document.storageKey,
@@ -220,6 +342,19 @@ export function createAvatarsRepository(prisma: PrismaClientInstance): AvatarsRe
       });
     },
   };
+}
+
+async function lockRows(
+  tx: Prisma.TransactionClient,
+  table: "AvatarAgent" | "AvatarGroup",
+  rowIds: string[]
+) {
+  const ids = [...new Set(rowIds)].sort();
+  if (ids.length === 0) return;
+  const tableName = Prisma.raw(`"${table}"`);
+  await tx.$queryRaw(
+    Prisma.sql`SELECT "id" FROM ${tableName} WHERE "id" IN (${Prisma.join(ids)}) ORDER BY "id" FOR UPDATE`
+  );
 }
 
 function hashContext(value: string) {

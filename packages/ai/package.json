@@ -15,6 +15,7 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@langchain/langgraph": "^1.2.5",
     "@yuni/config": "workspace:*",
     "@yuni/domain": "workspace:*",
     "@yuni/observability": "workspace:*"

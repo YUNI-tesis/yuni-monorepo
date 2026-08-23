@@ -11,6 +11,7 @@ import {
   type AvatarListFilter,
 } from "../../lib/avatar-dashboard";
 import { AvatarCard } from "../avatar-card/AvatarCard";
+import catalogStyles from "../catalog/CatalogGrid.module.css";
 import styles from "./AvatarList.module.css";
 
 export function AvatarListView() {
@@ -22,7 +23,7 @@ export function AvatarListView() {
   const isSharedFilter = activeFilter === "shared";
 
   return (
-    <div className={styles.layout}>
+    <div className={catalogStyles.layout}>
       <PageHeader
         eyebrow="Mis avatares"
         title="Mis avatares"
@@ -37,7 +38,7 @@ export function AvatarListView() {
       ) : avatarList.status === "error" ? (
         <ErrorState title="No pudimos cargar Mis avatares" description={avatarList.error} />
       ) : sortedAvatars.length === 0 ? (
-        <Card padding="lg" className={styles.emptyCard}>
+        <Card padding="lg" className={catalogStyles.emptyCard}>
           {isSharedFilter ? (
             <EmptyState
               title="No tenes avatares compartidos"
@@ -52,7 +53,7 @@ export function AvatarListView() {
           )}
         </Card>
       ) : (
-        <div className={styles.grid}>
+        <div className={catalogStyles.grid}>
           {sortedAvatars.map((avatar) => (
             <AvatarCard
               key={avatar.id}

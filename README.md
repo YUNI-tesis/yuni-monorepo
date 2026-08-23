@@ -95,7 +95,7 @@ LIVEAVATAR_ELEVENLABS_SECRET_ID=
 
 `ELEVENLABS_DEFAULT_VOICE_ID` es opcional y solo se usa como fallback para avatars legacy que no tengan voz ElevenLabs guardada.
 
-El frontend nunca recibe esas API keys. Para probar el MVP, entrar a `/interact`, elegir un avatar propio e iniciar llamada.
+El frontend nunca recibe esas API keys. Para probar una llamada individual, abrir un avatar y usar su acción `Interactuar`; para llamadas de dos o tres participantes, entrar a `/groups`, crear el grupo e iniciar su llamada.
 
 Guia de setup y troubleshooting: [docs/integrations/elevenlabs-liveavatar-mvp.md](docs/integrations/elevenlabs-liveavatar-mvp.md).
 

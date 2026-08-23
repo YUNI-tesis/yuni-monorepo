@@ -11,6 +11,8 @@ export function createMessageRepository(db: Db) {
           conversationId,
           role: input.role,
           content: input.content,
+          ...(input.speakerAvatarId ? { speakerAvatarId: input.speakerAvatarId } : {}),
+          ...(input.sourceEventId ? { sourceEventId: input.sourceEventId } : {}),
           ...(input.metadata ? { metadata: input.metadata as Prisma.InputJsonObject } : {}),
         };
 
@@ -25,6 +27,10 @@ export function createMessageRepository(db: Db) {
 
         return message;
       });
+    },
+
+    findBySourceEvent(conversationId: string, sourceEventId: string) {
+      return db.message.findFirst({ where: { conversationId, sourceEventId } });
     },
 
     listByConversation(conversationId: string) {
