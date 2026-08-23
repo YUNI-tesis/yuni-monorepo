@@ -50,7 +50,7 @@ export function createAvatarContextRepository(db: PrismaClient) {
             ownerId,
             avatarAgentId: avatarId,
             type: "avatar_context_provider_sync",
-            payload: { avatarId },
+            payload: { avatarId, contextFingerprint: fingerprint },
             dedupeKey,
             maxAttempts: 8,
           },
@@ -82,6 +82,42 @@ export function createAvatarContextRepository(db: PrismaClient) {
             status: "pending_upload",
           },
         });
+      });
+    },
+
+    async schedulePendingUploadCleanup(
+      ownerId: string,
+      documentId: string,
+      avatarAgentId: string,
+      runAfter: Date
+    ) {
+      return db.$transaction(async (tx) => {
+        const document = await tx.document.findFirst({ where: { id: documentId, ownerId } });
+        if (!document || document.avatarAgentId !== avatarAgentId) throw new OwnershipError();
+        return tx.job.upsert({
+          where: { dedupeKey: `pending-upload-cleanup:${documentId}` },
+          create: {
+            ownerId,
+            avatarAgentId,
+            type: "provider_document_cleanup",
+            payload: { documentId, pendingUploadOnly: true },
+            dedupeKey: `pending-upload-cleanup:${documentId}`,
+            runAfter,
+            maxAttempts: 8,
+          },
+          update: { runAfter },
+        });
+      });
+    },
+
+    discardPendingUpload(ownerId: string, documentId: string) {
+      return db.document.deleteMany({
+        where: {
+          id: documentId,
+          ownerId,
+          status: "pending_upload",
+          uploadConfirmedAt: null,
+        },
       });
     },
 

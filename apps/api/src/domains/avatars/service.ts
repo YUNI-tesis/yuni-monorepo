@@ -430,7 +430,7 @@ async function syncOrQueueAgentAfterSave(
           ownerId,
           avatarAgentId: avatar.id,
           type: "avatar_context_provider_sync",
-          payload: { avatarId: avatar.id },
+          payload: { avatarId: avatar.id, contextFingerprint },
           dedupeKey: `avatar-context:${avatar.id}:${contextFingerprint}:${avatar.updatedAt.getTime()}`,
           maxAttempts: 8,
         }

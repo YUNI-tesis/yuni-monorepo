@@ -21,7 +21,10 @@ SELECT
   "id",
   'avatar_context_provider_sync'::"JobType",
   'queued'::"JobStatus",
-  jsonb_build_object('avatarId', "id"),
+  jsonb_build_object(
+    'avatarId', "id",
+    'contextFingerprint', encode(sha256(convert_to("context", 'UTF8')), 'hex')
+  ),
   0,
   8,
   'avatar-context-migration:' || "id",

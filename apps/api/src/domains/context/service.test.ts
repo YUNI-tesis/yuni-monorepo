@@ -70,6 +70,8 @@ function repository(overrides: Record<string, unknown> = {}) {
     getForOwner: vi.fn(async () => contextRecord()),
     updateText: vi.fn(async () => contextRecord()),
     createPendingDocument: vi.fn(),
+    schedulePendingUploadCleanup: vi.fn(),
+    discardPendingUpload: vi.fn(),
     findDocumentForOwner: vi.fn(),
     confirmUpload: vi.fn(),
     retry: vi.fn(),
@@ -103,6 +105,69 @@ describe("avatar context service", () => {
         sizeBytes: 10,
       })
     ).rejects.toBeInstanceOf(InvalidStoredUploadError);
+  });
+
+  it("schedules cleanup after the presigned upload expires", async () => {
+    const storage = new InMemoryObjectStorage(60);
+    const document = {
+      ...contextRecord().documents[0]!,
+      id: "pending-document",
+      status: "pending_upload",
+      uploadConfirmedAt: null,
+      providerSync: null,
+    };
+    const schedulePendingUploadCleanup = vi.fn();
+    const service = createAvatarContextService({
+      repository: repository({
+        createPendingDocument: vi.fn(async () => document),
+        schedulePendingUploadCleanup,
+      }),
+      storage,
+    });
+
+    const result = await service.presign("owner-1", "avatar-1", {
+      fileName: "guide.pdf",
+      mimeType: "application/pdf",
+      sizeBytes: 3,
+    });
+
+    const cleanupAt = schedulePendingUploadCleanup.mock.calls[0]?.[3] as Date;
+    expect(schedulePendingUploadCleanup).toHaveBeenCalledWith(
+      "owner-1",
+      "pending-document",
+      "avatar-1",
+      expect.any(Date)
+    );
+    expect(cleanupAt.getTime()).toBe(result.upload.expiresAt.getTime() + 5 * 60 * 1000);
+  });
+
+  it("discards the pending record when presigning fails", async () => {
+    const storage = new InMemoryObjectStorage();
+    vi.spyOn(storage, "createPresignedUpload").mockRejectedValue(new Error("signing failed"));
+    const document = {
+      ...contextRecord().documents[0]!,
+      id: "pending-document",
+      status: "pending_upload",
+      uploadConfirmedAt: null,
+      providerSync: null,
+    };
+    const discardPendingUpload = vi.fn();
+    const service = createAvatarContextService({
+      repository: repository({
+        createPendingDocument: vi.fn(async () => document),
+        discardPendingUpload,
+      }),
+      storage,
+    });
+
+    await expect(
+      service.presign("owner-1", "avatar-1", {
+        fileName: "guide.pdf",
+        mimeType: "application/pdf",
+        sizeBytes: 3,
+      })
+    ).rejects.toThrow("signing failed");
+    expect(discardPendingUpload).toHaveBeenCalledWith("owner-1", "pending-document");
   });
 
   it("confirms only when HEAD matches the expected size and type", async () => {

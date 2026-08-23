@@ -3,7 +3,7 @@ import { AvatarProviderError, type AvatarProvider, type ProviderTokenProtector }
 import type { PrismaClientInstance } from "@yuni/db";
 import { createJobRepository } from "@yuni/db";
 import { MAX_DOCUMENT_SIZE_BYTES, VoiceConfigSchema } from "@yuni/domain";
-import type { ObjectStorage } from "@yuni/storage";
+import { ObjectNotFoundError, ObjectTooLargeError, type ObjectStorage } from "@yuni/storage";
 import {
   ElevenLabsProviderError,
   isTransientElevenLabsError,
@@ -11,12 +11,33 @@ import {
   type ElevenLabsKnowledgeBaseReference,
 } from "@yuni/voice";
 
+const ELEVENLABS_MIN_RAG_DOCUMENT_BYTES = 500;
+
 class RagStillProcessingError extends Error {
   constructor() {
     super("Knowledge base index is still processing");
     this.name = "RagStillProcessingError";
   }
 }
+
+class ProviderDocumentMissingError extends Error {
+  constructor() {
+    super("Provider document disappeared and will be recreated");
+    this.name = "ProviderDocumentMissingError";
+  }
+}
+
+class AvatarProjectionBusyError extends Error {
+  constructor() {
+    super("Another provider projection is running for this avatar");
+    this.name = "AvatarProjectionBusyError";
+  }
+}
+
+type SyncAgentOptions = {
+  includeDocumentId?: string;
+  contextDocumentId?: string;
+};
 
 export type KnowledgeBaseWorkerDependencies = {
   db: PrismaClientInstance;
@@ -57,7 +78,7 @@ export function createKnowledgeBaseWorker(dependencies: KnowledgeBaseWorkerDepen
     return dependencies.storage;
   }
 
-  async function syncAgent(avatarId: string, includeDocumentId?: string) {
+  async function syncAgent(avatarId: string, options: SyncAgentOptions = {}) {
     const avatar = await dependencies.db.avatarAgent.findUnique({
       where: { id: avatarId },
       include: {
@@ -72,13 +93,15 @@ export function createKnowledgeBaseWorker(dependencies: KnowledgeBaseWorkerDepen
     if (!voice.success) throw new Error("Avatar voice configuration is invalid");
 
     const knowledgeBase: ElevenLabsKnowledgeBaseReference[] = [];
-    const textReady =
-      avatar.providerContextSyncStatus === "synced" && Boolean(avatar.providerContextDocumentId);
-    if (textReady && avatar.providerContextDocumentId) {
+    const contextDocumentId =
+      options.contextDocumentId ??
+      (avatar.providerContextSyncStatus === "synced" ? avatar.providerContextDocumentId : null);
+    const textReady = Boolean(contextDocumentId);
+    if (contextDocumentId) {
       knowledgeBase.push({
         type: "text",
         name: `YUNI Context - ${avatar.name}`,
-        id: avatar.providerContextDocumentId,
+        id: contextDocumentId,
         usage_mode: "prompt",
       });
     }
@@ -86,7 +109,7 @@ export function createKnowledgeBaseWorker(dependencies: KnowledgeBaseWorkerDepen
       const providerSync = document.providerSync;
       if (
         providerSync?.providerDocumentId &&
-        (providerSync.status === "synced" || document.id === includeDocumentId)
+        (providerSync.status === "synced" || document.id === options.includeDocumentId)
       ) {
         knowledgeBase.push({
           type: "file",
@@ -101,115 +124,126 @@ export function createKnowledgeBaseWorker(dependencies: KnowledgeBaseWorkerDepen
       where: { id: avatarId },
       data: { providerSyncStatus: "syncing", providerSyncError: null },
     });
-    try {
-      const result = await dependencies.provider.syncAvatarAgent({
-        id: avatar.id,
-        name: avatar.name,
-        description: avatar.description,
-        instructions: avatar.instructions,
-        context: avatar.context,
-        voiceConfig: voice.data,
-        providerAgentId: avatar.providerAgentId,
-        providerSyncFingerprint: avatar.providerSyncFingerprint,
-        knowledgeBase,
-        includeInlineContext: !textReady,
-      });
-      const usableAt = now();
-      await dependencies.db.avatarAgent.update({
-        where: { id: avatarId },
-        data: {
-          providerAgentId: result.providerAgentId,
-          providerSyncFingerprint: result.providerSyncFingerprint,
-          providerSyncStatus: "synced",
-          providerSyncError: null,
-          providerSyncedAt: result.synced ? usableAt : avatar.providerSyncedAt,
-          providerLastUsableAt: usableAt,
-        },
-      });
-    } catch (error) {
-      await dependencies.db.avatarAgent.update({
-        where: { id: avatarId },
-        data: { providerSyncStatus: "failed", providerSyncError: safeError(error) },
-      });
-      throw error;
-    }
-  }
-
-  async function syncContext(avatarId: string) {
-    const avatar = await dependencies.db.avatarAgent.findUnique({ where: { id: avatarId } });
-    if (!avatar) return;
+    const result = await dependencies.provider.syncAvatarAgent({
+      id: avatar.id,
+      name: avatar.name,
+      description: avatar.description,
+      instructions: avatar.instructions,
+      context: avatar.context,
+      voiceConfig: voice.data,
+      providerAgentId: avatar.providerAgentId,
+      providerSyncFingerprint: avatar.providerSyncFingerprint,
+      knowledgeBase,
+      includeInlineContext: !textReady,
+    });
+    const usableAt = now();
     await dependencies.db.avatarAgent.update({
       where: { id: avatarId },
+      data: {
+        providerAgentId: result.providerAgentId,
+        providerSyncFingerprint: result.providerSyncFingerprint,
+        providerSyncStatus: "synced",
+        providerSyncError: null,
+        providerSyncedAt: result.synced ? usableAt : avatar.providerSyncedAt,
+        providerLastUsableAt: usableAt,
+      },
+    });
+  }
+
+  async function syncContext(avatarId: string, expectedFingerprint?: string) {
+    const avatar = await dependencies.db.avatarAgent.findUnique({ where: { id: avatarId } });
+    if (!avatar) return;
+    const desiredFingerprint = fingerprint(avatar.context);
+    if (expectedFingerprint && expectedFingerprint !== desiredFingerprint) return;
+    const claimed = await dependencies.db.avatarAgent.updateMany({
+      where: { id: avatarId, context: avatar.context },
       data: {
         providerContextSyncStatus: avatar.context ? "syncing" : "deleting",
         providerContextError: null,
       },
     });
+    if (claimed.count === 0) return;
 
-    try {
-      if (!avatar.context.trim()) {
-        await syncAgent(avatarId);
-        if (avatar.providerContextDocumentId) {
-          await ignoreProviderNotFound(() =>
-            dependencies.provider.deleteKnowledgeBaseDocument(avatar.providerContextDocumentId!, true)
-          );
-        }
-        await dependencies.db.avatarAgent.update({
-          where: { id: avatarId },
-          data: {
-            providerContextDocumentId: null,
-            providerContextSyncStatus: "synced",
-            providerContextFingerprint: fingerprint(""),
-            providerContextError: null,
-            providerContextSyncedAt: now(),
-          },
-        });
-        return;
-      }
-
-      let external;
+    if (!avatar.context.trim()) {
+      await syncAgent(avatarId);
       if (avatar.providerContextDocumentId) {
-        try {
-          external = await dependencies.provider.updateTextDocument(
-            avatar.providerContextDocumentId,
-            `YUNI Context - ${avatar.name}`,
-            avatar.context
-          );
-        } catch (error) {
-          if (!isProviderNotFound(error)) throw error;
-          external = await dependencies.provider.createTextDocument(
-            `YUNI Context - ${avatar.name}`,
-            avatar.context
-          );
-        }
-      } else {
+        await ignoreProviderNotFound(() =>
+          dependencies.provider.deleteKnowledgeBaseDocument(avatar.providerContextDocumentId!, true)
+        );
+      }
+      await dependencies.db.avatarAgent.updateMany({
+        where: { id: avatarId, context: avatar.context },
+        data: {
+          providerContextDocumentId: null,
+          providerContextSyncStatus: "synced",
+          providerContextFingerprint: desiredFingerprint,
+          providerContextError: null,
+          providerContextSyncedAt: now(),
+        },
+      });
+      return;
+    }
+
+    let external;
+    let createdDocument = false;
+    if (avatar.providerContextDocumentId) {
+      try {
+        external = await dependencies.provider.updateTextDocument(
+          avatar.providerContextDocumentId,
+          `YUNI Context - ${avatar.name}`,
+          avatar.context
+        );
+      } catch (error) {
+        if (!isProviderNotFound(error)) throw error;
         external = await dependencies.provider.createTextDocument(
           `YUNI Context - ${avatar.name}`,
           avatar.context
         );
+        createdDocument = true;
       }
-      await dependencies.db.avatarAgent.update({
-        where: { id: avatarId },
-        data: { providerContextDocumentId: external.id, providerContextSyncStatus: "syncing" },
-      });
-      const usableAt = now();
-      await dependencies.db.avatarAgent.update({
-        where: { id: avatarId },
+    } else {
+      external = await dependencies.provider.createTextDocument(
+        `YUNI Context - ${avatar.name}`,
+        avatar.context
+      );
+      createdDocument = true;
+    }
+    const persisted = await dependencies.db.avatarAgent.updateMany({
+      where: { id: avatarId, context: avatar.context },
+      data: { providerContextDocumentId: external.id, providerContextSyncStatus: "syncing" },
+    });
+    if (persisted.count === 0) {
+      if (createdDocument) {
+        await ignoreProviderNotFound(() =>
+          dependencies.provider.deleteKnowledgeBaseDocument(external.id, true)
+        );
+      }
+      return;
+    }
+
+    await syncAgent(avatarId, { contextDocumentId: external.id });
+    const usableAt = now();
+    const completed = await dependencies.db.avatarAgent.updateMany({
+      where: {
+        id: avatarId,
+        context: avatar.context,
+        providerContextDocumentId: external.id,
+      },
+      data: {
+        providerContextSyncStatus: "synced",
+        providerContextFingerprint: desiredFingerprint,
+        providerContextError: null,
+        providerContextSyncedAt: usableAt,
+        providerContextLastUsableAt: usableAt,
+      },
+    });
+    if (completed.count === 0) {
+      await dependencies.db.avatarAgent.updateMany({
+        where: { id: avatarId, providerContextDocumentId: external.id },
         data: {
-          providerContextSyncStatus: "synced",
-          providerContextFingerprint: fingerprint(avatar.context),
-          providerContextError: null,
-          providerContextSyncedAt: usableAt,
           providerContextLastUsableAt: usableAt,
         },
       });
-      await syncAgent(avatarId);
-    } catch (error) {
-      await dependencies.db.avatarAgent.update({
-        where: { id: avatarId },
-        data: { providerContextSyncStatus: "failed", providerContextError: safeError(error) },
-      });
-      throw error;
     }
   }
 
@@ -221,32 +255,31 @@ export function createKnowledgeBaseWorker(dependencies: KnowledgeBaseWorkerDepen
     if (!document || document.deletedAt) return;
     if (!document.uploadConfirmedAt) throw new Error("Document upload is not confirmed");
 
-    try {
-      let providerDocumentId = document.providerSync?.providerDocumentId ?? null;
-      if (!providerDocumentId) {
-        await upsertDocumentSync(documentId, { status: "uploading", errorMessage: null });
-        const bytes = await requireStorage().download(document.storageKey, MAX_DOCUMENT_SIZE_BYTES);
-        const external = await dependencies.provider.createFileDocument({
-          name: document.fileName,
-          fileName: document.fileName,
-          mimeType: document.mimeType,
-          bytes,
-        });
-        providerDocumentId = external.id;
-        await upsertDocumentSync(documentId, {
-          providerDocumentId,
-          status: "indexing",
-          ragStatus: "not_started",
-          fingerprint: fingerprint(
-            `${document.storageEtag ?? ""}:${document.sizeBytes}:${document.mimeType}`
-          ),
-        });
-        document = await dependencies.db.document.findUniqueOrThrow({
-          where: { id: documentId },
-          include: { providerSync: true },
-        });
-      }
+    let providerDocumentId = document.providerSync?.providerDocumentId ?? null;
+    if (!providerDocumentId) {
+      await upsertDocumentSync(documentId, { status: "uploading", errorMessage: null });
+      const bytes = await requireStorage().download(document.storageKey, MAX_DOCUMENT_SIZE_BYTES);
+      const external = await dependencies.provider.createFileDocument({
+        name: document.fileName,
+        fileName: document.fileName,
+        mimeType: document.mimeType,
+        bytes,
+      });
+      providerDocumentId = external.id;
+      await upsertDocumentSync(documentId, {
+        providerDocumentId,
+        status: document.sizeBytes < ELEVENLABS_MIN_RAG_DOCUMENT_BYTES ? "attaching" : "indexing",
+        ragStatus: document.sizeBytes < ELEVENLABS_MIN_RAG_DOCUMENT_BYTES ? "not_required" : "not_started",
+        fingerprint: fingerprint(`${document.storageEtag ?? ""}:${document.sizeBytes}:${document.mimeType}`),
+      });
+      document = await dependencies.db.document.findUniqueOrThrow({
+        where: { id: documentId },
+        include: { providerSync: true },
+      });
+    }
 
+    let finalRagStatus = "not_required";
+    if (document.sizeBytes >= ELEVENLABS_MIN_RAG_DOCUMENT_BYTES) {
       let ragStatus;
       try {
         ragStatus =
@@ -263,7 +296,7 @@ export function createKnowledgeBaseWorker(dependencies: KnowledgeBaseWorkerDepen
           status: "pending",
           ragStatus: null,
         });
-        throw new Error("Provider document disappeared and will be recreated");
+        throw new ProviderDocumentMissingError();
       }
 
       if (ragStatus === "failed") throw new Error("Knowledge base indexing failed");
@@ -271,35 +304,37 @@ export function createKnowledgeBaseWorker(dependencies: KnowledgeBaseWorkerDepen
         await upsertDocumentSync(documentId, { status: "indexing", ragStatus: "processing" });
         throw new RagStillProcessingError();
       }
-
-      await upsertDocumentSync(documentId, { status: "attaching", ragStatus: "ready" });
-      await syncAgent(document.avatarAgentId, documentId);
-      const usableAt = now();
-      await dependencies.db.$transaction([
-        dependencies.db.documentProviderSync.update({
-          where: { documentId },
-          data: {
-            status: "synced",
-            ragStatus: "ready",
-            errorMessage: null,
-            providerLastUsableAt: usableAt,
-          },
-        }),
-        dependencies.db.document.update({
-          where: { id: documentId },
-          data: { status: "ready", errorMessage: null },
-        }),
-      ]);
-    } catch (error) {
-      if (!(error instanceof RagStillProcessingError)) {
-        await dependencies.db.document.update({
-          where: { id: documentId },
-          data: { status: "failed", errorMessage: safeError(error) },
-        });
-        await upsertDocumentSync(documentId, { status: "failed", errorMessage: safeError(error) });
-      }
-      throw error;
+      finalRagStatus = "ready";
     }
+
+    document = await dependencies.db.document.findUniqueOrThrow({
+      where: { id: documentId },
+      include: { providerSync: true },
+    });
+    if (document.deletedAt) return;
+    await upsertDocumentSync(documentId, { status: "attaching", ragStatus: finalRagStatus });
+    await syncAgent(document.avatarAgentId, { includeDocumentId: documentId });
+    const currentDocument = await dependencies.db.document.findUnique({ where: { id: documentId } });
+    if (!currentDocument || currentDocument.deletedAt) {
+      await syncAgent(document.avatarAgentId);
+      return;
+    }
+    const usableAt = now();
+    await dependencies.db.$transaction([
+      dependencies.db.documentProviderSync.update({
+        where: { documentId },
+        data: {
+          status: "synced",
+          ragStatus: finalRagStatus,
+          errorMessage: null,
+          providerLastUsableAt: usableAt,
+        },
+      }),
+      dependencies.db.document.update({
+        where: { id: documentId },
+        data: { status: "ready", errorMessage: null },
+      }),
+    ]);
   }
 
   function upsertDocumentSync(
@@ -333,6 +368,24 @@ export function createKnowledgeBaseWorker(dependencies: KnowledgeBaseWorkerDepen
     }
     await requireStorage().delete(document.storageKey);
     await dependencies.db.document.delete({ where: { id: documentId } });
+  }
+
+  async function cleanupPendingUpload(documentId: string) {
+    let document = await dependencies.db.document.findUnique({ where: { id: documentId } });
+    if (!document || document.uploadConfirmedAt) return;
+    if (document.status === "pending_upload") {
+      const claimed = await dependencies.db.document.updateMany({
+        where: { id: documentId, status: "pending_upload", uploadConfirmedAt: null },
+        data: { status: "deleting", deletedAt: now() },
+      });
+      if (claimed.count === 0) return;
+      document = await dependencies.db.document.findUnique({ where: { id: documentId } });
+    }
+    if (!document || document.uploadConfirmedAt || document.status !== "deleting") return;
+    await requireStorage().delete(document.storageKey);
+    await dependencies.db.document.deleteMany({
+      where: { id: documentId, uploadConfirmedAt: null },
+    });
   }
 
   async function cleanupAvatar(payload: Record<string, unknown>) {
@@ -396,7 +449,7 @@ export function createKnowledgeBaseWorker(dependencies: KnowledgeBaseWorkerDepen
     const documentId = readString(payload.documentId);
     switch (job.type) {
       case "avatar_context_provider_sync":
-        if (avatarId) await syncContext(avatarId);
+        if (avatarId) await syncContext(avatarId, readString(payload.contextFingerprint) ?? undefined);
         return;
       case "document_provider_sync":
         if (documentId) await syncDocument(documentId);
@@ -405,7 +458,10 @@ export function createKnowledgeBaseWorker(dependencies: KnowledgeBaseWorkerDepen
         if (avatarId) await syncAgent(avatarId);
         return;
       case "provider_document_cleanup":
-        if (documentId) await cleanupDocument(documentId);
+        if (documentId) {
+          if (payload.pendingUploadOnly === true) await cleanupPendingUpload(documentId);
+          else await cleanupDocument(documentId);
+        }
         return;
       case "avatar_provider_cleanup":
         await cleanupAvatar(payload);
@@ -427,9 +483,19 @@ export function createKnowledgeBaseWorker(dependencies: KnowledgeBaseWorkerDepen
     const documentId = readString(payload.documentId);
     const errorMessage = safeError(error);
     if (job.type === "avatar_context_provider_sync" && avatarId) {
+      const expectedFingerprint = readString(payload.contextFingerprint);
+      if (expectedFingerprint) {
+        const current = await dependencies.db.avatarAgent.findUnique({ where: { id: avatarId } });
+        if (!current || fingerprint(current.context) !== expectedFingerprint) return;
+      }
       await dependencies.db.avatarAgent.updateMany({
         where: { id: avatarId },
-        data: { providerContextSyncStatus: "failed", providerContextError: errorMessage },
+        data: {
+          providerContextSyncStatus: "failed",
+          providerContextError: errorMessage,
+          providerSyncStatus: "failed",
+          providerSyncError: errorMessage,
+        },
       });
     } else if (job.type === "agent_provider_sync" && avatarId) {
       await dependencies.db.avatarAgent.updateMany({
@@ -457,8 +523,20 @@ export function createKnowledgeBaseWorker(dependencies: KnowledgeBaseWorkerDepen
     async runOnce() {
       const job = await jobs.claimNext(dependencies.workerId, [...supportedJobTypes]);
       if (!job) return false;
+      const payload = isRecord(job.payload) ? job.payload : {};
+      const lockAvatarId =
+        job.type === "session_cleanup" ? null : (readString(payload.avatarId) ?? job.avatarAgentId);
+      const heartbeat = setInterval(() => {
+        void jobs.heartbeat(job.id, dependencies.workerId).catch(() => undefined);
+      }, 60_000);
+      heartbeat.unref?.();
       try {
-        await execute(job);
+        if (lockAvatarId) {
+          const locked = await jobs.runWithAvatarLock(lockAvatarId, () => execute(job));
+          if (!locked.acquired) throw new AvatarProjectionBusyError();
+        } else {
+          await execute(job);
+        }
         await jobs.markDone(
           job.id,
           job.type === "session_cleanup"
@@ -466,22 +544,27 @@ export function createKnowledgeBaseWorker(dependencies: KnowledgeBaseWorkerDepen
             : undefined
         );
       } catch (error) {
-        const retryable =
+        const deferred =
           error instanceof RagStillProcessingError ||
-          isTransientElevenLabsError(error) ||
-          (error instanceof AvatarProviderError
-            ? error.status === undefined ||
-              error.status === 408 ||
-              error.status === 429 ||
-              error.status >= 500
-            : !(error instanceof ElevenLabsProviderError));
-        if (retryable && job.attempts < job.maxAttempts) {
-          const delay = error instanceof RagStillProcessingError ? 10_000 : backoffMs(job.attempts);
+          error instanceof ProviderDocumentMissingError ||
+          error instanceof AvatarProjectionBusyError;
+        if (deferred) {
+          const delay =
+            error instanceof RagStillProcessingError
+              ? 10_000
+              : error instanceof AvatarProjectionBusyError
+                ? 2_000
+                : 1_000;
+          await jobs.defer(job.id, new Date(now().getTime() + delay), safeError(error));
+        } else if (isRetryableError(error) && job.attempts < job.maxAttempts) {
+          const delay = backoffMs(job.attempts);
           await jobs.requeue(job.id, new Date(now().getTime() + delay), safeError(error));
         } else {
           await markTerminalFailure(job, error);
           await jobs.markFailed(job.id, safeError(error));
         }
+      } finally {
+        clearInterval(heartbeat);
       }
       return true;
     },
@@ -489,6 +572,7 @@ export function createKnowledgeBaseWorker(dependencies: KnowledgeBaseWorkerDepen
     syncContext,
     syncDocument,
     cleanupDocument,
+    cleanupPendingUpload,
     cleanupAvatar,
     cleanupSession,
   };
@@ -503,7 +587,13 @@ function backoffMs(attempts: number) {
 }
 
 function safeError(error: unknown) {
-  if (error instanceof RagStillProcessingError) return error.message;
+  if (
+    error instanceof RagStillProcessingError ||
+    error instanceof ProviderDocumentMissingError ||
+    error instanceof AvatarProjectionBusyError
+  ) {
+    return error.message;
+  }
   if (error instanceof ElevenLabsProviderError) {
     if (error.statusCode === 429) return "ElevenLabs quota or rate limit reached";
     if (error.statusCode && error.statusCode >= 500) return "ElevenLabs is temporarily unavailable";
@@ -515,6 +605,30 @@ function safeError(error: unknown) {
     return "LiveAvatar session cleanup failed";
   }
   return error instanceof Error ? error.message.slice(0, 300) : "Knowledge base synchronization failed";
+}
+
+function isRetryableError(error: unknown) {
+  return (
+    isTransientElevenLabsError(error) ||
+    isTransientStorageError(error) ||
+    (error instanceof AvatarProviderError &&
+      (error.status === undefined || error.status === 408 || error.status === 429 || error.status >= 500))
+  );
+}
+
+function isTransientStorageError(error: unknown) {
+  if (error instanceof ObjectNotFoundError || error instanceof ObjectTooLargeError) return false;
+  if (!isRecord(error)) return false;
+  const metadata = isRecord(error.$metadata) ? error.$metadata : null;
+  const statusCode = typeof metadata?.httpStatusCode === "number" ? metadata.httpStatusCode : null;
+  return (
+    Boolean(error.$retryable) ||
+    error.name === "TimeoutError" ||
+    error.name === "RequestTimeout" ||
+    statusCode === 408 ||
+    statusCode === 429 ||
+    Boolean(statusCode && statusCode >= 500)
+  );
 }
 
 function isProviderNotFound(error: unknown) {

@@ -16,6 +16,7 @@ const EXTENSIONS_BY_MIME: Record<string, string[]> = {
   "text/html": ["html", "htm"],
   "application/epub+zip": ["epub"],
 };
+const PENDING_UPLOAD_CLEANUP_GRACE_MS = 5 * 60 * 1000;
 
 export class ContextNotFoundError extends Error {}
 export class ContextStorageUnavailableError extends Error {}
@@ -67,8 +68,25 @@ export function createAvatarContextService(dependencies: AvatarContextServiceDep
           storageKey,
           input
         );
-        const upload = await storage.createPresignedUpload({ key: storageKey, contentType: input.mimeType });
-        return { document: toDocumentDto(document), upload };
+        try {
+          const upload = await storage.createPresignedUpload({
+            key: storageKey,
+            contentType: input.mimeType,
+          });
+          await dependencies.repository.schedulePendingUploadCleanup(
+            ownerId,
+            document.id,
+            avatarId,
+            new Date(upload.expiresAt.getTime() + PENDING_UPLOAD_CLEANUP_GRACE_MS)
+          );
+          return { document: toDocumentDto(document), upload };
+        } catch (error) {
+          await Promise.allSettled([
+            storage.delete(storageKey),
+            dependencies.repository.discardPendingUpload(ownerId, document.id),
+          ]);
+          throw error;
+        }
       } catch (error) {
         throw mapOwnership(error);
       }
