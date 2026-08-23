@@ -1,4 +1,7 @@
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { AvatarStatusSelector } from "./components/avatar-edit/AvatarStatusSelector";
 import { updateAvatar, type ApiAvatar } from "./lib/api/avatar-api";
 import type { ApiLiveAvatarOption } from "./lib/api/live-avatar-api";
 import {
@@ -173,5 +176,21 @@ describe("avatar edit", () => {
       description: "Voz traída desde provider.",
       speakingRate: 1,
     });
+  });
+
+  it("explains each avatar status with an accessible tooltip", () => {
+    const html = renderToStaticMarkup(
+      createElement(AvatarStatusSelector, {
+        status: "active",
+        onChange: vi.fn(),
+      })
+    );
+
+    expect(html).toContain('aria-describedby="avatar-status-active-description"');
+    expect(html).toContain('aria-describedby="avatar-status-draft-description"');
+    expect(html).toContain('aria-describedby="avatar-status-disabled-description"');
+    expect(html).toContain("Habilita los links públicos, el acceso compartido y el uso en grupos.");
+    expect(html).toContain("Podés editarlo y probarlo, pero otras personas no pueden usarlo.");
+    expect(html).toContain("Lo retira temporalmente sin borrar su configuración ni su historial.");
   });
 });

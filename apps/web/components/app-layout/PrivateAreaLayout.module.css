@@ -1,4 +1,11 @@
 .layout {
+  --yuni-app-shell-gutter: 20px;
+  --yuni-app-shell-max-width: 1400px;
+  --yuni-app-shell-width: min(
+    calc(100% - (var(--yuni-app-shell-gutter) * 2)),
+    var(--yuni-app-shell-max-width)
+  );
+
   min-height: 100dvh;
   background:
     linear-gradient(180deg, rgba(16, 8, 27, 0.9), rgba(8, 3, 15, 0.98) 280px),
@@ -58,7 +65,7 @@
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: var(--yuni-space-4);
-  width: min(1440px, calc(100% - 32px));
+  width: var(--yuni-app-shell-width);
   min-height: 72px;
   margin: 0 auto;
   padding: 12px 0;
@@ -67,7 +74,7 @@
 .brandLink {
   display: inline-flex;
   align-items: center;
-  gap: var(--yuni-space-3);
+  gap: 10px;
   min-width: 0;
   min-height: 44px;
   border-radius: var(--yuni-radius-md);
@@ -85,21 +92,27 @@
 
 .logo {
   display: block;
-  width: 48px;
-  height: 41px;
+  width: 36px;
+  height: 31px;
   flex: 0 0 auto;
+  transition: transform 240ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .brandText {
-  background: linear-gradient(180deg, var(--yuni-color-primary) 0%, var(--yuni-color-accent) 100%);
-  background-clip: text;
-  color: var(--yuni-color-primary);
+  color: var(--yuni-color-text);
   font-family: "Audiowide", sans-serif;
-  font-size: var(--yuni-font-md);
-  font-weight: 900;
-  letter-spacing: 0.08em;
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
+  font-size: 0.95rem;
+  font-weight: 400;
+  letter-spacing: 0.025em;
+  transition: color 240ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.brandLink:hover .logo {
+  transform: translateY(-1px) scale(1.035);
+}
+
+.brandLink:hover .brandText {
+  color: var(--yuni-color-primary);
 }
 
 .nav {
@@ -383,7 +396,6 @@
 
 @media (max-width: 760px) {
   .headerInner {
-    width: min(100% - 24px, 1440px);
     gap: var(--yuni-space-3);
     min-height: 66px;
   }
@@ -399,8 +411,8 @@
   }
 
   .logo {
-    width: 44px;
-    height: 38px;
+    width: 36px;
+    height: 31px;
   }
 
   .profileTrigger {
@@ -432,11 +444,17 @@
 
 @media (prefers-reduced-motion: reduce) {
   .skipLink,
+  .logo,
+  .brandText,
   .navLink,
   .profileTrigger,
   .chevron,
   .logout {
     transition: none;
+  }
+
+  .brandLink:hover .logo {
+    transform: none;
   }
 
   .profileMenu {

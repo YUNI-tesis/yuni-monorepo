@@ -5,6 +5,7 @@ import { DocumentFileDrop } from "../context/DocumentFileDrop";
 import type { AvatarEditState, AvatarEditValidation } from "../../hooks/useAvatarEdit";
 import type { ElevenLabsVoiceOptionsState } from "../../hooks/useElevenLabsVoiceOptions";
 import type { LiveAvatarOptionsState } from "../../hooks/useLiveAvatarOptions";
+import { AvatarStatusSelector } from "./AvatarStatusSelector";
 import { LiveAvatarPicker } from "../live-avatar/LiveAvatarPicker";
 import { VoiceSelector } from "../voice/VoiceSelector";
 import styles from "./AvatarEdit.module.css";
@@ -30,12 +31,6 @@ export function AvatarEditForm({
   onSubmit,
   onCancel,
 }: AvatarEditFormProps) {
-  const statusOptions: Array<{ value: AvatarEditState["status"]; label: string }> = [
-    { value: "active", label: "Activo" },
-    { value: "draft", label: "Borrador" },
-    { value: "disabled", label: "Inactivo" },
-  ];
-
   return (
     <Card padding="lg">
       <form
@@ -78,22 +73,10 @@ export function AvatarEditForm({
             title="Estado"
             description="Define si el avatar está listo para interactuar, en preparación o fuera de uso."
           />
-          <div className={styles.statusSelector} role="radiogroup" aria-label="Estado del avatar">
-            {statusOptions.map((option) => (
-              <button
-                className={styles.statusChip}
-                data-selected={state.status === option.value}
-                data-status={option.value}
-                key={option.value}
-                type="button"
-                role="radio"
-                aria-checked={state.status === option.value}
-                onClick={() => onFieldChange("status", option.value)}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
+          <AvatarStatusSelector
+            status={state.status}
+            onChange={(status) => onFieldChange("status", status)}
+          />
         </section>
 
         <section className={styles.section}>
