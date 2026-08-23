@@ -16,7 +16,7 @@ export function VoiceStep({
     <section className={styles.panel}>
       <StepHeading title="Voz" description="Selecciona la voz para las respuestas habladas." />
       {voiceOptions.status === "loading" ? (
-        <LoadingState title="Cargando voces" description="Estamos trayendo tus voces de ElevenLabs." />
+        <LoadingState title="Cargando voces" description="Estamos preparando el catálogo disponible." />
       ) : null}
       {voiceOptions.status === "error" ? (
         <ErrorState title="No pudimos cargar las voces" description={voiceOptions.error} />
@@ -24,7 +24,7 @@ export function VoiceStep({
       {voiceOptions.status === "empty" ? (
         <ErrorState
           title="No hay voces disponibles"
-          description="Agrega una voz en My Voices de ElevenLabs para crear un avatar conversacional."
+          description="Todavía no hay voces configuradas para crear un avatar conversacional."
         />
       ) : null}
       {voiceOptions.status === "ready" ? (

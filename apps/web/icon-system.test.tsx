@@ -11,7 +11,7 @@ describe("YUNI icon system", () => {
     expect(html).toContain("currentColor");
   });
 
-  it.each(["activity", "aiBrain", "chart", "document", "edit", "link", "mail", "pause", "share"] as const)(
+  it.each(["activity", "aiBrain", "chart", "document", "edit", "link", "mail", "pause", "play", "share"] as const)(
     "renders the %s icon",
     (name) => {
       const html = renderToStaticMarkup(createElement(YuniIcon, { name }));
