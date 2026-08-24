@@ -141,7 +141,8 @@ GET /api/health
 
 El primer deploy se cargó desde el workspace local mediante Railway CLI. Los tres servicios de
 aplicación quedaron conectados después a `YUNI-tesis/yuni-monorepo`: cada push a `main` actualiza
-producción automáticamente; `staging` no dispara deployments de este entorno.
+producción automáticamente mediante la Railway GitHub App, cuyo acceso está limitado a este
+repositorio; `staging` no dispara deployments de este entorno.
 
 ## Estructura
 
