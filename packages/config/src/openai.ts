@@ -7,7 +7,6 @@ export type OpenAiConfig = {
   defaultModel: string;
   groupRouterModel: string;
   groupRouterTimeoutMs: number;
-  defaultRealtimeModel: string;
   embeddingsModel: string;
 };
 
@@ -17,7 +16,6 @@ export function createOpenAiConfig(env: RawEnv): OpenAiConfig {
     defaultModel: env.OPENAI_DEFAULT_MODEL,
     groupRouterModel: env.OPENAI_GROUP_ROUTER_MODEL,
     groupRouterTimeoutMs: env.OPENAI_GROUP_ROUTER_TIMEOUT_MS,
-    defaultRealtimeModel: env.OPENAI_REALTIME_MODEL,
     embeddingsModel: env.OPENAI_EMBEDDINGS_MODEL,
   };
 }

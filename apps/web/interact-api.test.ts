@@ -39,7 +39,7 @@ describe("interact API helpers", () => {
     await listAvatars();
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "http://localhost:4000/avatars?scope=all",
+      "/api/avatars?scope=all",
       expect.objectContaining({ credentials: "include" })
     );
   });
@@ -56,7 +56,7 @@ describe("interact API helpers", () => {
     await syncAgentProvider("avatar-1");
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "http://localhost:4000/avatars/avatar-1/agent-provider/sync",
+      "/api/avatars/avatar-1/agent-provider/sync",
       expect.objectContaining({ method: "POST", credentials: "include" })
     );
   });
@@ -83,12 +83,12 @@ describe("interact API helpers", () => {
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
-      "http://localhost:4000/avatars/avatar-1/voice-sessions",
+      "/api/avatars/avatar-1/voice-sessions",
       expect.objectContaining({ method: "POST", credentials: "include" })
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
-      "http://localhost:4000/voice-sessions/realtime-1/end",
+      "/api/voice-sessions/realtime-1/end",
       expect.objectContaining({
         method: "POST",
         credentials: "include",
@@ -119,12 +119,12 @@ describe("interact API helpers", () => {
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
-      "http://localhost:4000/avatars/avatar-1/conversations",
+      "/api/avatars/avatar-1/conversations",
       expect.objectContaining({ credentials: "include" })
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
-      "http://localhost:4000/conversations/conversation-1",
+      "/api/conversations/conversation-1",
       expect.objectContaining({ credentials: "include" })
     );
   });
@@ -145,9 +145,9 @@ describe("interact API helpers", () => {
     await getLatestAvatarConversation("avatar-1");
 
     expect(fetchMock.mock.calls.map(([url, init]) => [url, init.method ?? "GET"])).toEqual([
-      ["http://localhost:4000/avatars/avatar-1/interaction-context", "GET"],
-      ["http://localhost:4000/avatars/avatar-1/conversations", "POST"],
-      ["http://localhost:4000/avatars/avatar-1/conversations/latest", "GET"],
+      ["/api/avatars/avatar-1/interaction-context", "GET"],
+      ["/api/avatars/avatar-1/conversations", "POST"],
+      ["/api/avatars/avatar-1/conversations/latest", "GET"],
     ]);
     expect(fetchMock.mock.calls[1]?.[1].body).toBe(JSON.stringify({ mode: "voice" }));
   });
@@ -214,15 +214,15 @@ describe("interact API helpers", () => {
     await getGroupConversation("conversation-1");
 
     expect(fetchMock.mock.calls.map(([url, init]) => [url, init.method])).toEqual([
-      ["http://localhost:4000/avatar-groups", "POST"],
-      ["http://localhost:4000/avatar-groups/group-1/voice-sessions", "POST"],
-      ["http://localhost:4000/group-voice-sessions/session-1/scribe-token", "POST"],
-      ["http://localhost:4000/group-voice-sessions/session-1/turns", "POST"],
-      ["http://localhost:4000/group-voice-sessions/session-1/provider-events", "POST"],
-      ["http://localhost:4000/group-voice-sessions/session-1/interrupt", "POST"],
-      ["http://localhost:4000/group-voice-sessions/session-1/participants/avatar-2/failure", "POST"],
-      ["http://localhost:4000/group-conversations", undefined],
-      ["http://localhost:4000/group-conversations/conversation-1", undefined],
+      ["/api/avatar-groups", "POST"],
+      ["/api/avatar-groups/group-1/voice-sessions", "POST"],
+      ["/api/group-voice-sessions/session-1/scribe-token", "POST"],
+      ["/api/group-voice-sessions/session-1/turns", "POST"],
+      ["/api/group-voice-sessions/session-1/provider-events", "POST"],
+      ["/api/group-voice-sessions/session-1/interrupt", "POST"],
+      ["/api/group-voice-sessions/session-1/participants/avatar-2/failure", "POST"],
+      ["/api/group-conversations", undefined],
+      ["/api/group-conversations/conversation-1", undefined],
     ]);
     expect(fetchMock.mock.calls.every(([, init]) => init.credentials === "include")).toBe(true);
     expect(JSON.parse(fetchMock.mock.calls[4]?.[1].body as string)).toMatchObject({

@@ -189,8 +189,6 @@ describe("creator dashboard API client", () => {
 
     await getCreatorDashboardSummary({ from: "2026-08-01", to: "2026-08-15" });
 
-    expect(fetchMock.mock.calls[0]?.[0]).toBe(
-      "http://localhost:4000/dashboard/creator-summary?from=2026-08-01&to=2026-08-15"
-    );
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/dashboard/creator-summary?from=2026-08-01&to=2026-08-15");
   });
 });

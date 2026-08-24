@@ -4,7 +4,7 @@ import { createAuthConfig, requireAuthConfig } from "./auth";
 import { createClientEnv } from "./client";
 import { createDatabaseConfig } from "./database";
 import { createElevenLabsConfig, requireElevenLabsConfig, requireElevenLabsDefaultVoice } from "./elevenlabs";
-import { parseRawEnv } from "./env";
+import { parseRawEnv, requireProductionServerEnv } from "./env";
 import { createLiveAvatarConfig, requireLiveAvatarElevenLabsConnectorConfig } from "./live-avatar";
 import { createOpenAiConfig, requireOpenAiConfig } from "./openai";
 import { createPricingConfig } from "./pricing";
@@ -46,14 +46,29 @@ describe("@yuni/config", () => {
   });
 
   it("validates a complete production env", () => {
-    const env = parseRawEnv(productionEnv);
+    const env = requireProductionServerEnv(parseRawEnv(productionEnv));
 
     expect(env.APP_ENV).toBe("production");
     expect(env.OPENAI_API_KEY).toBe("openai-key");
   });
 
+  it("allows the web client to parse production env without server secrets", () => {
+    const env = parseRawEnv({
+      APP_ENV: "production",
+      NEXT_PUBLIC_WEB_URL: "https://yuni.example",
+    });
+
+    expect(createClientEnv(env)).toEqual({
+      NEXT_PUBLIC_APP_NAME: "YUNI",
+      NEXT_PUBLIC_WEB_URL: "https://yuni.example",
+    });
+    expect(() => requireProductionServerEnv(env)).toThrow(ConfigError);
+  });
+
   it("does not require ElevenLabs default voice in production", () => {
-    const env = parseRawEnv(withoutKey(productionEnv, "ELEVENLABS_DEFAULT_VOICE_ID"));
+    const env = requireProductionServerEnv(
+      parseRawEnv(withoutKey(productionEnv, "ELEVENLABS_DEFAULT_VOICE_ID"))
+    );
 
     expect(env.APP_ENV).toBe("production");
     expect(env.ELEVENLABS_DEFAULT_VOICE_ID).toBeUndefined();
@@ -62,13 +77,13 @@ describe("@yuni/config", () => {
   it("fails when DATABASE_URL is missing in production", () => {
     const envWithoutDatabase = withoutKey(productionEnv, "DATABASE_URL");
 
-    expect(() => parseRawEnv(envWithoutDatabase)).toThrow(ConfigError);
+    expect(() => requireProductionServerEnv(parseRawEnv(envWithoutDatabase))).toThrow(ConfigError);
   });
 
   it("fails when AUTH_SECRET is missing in production", () => {
     const envWithoutAuth = withoutKey(productionEnv, "AUTH_SECRET");
 
-    expect(() => parseRawEnv(envWithoutAuth)).toThrow(ConfigError);
+    expect(() => requireProductionServerEnv(parseRawEnv(envWithoutAuth))).toThrow(ConfigError);
   });
 
   it("fails when requiring OpenAI without an API key", () => {
@@ -157,12 +172,7 @@ describe("@yuni/config", () => {
     const env = parseRawEnv(productionEnv);
     const clientEnv = createClientEnv(env);
 
-    expect(Object.keys(clientEnv)).toEqual([
-      "NEXT_PUBLIC_APP_NAME",
-      "NEXT_PUBLIC_WEB_URL",
-      "NEXT_PUBLIC_API_URL",
-      "NEXT_PUBLIC_REALTIME_URL",
-    ]);
+    expect(Object.keys(clientEnv)).toEqual(["NEXT_PUBLIC_APP_NAME", "NEXT_PUBLIC_WEB_URL"]);
   });
 
   it("applies rate limit defaults", () => {
@@ -202,18 +212,20 @@ describe("@yuni/config", () => {
 
   it("coerces numeric values from strings", () => {
     const env = parseRawEnv({
+      PORT: "4200",
       API_PORT: "4100",
       PUBLIC_SESSION_MAX_MESSAGES: "12",
       PRICING_VOICE_USD_PER_MINUTE: "0.03",
     });
 
+    expect(env.PORT).toBe(4200);
     expect(env.API_PORT).toBe(4100);
     expect(env.PUBLIC_SESSION_MAX_MESSAGES).toBe(12);
     expect(env.PRICING_VOICE_USD_PER_MINUTE).toBe(0.03);
   });
 
   it("rejects invalid URLs", () => {
-    expect(() => parseRawEnv({ NEXT_PUBLIC_API_URL: "not-a-url" })).toThrow(ConfigError);
+    expect(() => parseRawEnv({ NEXT_PUBLIC_WEB_URL: "not-a-url" })).toThrow(ConfigError);
   });
 
   it("uses safe development defaults for optional service configs", () => {

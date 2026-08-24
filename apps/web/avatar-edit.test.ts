@@ -76,7 +76,7 @@ describe("avatar edit", () => {
     await updateAvatar("avatar-1", buildUpdateAvatarRequest(createAvatarEditStateFromAvatar(avatar)));
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "http://localhost:4000/avatars/avatar-1",
+      "/api/avatars/avatar-1",
       expect.objectContaining({
         method: "PATCH",
         credentials: "include",

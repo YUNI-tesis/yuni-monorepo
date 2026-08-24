@@ -11,15 +11,13 @@ const RawEnvSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   APP_ENV: z.enum(["development", "test", "staging", "production"]).default("development"),
 
+  PORT: z.coerce.number().int().positive().optional(),
   WEB_PORT: z.coerce.number().int().positive().default(3000),
   API_PORT: z.coerce.number().int().positive().default(4000),
-  REALTIME_PORT: z.coerce.number().int().positive().default(4001),
   WORKER_CONCURRENCY: z.coerce.number().int().positive().default(1),
 
   NEXT_PUBLIC_APP_NAME: z.string().min(1).default("YUNI"),
   NEXT_PUBLIC_WEB_URL: z.url().default("http://localhost:3000"),
-  NEXT_PUBLIC_API_URL: z.url().default("http://localhost:4000"),
-  NEXT_PUBLIC_REALTIME_URL: z.string().min(1).default("ws://localhost:4001"),
 
   DATABASE_URL: z.string().min(1).optional(),
 
@@ -32,7 +30,6 @@ const RawEnvSchema = z.object({
   OPENAI_DEFAULT_MODEL: z.string().min(1).default("gpt-4.1-mini"),
   OPENAI_GROUP_ROUTER_MODEL: z.string().trim().min(1).default("gpt-5.4-nano"),
   OPENAI_GROUP_ROUTER_TIMEOUT_MS: z.coerce.number().int().positive().default(3000),
-  OPENAI_REALTIME_MODEL: z.string().min(1).default("gpt-4o-realtime-preview"),
   OPENAI_EMBEDDINGS_MODEL: z.string().min(1).default("text-embedding-3-small"),
 
   ELEVENLABS_API_KEY: z.string().optional(),
@@ -84,30 +81,33 @@ function formatIssues(error: z.ZodError): string[] {
   return error.issues.map((issue) => `${issue.path.join(".") || "env"}: ${issue.message}`);
 }
 
-function requireWhenProduction(rawEnv: RawEnv, key: keyof RawEnv, issues: string[]) {
-  if (rawEnv.APP_ENV === "production" && !rawEnv[key]) {
-    issues.push(`${String(key)} is required when APP_ENV=production`);
-  }
-}
-
 export function parseRawEnv(input: NodeJS.ProcessEnv | Record<string, string | undefined>): RawEnv {
   const parsed = RawEnvSchema.safeParse(input);
   if (!parsed.success) {
     throw new ConfigError("Invalid environment configuration", formatIssues(parsed.error));
   }
 
-  const rawEnv = parsed.data;
-  const issues: string[] = [];
+  return parsed.data;
+}
 
-  requireWhenProduction(rawEnv, "DATABASE_URL", issues);
-  requireWhenProduction(rawEnv, "AUTH_SECRET", issues);
-  requireWhenProduction(rawEnv, "OPENAI_API_KEY", issues);
-  requireWhenProduction(rawEnv, "ELEVENLABS_API_KEY", issues);
-  requireWhenProduction(rawEnv, "LIVEAVATAR_API_KEY", issues);
-  requireWhenProduction(rawEnv, "LIVEAVATAR_ELEVENLABS_SECRET_ID", issues);
-  requireWhenProduction(rawEnv, "S3_BUCKET", issues);
-  requireWhenProduction(rawEnv, "S3_ACCESS_KEY_ID", issues);
-  requireWhenProduction(rawEnv, "S3_SECRET_ACCESS_KEY", issues);
+const requiredProductionServerKeys = [
+  "DATABASE_URL",
+  "AUTH_SECRET",
+  "ELEVENLABS_API_KEY",
+  "LIVEAVATAR_API_KEY",
+  "LIVEAVATAR_ELEVENLABS_SECRET_ID",
+  "S3_BUCKET",
+  "S3_ACCESS_KEY_ID",
+  "S3_SECRET_ACCESS_KEY",
+] as const satisfies ReadonlyArray<keyof RawEnv>;
+
+export function requireProductionServerEnv(rawEnv: RawEnv): RawEnv {
+  if (rawEnv.APP_ENV !== "production") return rawEnv;
+
+  const issues: string[] = [];
+  for (const key of requiredProductionServerKeys) {
+    if (!rawEnv[key]) issues.push(`${key} is required when APP_ENV=production`);
+  }
 
   if (issues.length > 0) {
     throw new ConfigError("Invalid environment configuration", issues);

@@ -12,7 +12,6 @@ const noOpenAi = {
   defaultModel: "gpt-4.1-mini",
   groupRouterModel: "gpt-5.4-nano",
   groupRouterTimeoutMs: 3000,
-  defaultRealtimeModel: "gpt-4o-realtime-preview",
   embeddingsModel: "text-embedding-3-small",
 };
 

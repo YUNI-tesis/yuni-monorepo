@@ -135,7 +135,7 @@ describe("avatar builder", () => {
     );
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "http://localhost:4000/avatars",
+      "/api/avatars",
       expect.objectContaining({
         method: "POST",
         credentials: "include",
@@ -155,7 +155,7 @@ describe("avatar builder", () => {
     await getLiveAvatarOptions();
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "http://localhost:4000/live-avatar/avatars",
+      "/api/live-avatar/avatars",
       expect.objectContaining({
         credentials: "include",
       })
@@ -174,7 +174,7 @@ describe("avatar builder", () => {
     await getElevenLabsVoiceOptions();
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "http://localhost:4000/voice-providers/elevenlabs/voices",
+      "/api/voice-providers/elevenlabs/voices",
       expect.objectContaining({
         credentials: "include",
       })

@@ -1,5 +1,9 @@
 # Prompt: Realtime Private Voice
 
+> Estado: implementado para el MVP sin un servidor WebSocket propio de YUNI. La API autoriza y
+> registra la sesión, y el navegador se conecta al provider mediante un token efímero. Ver decision
+> record `0021`.
+
 Armame un plan especifico para llamada privada o compartida autenticada con voz.
 
 Objetivo:

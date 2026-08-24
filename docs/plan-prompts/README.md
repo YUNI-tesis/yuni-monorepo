@@ -16,6 +16,7 @@ Decisiones de producto vigentes:
 - [0018-atomic-elevenlabs-group-agents.md](../thesis/decision-records/0018-atomic-elevenlabs-group-agents.md)
 - [0019-strict-floor-independent-liveavatar-group-sessions.md](../thesis/decision-records/0019-strict-floor-independent-liveavatar-group-sessions.md)
 - [0020-configurable-external-session-limits.md](../thesis/decision-records/0020-configurable-external-session-limits.md)
+- [0021-retire-unused-realtime-service.md](../thesis/decision-records/0021-retire-unused-realtime-service.md)
 
 ## Direccion Actual
 
@@ -25,10 +26,11 @@ Decisiones de producto vigentes:
 - Sesiones publicas se atribuyen a `participantEmail` y opcionalmente `participantUserId`.
 - Sync de Agent/Knowledge Base corre en background con reintentos automaticos; no es CTA principal de usuario.
 - `Grupos` usa sesiones LiveAvatar LITE independientes, Agents atómicos, posiciones fijas y un floor estricto; LiveKit compartido queda como evaluación futura.
+- El navegador conecta la voz directamente con ElevenLabs/LiveAvatar mediante tokens efímeros; YUNI no despliega un WebSocket propio.
 
 ## Estado
 
-- `00-monorepo-base.md`: implementado.
+- `00-monorepo-base.md`: implementado; `apps/realtime` fue retirado al quedar superseded por la integración directa con providers.
 - `01-config-env.md`: implementado.
 - `02-domain-db.md`: implementado; evolucionado con grants/email identity en `15`.
 - `03-dev-infra-env-runtime.md`: implementado dentro de config/env y DB local.
@@ -53,7 +55,7 @@ Decisiones de producto vigentes:
 - `21-public-link-resolver-api.md`: implementado; resolver seguro, capabilities e identificación por email listos.
 - `22-public-avatar-ui.md`: implementado para voz; consentimiento, llamada pública y reintento listos.
 - `23-public-session-api.md`: implementado; sesión identificada, token corto, conversación y cierre listos.
-- `24A-agent-voice-architecture-context-contract.md`: pendiente; actualizado con identity y background sync.
+- `24A-agent-voice-architecture-context-contract.md`: superseded para el MVP por la ruta ElevenLabs-first; la alternativa OpenAI Realtime propia queda histórica.
 - `24B-elevenlabs-agent-provider-sync.md`: implementado para MVP privado con contexto textual; refactor conceptual a background sync.
 - `24C-elevenlabs-knowledge-base-context-sync.md`: pendiente; refactorizado a background jobs/retries.
 - `24-openai-adapter-prompt-builder.md`: implementado parcialmente el 2026-06-21 para titulos de conversaciones con OpenAI; falta prompt builder/respuestas de avatar.
@@ -62,12 +64,11 @@ Decisiones de producto vigentes:
 - `27-usage-cost-tracking.md`: pendiente; refactorizado a owner/link/grant/email/user.
 - `28-s3-storage-adapter.md`: pendiente; compatible con Contexto.
 - `29-document-upload-api.md`: pendiente; refactorizado a processing background.
-- `34-realtime-public-voice.md`: implementado para el MVP con LiveAvatar, transcript y límites básicos.
 - `30-document-ingestion-worker.md`: pendiente; refactorizado a enqueue provider sync.
 - `31-rag-retriever-integration.md`: pendiente; refactorizado con permisos owner/shared/public.
-- `32-realtime-service-foundation.md`: pendiente; refactorizado a identities owner/shared/public.
-- `33-realtime-private-voice.md`: pendiente; refactorizado a owner/shared.
-- `34-realtime-public-voice.md`: pendiente; refactorizado a public voice con email.
+- `32-realtime-service-foundation.md`: superseded; no se desplegará un WebSocket propio.
+- `33-realtime-private-voice.md`: implementado para owner/shared mediante API y conexión directa al provider.
+- `34-realtime-public-voice.md`: implementado mediante API, LiveAvatar, transcript, identidad por email y límites persistentes.
 - `35-limits-rate-limits.md`: implementado; cuotas configurables persistentes, protección técnica y
   ciclo de vida externo endurecido.
 - `36-hardening-observability.md`: pendiente; refactorizado con sync queue/retries.

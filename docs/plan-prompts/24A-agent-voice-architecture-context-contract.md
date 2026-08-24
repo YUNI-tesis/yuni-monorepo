@@ -1,5 +1,9 @@
 # Prompt: Agent Voice Architecture Y Context Contract
 
+> Actualización 2026-08-24: la Ruta B, ElevenLabs-first con LiveAvatar, es la arquitectura vigente.
+> La Ruta A y su `apps/realtime` propio quedan como alternativa histórica, no como infraestructura a
+> desplegar. Ver decision record `0021`.
+
 Armame un plan especifico para definir el contrato de agente AI, contexto personalizado y voz realtime en YUNI.
 
 Objetivo:

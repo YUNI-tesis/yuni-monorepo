@@ -100,12 +100,12 @@ describe("avatar activity API client", () => {
     await getActivityConversation("avatar-1", "conversation-1");
 
     expect(fetchMock.mock.calls.map(([url, init]) => [url, init.method ?? "GET"])).toEqual([
-      ["http://localhost:4000/avatars/avatar-1/activity/participants", "GET"],
+      ["/api/avatars/avatar-1/activity/participants", "GET"],
       [
-        "http://localhost:4000/avatars/avatar-1/activity/participants/p_email-key/conversations?limit=20&cursor=conversation-20",
+        "/api/avatars/avatar-1/activity/participants/p_email-key/conversations?limit=20&cursor=conversation-20",
         "GET",
       ],
-      ["http://localhost:4000/avatars/avatar-1/activity/conversations/conversation-1", "GET"],
+      ["/api/avatars/avatar-1/activity/conversations/conversation-1", "GET"],
     ]);
     expect(fetchMock.mock.calls.every(([, init]) => init.credentials === "include")).toBe(true);
   });

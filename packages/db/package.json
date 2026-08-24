@@ -23,10 +23,9 @@
   "dependencies": {
     "@prisma/client": "^5.22.0",
     "@yuni/config": "workspace:*",
-    "@yuni/domain": "workspace:*"
-  },
-  "devDependencies": {
-    "prisma": "^5.22.0"
+    "@yuni/domain": "workspace:*",
+    "prisma": "^5.22.0",
+    "tsx": "^4.21.0"
   },
   "prisma": {
     "schema": "prisma/schema.prisma",

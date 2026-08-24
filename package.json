@@ -4,11 +4,14 @@
   "packageManager": "pnpm@10.8.1",
   "type": "module",
   "scripts": {
-    "dev": "pnpm --parallel --filter @yuni/web --filter @yuni/api --filter @yuni/realtime --filter @yuni/worker dev",
+    "dev": "pnpm --parallel --filter @yuni/web --filter @yuni/api --filter @yuni/worker dev",
     "dev:web": "pnpm --filter @yuni/web dev",
     "dev:api": "pnpm --filter @yuni/api dev",
-    "dev:realtime": "pnpm --filter @yuni/realtime dev",
     "dev:worker": "pnpm --filter @yuni/worker dev",
+    "start:web": "pnpm --filter @yuni/web start",
+    "start:api": "pnpm db:migrate:deploy && pnpm --filter @yuni/api start",
+    "start:worker": "pnpm --filter @yuni/worker start",
+    "prebuild": "pnpm db:generate",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
     "lint": "pnpm -r lint",
@@ -26,6 +29,15 @@
     "db:seed": "pnpm --filter @yuni/db db:seed",
     "db:seed:cleanup": "pnpm --filter @yuni/db db:seed:cleanup",
     "db:studio": "pnpm --filter @yuni/db db:studio"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@prisma/client",
+      "@prisma/engines",
+      "esbuild",
+      "prisma",
+      "sharp"
+    ]
   },
   "devDependencies": {
     "@eslint/js": "^9.39.2",

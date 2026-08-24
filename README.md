@@ -24,7 +24,6 @@ pnpm db:seed
 pnpm dev
 pnpm dev:web
 pnpm dev:api
-pnpm dev:realtime
 pnpm dev:worker
 pnpm typecheck
 pnpm lint
@@ -117,13 +116,39 @@ El frontend nunca recibe esas API keys. Para probar una llamada individual, abri
 
 Guia de setup y troubleshooting: [docs/integrations/elevenlabs-liveavatar-mvp.md](docs/integrations/elevenlabs-liveavatar-mvp.md).
 
+## Deploy En Railway
+
+El MVP productivo usa cinco recursos en el proyecto Railway `yuni`:
+
+- `web`: único servicio HTTP público, desplegado en
+  [web-production-304a5.up.railway.app](https://web-production-304a5.up.railway.app).
+- `api`: servicio HTTP privado accesible desde Web mediante `api.railway.internal`.
+- `worker`: proceso privado para jobs asincrónicos.
+- `Postgres`: base de datos administrada; la API aplica migraciones antes de arrancar.
+- `yuni-documents`: bucket S3-compatible con CORS limitado al dominio público de Web.
+
+El navegador usa rutas same-origin bajo `/api`; Next.js las reescribe hacia `API_INTERNAL_URL`. Esto
+mantiene la cookie de sesión en un solo origen y evita publicar la API. Los comandos de producción
+son `pnpm start:web`, `pnpm start:api` y `pnpm start:worker`. El build genera Prisma Client antes de
+compilar y API respeta el `PORT` inyectado por la plataforma.
+
+Los health checks manuales disponibles son:
+
+```txt
+GET /health
+GET /api/health
+```
+
+El primer deploy se cargó desde el workspace local mediante Railway CLI. Para habilitar autodeploy,
+primero hay que versionar y subir este estado del repositorio y después conectar cada servicio a la
+rama elegida de GitHub.
+
 ## Estructura
 
 ```txt
 apps/
   web/        Next.js App Router
   api/        API HTTP principal
-  realtime/   WebSocket server
   worker/     Procesos async
 
 packages/

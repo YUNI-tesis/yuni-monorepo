@@ -257,15 +257,15 @@ describe("sharing API client", () => {
     await deleteAccessGrant("avatar-1", "grant-1");
 
     expect(fetchMock.mock.calls.map(([url, init]) => [url, init.method ?? "GET"])).toEqual([
-      ["http://localhost:4000/avatars/avatar-1/share-links", "GET"],
-      ["http://localhost:4000/avatars/avatar-1/share-links", "POST"],
-      ["http://localhost:4000/avatars/avatar-1/share-links/link-1", "PATCH"],
-      ["http://localhost:4000/avatars/avatar-1/share-links/link-1", "DELETE"],
-      ["http://localhost:4000/avatars/avatar-1/access-grants", "GET"],
-      ["http://localhost:4000/avatars/avatar-1/access-grants", "POST"],
-      ["http://localhost:4000/avatars/avatar-1/access-grants/grant-1", "PATCH"],
-      ["http://localhost:4000/avatars/avatar-1/access-grants/grant-1", "PATCH"],
-      ["http://localhost:4000/avatars/avatar-1/access-grants/grant-1", "DELETE"],
+      ["/api/avatars/avatar-1/share-links", "GET"],
+      ["/api/avatars/avatar-1/share-links", "POST"],
+      ["/api/avatars/avatar-1/share-links/link-1", "PATCH"],
+      ["/api/avatars/avatar-1/share-links/link-1", "DELETE"],
+      ["/api/avatars/avatar-1/access-grants", "GET"],
+      ["/api/avatars/avatar-1/access-grants", "POST"],
+      ["/api/avatars/avatar-1/access-grants/grant-1", "PATCH"],
+      ["/api/avatars/avatar-1/access-grants/grant-1", "PATCH"],
+      ["/api/avatars/avatar-1/access-grants/grant-1", "DELETE"],
     ]);
     expect(fetchMock.mock.calls[1]?.[1].body).toBe(
       JSON.stringify({ slug: "demo-link", name: "Demo", isEnabled: true })
@@ -310,7 +310,7 @@ describe("sharing API client", () => {
       status: 409,
       message: "Share link slug already exists",
     });
-    expect(fetchMock.mock.calls[0]?.[0]).toBe("http://localhost:4000/public/links/demo%20link/avatar");
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/public/links/demo%20link/avatar");
   });
 
   it("uses bearer tokens and safe payloads for the complete public session flow", async () => {
@@ -332,10 +332,10 @@ describe("sharing API client", () => {
     });
 
     expect(fetchMock.mock.calls.map(([url, init]) => [url, init.method])).toEqual([
-      ["http://localhost:4000/public/links/demo%20link/identify", "POST"],
-      ["http://localhost:4000/public/links/demo%20link/sessions", "POST"],
-      ["http://localhost:4000/public/sessions/session-1/started", "POST"],
-      ["http://localhost:4000/public/sessions/session-1/end", "POST"],
+      ["/api/public/links/demo%20link/identify", "POST"],
+      ["/api/public/links/demo%20link/sessions", "POST"],
+      ["/api/public/sessions/session-1/started", "POST"],
+      ["/api/public/sessions/session-1/end", "POST"],
     ]);
     expect(fetchMock.mock.calls[0]?.[1].body).toBe(
       JSON.stringify({ email: "person@example.com", consent: true })

@@ -58,7 +58,7 @@ describe("avatar profile", () => {
     await expect(getAvatar("avatar-1")).resolves.toEqual({ avatar });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "http://localhost:4000/avatars/avatar-1",
+      "/api/avatars/avatar-1",
       expect.objectContaining({
         credentials: "include",
       })

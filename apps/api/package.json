@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx ../../packages/config/scripts/run-with-env.ts tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
     "build": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
@@ -24,6 +25,7 @@
     "@yuni/voice": "workspace:*",
     "bcryptjs": "^3.0.3",
     "hono": "^4.10.7",
-    "jose": "^6.2.3"
+    "jose": "^6.2.3",
+    "tsx": "^4.21.0"
   }
 }

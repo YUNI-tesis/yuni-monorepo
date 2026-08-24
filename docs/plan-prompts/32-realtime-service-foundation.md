@@ -1,5 +1,9 @@
 # Prompt: Realtime Service Foundation
 
+> Estado: superseded el 2026-08-24. Este servicio WebSocket no se implementará para la arquitectura
+> vigente; el navegador usa los SDK de los providers con tokens efímeros entregados por la API. La
+> entidad de dominio `RealtimeSession` permanece activa. Ver decision record `0021`.
+
 Armame un plan especifico para la base de `apps/realtime`.
 
 Objetivo:

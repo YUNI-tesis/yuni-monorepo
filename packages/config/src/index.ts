@@ -1,5 +1,5 @@
 export { ConfigError } from "./errors";
-export { parseRawEnv, rawEnv, type RawEnv } from "./env";
+export { parseRawEnv, rawEnv, requireProductionServerEnv, type RawEnv } from "./env";
 export { appConfig, clientEnv, createClientEnv, type ClientEnv } from "./client";
 export { createServerEnv, serverConfig, serverEnv, type ServerEnv } from "./server";
 export { createDatabaseConfig, databaseConfig, type DatabaseConfig } from "./database";

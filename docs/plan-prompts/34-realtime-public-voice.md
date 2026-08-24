@@ -1,5 +1,9 @@
 # Prompt: Realtime Public Voice
 
+> Estado: implementado para el MVP sin un servidor WebSocket propio de YUNI. `RealtimeSession`
+> conserva el ciclo de vida durable, pero el transporte de voz ocurre mediante los SDK de los
+> providers. Ver decision record `0021`.
+
 Armame un plan especifico para llamada publica con voz.
 
 Objetivo:

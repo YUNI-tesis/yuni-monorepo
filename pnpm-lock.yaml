@@ -77,22 +77,9 @@ importers:
       jose:
         specifier: ^6.2.3
         version: 6.2.3
-
-  apps/realtime:
-    dependencies:
-      '@yuni/config':
-        specifier: workspace:*
-        version: link:../../packages/config
-      '@yuni/observability':
-        specifier: workspace:*
-        version: link:../../packages/observability
-      ws:
-        specifier: ^8.18.3
-        version: 8.20.1
-    devDependencies:
-      '@types/ws':
-        specifier: ^8.18.1
-        version: 8.18.1
+      tsx:
+        specifier: ^4.21.0
+        version: 4.22.0
 
   apps/web:
     dependencies:
@@ -175,6 +162,9 @@ importers:
       '@yuni/voice':
         specifier: workspace:*
         version: link:../../packages/voice
+      tsx:
+        specifier: ^4.21.0
+        version: 4.22.0
     devDependencies:
       '@prisma/client':
         specifier: ^5.22.0
@@ -228,10 +218,12 @@ importers:
       '@yuni/domain':
         specifier: workspace:*
         version: link:../domain
-    devDependencies:
       prisma:
         specifier: ^5.22.0
         version: 5.22.0
+      tsx:
+        specifier: ^4.21.0
+        version: 4.22.0
 
   packages/domain:
     dependencies:

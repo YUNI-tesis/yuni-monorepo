@@ -1,5 +1,9 @@
 # Prompt: Monorepo Base Desde Cero
 
+> Estado actual: la estructura evolucionó. `apps/realtime` fue retirado el 2026-08-24 porque el
+> frontend se conecta directamente a los providers de voz mediante tokens efímeros emitidos por la
+> API. Ver decision record `0021`.
+
 Armame un plan detallado para configurar desde cero el monorepo de YUNI.
 
 Objetivo:

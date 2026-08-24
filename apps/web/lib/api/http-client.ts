@@ -1,7 +1,5 @@
 "use client";
 
-import { clientEnv } from "@yuni/config";
-
 export class ApiClientError extends Error {
   constructor(
     message: string,
@@ -20,7 +18,7 @@ export function toUserFacingApiError(error: unknown, fallback: string) {
 }
 
 export function apiEndpoint(path: string) {
-  return `${clientEnv.NEXT_PUBLIC_API_URL}${path}`;
+  return `/api${path}`;
 }
 
 export function queueApiJsonBeacon(
