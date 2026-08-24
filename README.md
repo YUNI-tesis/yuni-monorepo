@@ -139,9 +139,9 @@ GET /health
 GET /api/health
 ```
 
-El primer deploy se cargó desde el workspace local mediante Railway CLI. Para habilitar autodeploy,
-primero hay que versionar y subir este estado del repositorio y después conectar cada servicio a la
-rama elegida de GitHub.
+El primer deploy se cargó desde el workspace local mediante Railway CLI. Los tres servicios de
+aplicación quedaron conectados después a `YUNI-tesis/yuni-monorepo`: cada push a `main` actualiza
+producción automáticamente; `staging` no dispara deployments de este entorno.
 
 ## Estructura
 

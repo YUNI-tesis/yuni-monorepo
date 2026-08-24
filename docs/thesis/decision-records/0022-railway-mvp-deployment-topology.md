@@ -60,7 +60,9 @@ requiere credenciales dentro del navegador.
 - API aplicó las 18 migraciones existentes en el primer arranque.
 - Los endpoints `/health` y `/api/health` respondieron `ok` después del deploy.
 - Apps y PostgreSQL quedaron en la región por defecto `eu-west`; el bucket inicial está en `iad`.
-- La primera publicación usa un upload local de Railway CLI y no queda conectada todavía a GitHub.
+- La primera publicación usó un upload local de Railway CLI. Después de promover el mismo estado a
+  `main`, Web, API y worker quedaron conectados a esa rama con autodeploy nativo de Railway;
+  `staging` no dispara producción.
 - `OPENAI_API_KEY` no se configuró porque no estaba presente localmente; las rutas afectadas conservan
   sus fallbacks determinísticos.
 
@@ -95,4 +97,4 @@ latencia al procesamiento de documentos y debe medirse antes de mover datos o se
 
 - Elegir la región definitiva con mediciones desde Argentina y mover el bucket o los servicios si la
   diferencia resulta material.
-- Definir la rama y política de promoción para conectar autodeploy de GitHub.
+- Definir si se requiere un entorno Railway separado para deployments automáticos de `staging`.
