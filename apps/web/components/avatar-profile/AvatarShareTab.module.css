@@ -15,8 +15,7 @@
 .privacyNotice p,
 .sectionDescription,
 .linkCell,
-.availabilityNote,
-.feedback {
+.availabilityNote {
   margin: 0;
   color: var(--yuni-color-text-muted);
   line-height: 1.55;
@@ -77,14 +76,6 @@
 .actionMenu {
   display: flex;
   justify-content: flex-end;
-}
-
-.formActions,
-.formError,
-.formError {
-  margin: 0;
-  color: var(--yuni-color-danger);
-  line-height: 1.5;
 }
 
 .availabilityNote {
@@ -190,10 +181,6 @@
 .itemSummary small {
   color: var(--yuni-color-text-muted);
   line-height: 1.4;
-}
-
-.feedback {
-  min-height: 1.5em;
 }
 
 @media (max-width: 760px) {

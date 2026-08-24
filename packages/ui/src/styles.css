@@ -49,6 +49,7 @@
   --yuni-focus-ring: 0 0 0 3px rgba(100, 195, 215, 0.32);
   --yuni-z-dropdown: 20;
   --yuni-z-dialog: 50;
+  --yuni-z-toast: 70;
 }
 
 .yuni-page-shell {
@@ -869,6 +870,32 @@
   animation: yuni-toast-enter 180ms ease-out;
 }
 
+.yuni-toast-viewport {
+  position: fixed;
+  z-index: var(--yuni-z-toast);
+  inset: max(var(--yuni-space-4), env(safe-area-inset-top))
+    max(var(--yuni-space-4), env(safe-area-inset-right)) auto auto;
+  display: grid;
+  width: min(440px, calc(100vw - 32px));
+  max-height: calc(
+    100dvh - max(var(--yuni-space-4), env(safe-area-inset-top)) -
+      max(var(--yuni-space-4), env(safe-area-inset-bottom))
+  );
+  gap: var(--yuni-space-3);
+  border: 0;
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: transparent;
+  pointer-events: none;
+}
+
+.yuni-toast-viewport__item {
+  pointer-events: auto;
+}
+
 .yuni-toast--info {
   border-color: rgba(100, 195, 215, 0.3);
 }
@@ -969,6 +996,19 @@
 @media (prefers-reduced-motion: reduce) {
   .yuni-toast {
     animation: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .yuni-toast-viewport {
+    inset: max(var(--yuni-space-3), env(safe-area-inset-top))
+      max(var(--yuni-space-3), env(safe-area-inset-right)) auto
+      max(var(--yuni-space-3), env(safe-area-inset-left));
+    width: auto;
+    max-height: calc(
+      100dvh - max(var(--yuni-space-3), env(safe-area-inset-top)) -
+        max(var(--yuni-space-3), env(safe-area-inset-bottom))
+    );
   }
 }
 

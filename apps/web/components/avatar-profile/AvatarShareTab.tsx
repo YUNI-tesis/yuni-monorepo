@@ -14,6 +14,7 @@ import {
   Input,
   LoadingState,
   YuniIcon,
+  useToast,
 } from "@yuni/ui";
 import type { ApiAvatar } from "../../lib/api/avatar-api";
 import type { ApiAccessGrant, ApiInteractionLimits, ApiShareLink } from "../../lib/api/sharing-api";
@@ -56,46 +57,58 @@ const emptyLimitErrors: InteractionLimitErrors = {
 
 export function AvatarShareTab({ avatar }: { avatar: ApiAvatar }) {
   const sharing = useAvatarSharing(avatar.id);
+  const toast = useToast();
   const confirmationDialog = useRef<HTMLDialogElement>(null);
   const limitsDialog = useRef<HTMLDialogElement>(null);
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
-  const [dialogError, setDialogError] = useState<string | null>(null);
-  const [feedback, setFeedback] = useState<string | null>(null);
   const [limitsEditor, setLimitsEditor] = useState<LimitsEditor | null>(null);
   const [limitsDraft, setLimitsDraft] = useState<InteractionLimitsDraft>(emptyInteractionLimitsDraft);
   const [limitErrors, setLimitErrors] = useState<InteractionLimitErrors>(emptyLimitErrors);
 
   function requestConfirmation(nextConfirmation: Confirmation) {
     setConfirmation(nextConfirmation);
-    setDialogError(null);
     confirmationDialog.current?.showModal();
   }
 
   async function confirmAction() {
     if (!confirmation) return;
 
-    setDialogError(null);
-
     try {
       if (confirmation.kind === "delete-link") {
         await sharing.removeLink(confirmation.id);
-        setFeedback("El link público fue eliminado.");
+        toast.success(`${confirmation.label} dejó de estar disponible.`, {
+          title: "Link público eliminado",
+          dedupeKey: `share-link:${confirmation.id}:deleted`,
+        });
       } else if (confirmation.kind === "revoke-grant") {
         await sharing.setGrantStatus(confirmation.id, "revoked");
-        setFeedback(`Se revocó el acceso de ${confirmation.label}.`);
+        toast.success(`Se revocó el acceso de ${confirmation.label}.`, {
+          title: "Acceso revocado",
+          dedupeKey: `access-grant:${confirmation.id}:revoked`,
+        });
       } else {
         const outcome = await sharing.removeGrant(confirmation.id);
-        setFeedback(
+        toast.success(
           outcome === "deleted"
             ? `Se eliminó definitivamente el acceso de ${confirmation.label}.`
-            : `Se revocó el acceso de ${confirmation.label} para conservar su historial.`
+            : `Se revocó el acceso de ${confirmation.label} para conservar su historial.`,
+          {
+            title: outcome === "deleted" ? "Acceso eliminado" : "Acceso revocado",
+            dedupeKey: `access-grant:${confirmation.id}:removed`,
+          }
         );
       }
 
       confirmationDialog.current?.close();
       setConfirmation(null);
     } catch (error) {
-      setDialogError(getActionError(error));
+      toast.error(getActionError(error), {
+        title:
+          confirmation.kind === "delete-link"
+            ? "No pudimos eliminar el link"
+            : "No pudimos actualizar el acceso",
+        dedupeKey: `sharing:${confirmation.kind}:${confirmation.id}:error`,
+      });
     }
   }
 
@@ -103,7 +116,6 @@ export function AvatarShareTab({ avatar }: { avatar: ApiAvatar }) {
     setLimitsEditor(editor);
     setLimitsDraft(interactionLimitsToDraft(editor.limits));
     setLimitErrors(emptyLimitErrors);
-    setDialogError(null);
     limitsDialog.current?.showModal();
   }
 
@@ -111,7 +123,6 @@ export function AvatarShareTab({ avatar }: { avatar: ApiAvatar }) {
     if (!limitsEditor) return;
     const parsed = parseInteractionLimitsDraft(limitsDraft);
     setLimitErrors(parsed.errors);
-    setDialogError(null);
     if (!parsed.isValid) return;
 
     try {
@@ -121,10 +132,16 @@ export function AvatarShareTab({ avatar }: { avatar: ApiAvatar }) {
         await sharing.updateGrantLimits(limitsEditor.id, parsed.limits);
       }
       limitsDialog.current?.close();
-      setFeedback(`Se actualizaron los límites de ${limitsEditor.label}.`);
+      toast.success(`Se actualizaron los límites de ${limitsEditor.label}.`, {
+        title: "Límites actualizados",
+        dedupeKey: `${limitsEditor.kind}:${limitsEditor.id}:limits:updated`,
+      });
       setLimitsEditor(null);
     } catch (error) {
-      setDialogError(getActionError(error));
+      toast.error(getActionError(error), {
+        title: "No pudimos actualizar los límites",
+        dedupeKey: `${limitsEditor.kind}:${limitsEditor.id}:limits:error`,
+      });
     }
   }
 
@@ -141,7 +158,6 @@ export function AvatarShareTab({ avatar }: { avatar: ApiAvatar }) {
       <ShareLinksSection
         avatar={avatar}
         sharing={sharing}
-        onFeedback={setFeedback}
         onEditLimits={(link) =>
           openLimitsEditor({ kind: "link", id: link.id, label: link.name, limits: link.limits })
         }
@@ -150,7 +166,6 @@ export function AvatarShareTab({ avatar }: { avatar: ApiAvatar }) {
 
       <AccessGrantsSection
         sharing={sharing}
-        onFeedback={setFeedback}
         onEditLimits={(grant) =>
           openLimitsEditor({
             kind: "grant",
@@ -175,10 +190,6 @@ export function AvatarShareTab({ avatar }: { avatar: ApiAvatar }) {
         }
       />
 
-      <p className={styles.feedback} aria-live="polite">
-        {feedback}
-      </p>
-
       <Dialog
         ref={confirmationDialog}
         title={getConfirmationTitle(confirmation)}
@@ -200,15 +211,8 @@ export function AvatarShareTab({ avatar }: { avatar: ApiAvatar }) {
         }
         onClose={() => {
           setConfirmation(null);
-          setDialogError(null);
         }}
-      >
-        {dialogError ? (
-          <p className={styles.formError} role="alert">
-            {dialogError}
-          </p>
-        ) : null}
-      </Dialog>
+      />
 
       <Dialog
         ref={limitsDialog}
@@ -230,7 +234,6 @@ export function AvatarShareTab({ avatar }: { avatar: ApiAvatar }) {
         }
         onClose={() => {
           setLimitsEditor(null);
-          setDialogError(null);
           setLimitErrors(emptyLimitErrors);
         }}
       >
@@ -240,11 +243,6 @@ export function AvatarShareTab({ avatar }: { avatar: ApiAvatar }) {
           errors={limitErrors}
           onChange={(field, value) => setLimitsDraft((current) => ({ ...current, [field]: value }))}
         />
-        {dialogError ? (
-          <p className={styles.formError} role="alert">
-            {dialogError}
-          </p>
-        ) : null}
       </Dialog>
     </div>
   );
@@ -253,26 +251,23 @@ export function AvatarShareTab({ avatar }: { avatar: ApiAvatar }) {
 function ShareLinksSection({
   avatar,
   sharing,
-  onFeedback,
   onEditLimits,
   onDelete,
 }: {
   avatar: ApiAvatar;
   sharing: ReturnType<typeof useAvatarSharing>;
-  onFeedback: (message: string) => void;
   onEditLimits: (link: ApiShareLink) => void;
   onDelete: (link: ApiShareLink) => void;
 }) {
+  const toast = useToast();
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [name, setName] = useState(avatar.name);
   const [slug, setSlug] = useState(() => toPublicSlug(avatar.name));
   const [slugWasEdited, setSlugWasEdited] = useState(false);
-  const [formError, setFormError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState({
     name: null as string | null,
     slug: null as string | null,
   });
-  const [copyStatus, setCopyStatus] = useState<string | null>(null);
   const [limitsDraft, setLimitsDraft] = useState<InteractionLimitsDraft>(emptyInteractionLimitsDraft);
   const [limitErrors, setLimitErrors] = useState<InteractionLimitErrors>(emptyLimitErrors);
 
@@ -281,7 +276,6 @@ function ShareLinksSection({
     setSlug(toPublicSlug(avatar.name));
     setSlugWasEdited(false);
     setFieldErrors({ name: null, slug: null });
-    setFormError(null);
     setLimitsDraft(emptyInteractionLimitsDraft);
     setLimitErrors(emptyLimitErrors);
     setIsFormOpen(true);
@@ -293,8 +287,6 @@ function ShareLinksSection({
     const parsedLimits = parseInteractionLimitsDraft(limitsDraft);
     setFieldErrors(errors);
     setLimitErrors(parsedLimits.errors);
-    setFormError(null);
-
     if (errors.name || errors.slug || !parsedLimits.isValid) return;
 
     try {
@@ -305,31 +297,86 @@ function ShareLinksSection({
         limits: parsedLimits.limits,
       });
       setIsFormOpen(false);
-      onFeedback("El link público fue creado.");
+      toast.success(`${name.trim()} ya se puede compartir.`, {
+        title: "Link público creado",
+        dedupeKey: `share-link:${slug.trim()}:created`,
+      });
     } catch (error) {
-      setFormError(
-        error instanceof ApiClientError && error.status === 409
-          ? "Ese slug ya está en uso. Elegí otro."
-          : getActionError(error)
-      );
+      if (error instanceof ApiClientError && error.status === 409) {
+        setFieldErrors((current) => ({ ...current, slug: "Ese slug ya está en uso. Elegí otro." }));
+        return;
+      }
+      toast.error(getActionError(error), {
+        title: "No pudimos crear el link",
+        dedupeKey: "share-link:create:error",
+      });
     }
   }
 
   async function copyLink(link: ApiShareLink) {
     try {
       await navigator.clipboard.writeText(link.publicUrl);
-      setCopyStatus(`Link copiado: ${link.name}.`);
+      toast.success(`${link.name} quedó en el portapapeles.`, {
+        title: "Link copiado",
+        dedupeKey: `share-link:${link.id}:copied`,
+      });
     } catch {
-      setCopyStatus("No pudimos copiar el link. Copialo manualmente desde la URL.");
+      toast.error("Copialo manualmente desde la URL.", {
+        title: "No pudimos copiar el link",
+        dedupeKey: `share-link:${link.id}:copy:error`,
+      });
     }
   }
 
   async function toggleLink(link: ApiShareLink, isEnabled: boolean) {
     try {
       await sharing.setLinkEnabled(link, isEnabled);
-      onFeedback(isEnabled ? "El link quedó activo." : "El link quedó desactivado.");
+      toast.success(isEnabled ? `${link.name} quedó activo.` : `${link.name} quedó desactivado.`, {
+        title: isEnabled ? "Link activado" : "Link desactivado",
+        dedupeKey: `share-link:${link.id}:availability`,
+      });
     } catch (error) {
-      onFeedback(getActionError(error));
+      toast.error(getActionError(error), {
+        title: "No pudimos actualizar el link",
+        dedupeKey: `share-link:${link.id}:availability:error`,
+      });
+    }
+  }
+
+  function openLink(link: ApiShareLink) {
+    let opened: Window | null = null;
+    try {
+      opened = window.open("", "_blank");
+    } catch {
+      opened = null;
+    }
+    if (!opened) {
+      toast.error("Permití las ventanas emergentes e intentá nuevamente.", {
+        title: "El navegador bloqueó el link",
+        dedupeKey: `share-link:${link.id}:open:error`,
+      });
+      return;
+    }
+
+    try {
+      opened.opener = null;
+      const destination = opened.document.createElement("a");
+      destination.href = link.publicUrl;
+      destination.target = "_self";
+      destination.rel = "noreferrer";
+      opened.document.body.append(destination);
+      destination.click();
+      destination.remove();
+    } catch {
+      try {
+        opened.close();
+      } catch {
+        // The browser already disposed the empty popup.
+      }
+      toast.error("Intentá nuevamente o copiá la URL manualmente.", {
+        title: "No pudimos abrir el link",
+        dedupeKey: `share-link:${link.id}:open:error`,
+      });
     }
   }
 
@@ -395,11 +442,6 @@ function ShareLinksSection({
               Cancelar
             </Button>
           </div>
-          {formError ? (
-            <p className={styles.formError} role="alert">
-              {formError}
-            </p>
-          ) : null}
         </form>
       ) : null}
 
@@ -488,7 +530,7 @@ function ShareLinksSection({
                         label: "Abrir link",
                         icon: <OpenIcon />,
                         disabled: !canOpenPublicLink(link, avatar.status),
-                        onSelect: () => window.open(link.publicUrl, "_blank", "noopener,noreferrer"),
+                        onSelect: () => openLink(link),
                       },
                       {
                         label: "Editar límites",
@@ -514,34 +556,28 @@ function ShareLinksSection({
           ]}
         />
       )}
-
-      <p className={styles.feedback} aria-live="polite">
-        {copyStatus}
-      </p>
     </Card>
   );
 }
 
 function AccessGrantsSection({
   sharing,
-  onFeedback,
   onEditLimits,
   onRevoke,
   onDelete,
 }: {
   sharing: ReturnType<typeof useAvatarSharing>;
-  onFeedback: (message: string) => void;
   onEditLimits: (grant: ApiAccessGrant) => void;
   onRevoke: (grant: ApiAccessGrant) => void;
   onDelete: (grant: ApiAccessGrant) => void;
 }) {
+  const toast = useToast();
   const createGrantDialog = useRef<HTMLDialogElement>(null);
   const [email, setEmail] = useState("");
   const [emailError, setEmailError] = useState<string | null>(null);
   const [createLimitsDraft, setCreateLimitsDraft] =
     useState<InteractionLimitsDraft>(emptyInteractionLimitsDraft);
   const [createLimitErrors, setCreateLimitErrors] = useState<InteractionLimitErrors>(emptyLimitErrors);
-  const [createDialogError, setCreateDialogError] = useState<string | null>(null);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -553,32 +589,47 @@ function AccessGrantsSection({
     setEmail(normalizeGrantEmail(email));
     setCreateLimitsDraft(emptyInteractionLimitsDraft);
     setCreateLimitErrors(emptyLimitErrors);
-    setCreateDialogError(null);
     createGrantDialog.current?.showModal();
   }
 
   async function confirmCreateGrant() {
     const parsedLimits = parseInteractionLimitsDraft(createLimitsDraft);
     setCreateLimitErrors(parsedLimits.errors);
-    setCreateDialogError(null);
     if (!parsedLimits.isValid) return;
 
     try {
       await sharing.createGrant(normalizeGrantEmail(email), parsedLimits.limits);
       createGrantDialog.current?.close();
+      toast.success(`${normalizeGrantEmail(email)} ya tiene acceso al avatar.`, {
+        title: "Acceso agregado",
+        dedupeKey: `access-grant:${normalizeGrantEmail(email)}:created`,
+      });
       setEmail("");
-      onFeedback("El acceso fue agregado.");
     } catch (error) {
-      setCreateDialogError(getAccessGrantCreateError(error));
+      if (error instanceof ApiClientError && (error.reason === "SELF_ACCESS_GRANT" || error.status === 409)) {
+        createGrantDialog.current?.close();
+        setEmailError(getAccessGrantCreateError(error));
+        return;
+      }
+      toast.error(getAccessGrantCreateError(error), {
+        title: "No pudimos agregar el acceso",
+        dedupeKey: `access-grant:${normalizeGrantEmail(email)}:create:error`,
+      });
     }
   }
 
   async function reactivate(grant: ApiAccessGrant) {
     try {
       await sharing.setGrantStatus(grant.id, "active");
-      onFeedback(`Se reactivó el acceso de ${grant.participantEmail}.`);
+      toast.success(`Se reactivó el acceso de ${grant.participantEmail}.`, {
+        title: "Acceso reactivado",
+        dedupeKey: `access-grant:${grant.id}:reactivated`,
+      });
     } catch (error) {
-      onFeedback(getActionError(error));
+      toast.error(getActionError(error), {
+        title: "No pudimos reactivar el acceso",
+        dedupeKey: `access-grant:${grant.id}:reactivate:error`,
+      });
     }
   }
 
@@ -603,7 +654,10 @@ function AccessGrantsSection({
             placeholder="participante@ejemplo.com"
             autoComplete="email"
             invalid={Boolean(emailError)}
-            onChange={(event) => setEmail(event.target.value)}
+            onChange={(event) => {
+              setEmail(event.target.value);
+              setEmailError(null);
+            }}
             onBlur={() => {
               if (email) setEmail(normalizeGrantEmail(email));
             }}
@@ -624,7 +678,6 @@ function AccessGrantsSection({
           </Button>
         }
         onClose={() => {
-          setCreateDialogError(null);
           setCreateLimitErrors(emptyLimitErrors);
         }}
       >
@@ -634,11 +687,6 @@ function AccessGrantsSection({
           errors={createLimitErrors}
           onChange={(field, value) => setCreateLimitsDraft((current) => ({ ...current, [field]: value }))}
         />
-        {createDialogError ? (
-          <p className={styles.formError} role="alert">
-            {createDialogError}
-          </p>
-        ) : null}
       </Dialog>
 
       {sharing.grants.status === "loading" && sharing.grants.data.length === 0 ? (

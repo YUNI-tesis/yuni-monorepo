@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AgentEventsEnum, LiveAvatarSession, SessionEvent } from "@heygen/liveavatar-web-sdk";
 import { CommitStrategy, RealtimeEvents, Scribe, type RealtimeConnection } from "@elevenlabs/client";
-import { Badge, Button, ErrorState, LoadingState, YuniIcon } from "@yuni/ui";
+import { Badge, Button, ErrorState, LoadingState, YuniIcon, useToast } from "@yuni/ui";
 import {
   endGroupVoiceSession,
   getAvatarGroup,
@@ -135,7 +135,9 @@ const MAX_TURN_LEDGER_ENTRIES = 128;
 
 export function GroupInteractCall({ groupId }: { groupId: string }) {
   const router = useRouter();
+  const toast = useToast();
   const privacyDialog = useRef<HTMLDialogElement>(null);
+  const callToastIdRef = useRef<string | null>(null);
   const [group, setGroup] = useState<ApiAvatarGroup | null>(null);
   const [loadStatus, setLoadStatus] = useState<"loading" | "ready" | "error">("loading");
   const [callStatus, setCallStatus] = useState<
@@ -206,6 +208,31 @@ export function GroupInteractCall({ groupId }: { groupId: string }) {
       startRequestTokenRef.current += 1;
     };
   }, []);
+
+  useEffect(() => {
+    if (loadStatus !== "ready" || !callError) {
+      if (callToastIdRef.current) toast.dismiss(callToastIdRef.current);
+      callToastIdRef.current = null;
+      return;
+    }
+
+    const warning = isGroupCallWarning(callError);
+    callToastIdRef.current = toast.show({
+      tone: warning ? "warning" : "danger",
+      title: groupCallErrorTitle(callStatus, warning),
+      message: groupCallErrorMessage(callStatus, warning, callError),
+      dedupeKey: `group-call:${groupId}:error`,
+      announcement: "assertive",
+      onDismiss: () => setCallError(null),
+    });
+  }, [callError, callStatus, groupId, loadStatus, toast]);
+
+  useEffect(
+    () => () => {
+      if (callToastIdRef.current) toast.dismiss(callToastIdRef.current);
+    },
+    [toast]
+  );
 
   useEffect(() => {
     let mounted = true;
@@ -1412,6 +1439,13 @@ export function GroupInteractCall({ groupId }: { groupId: string }) {
         if (serverEnd) await serverEnd;
         setCallStatus("ended");
         if (serverEnd) void loadHistory();
+        if (reason === "timeout") {
+          toast.warning("La conversación finalizó y se guardó correctamente.", {
+            title: "Se alcanzó el límite de duración",
+            dedupeKey: `group-call:${groupId}:duration-limit`,
+            announcement: "assertive",
+          });
+        }
       } catch (error) {
         setCallStatus("error");
         setCallError(error instanceof Error ? error.message : "No pudimos cerrar la llamada.");
@@ -1429,8 +1463,10 @@ export function GroupInteractCall({ groupId }: { groupId: string }) {
       clearTurnTimeout,
       closeScribe,
       detachLiveSessionListeners,
+      groupId,
       loadHistory,
       setServerPhase,
+      toast,
     ]
   );
 
@@ -1613,21 +1649,26 @@ export function GroupInteractCall({ groupId }: { groupId: string }) {
       ) {
         setCallStatus("active");
       }
-    } catch (error) {
+    } catch {
       if (endingRef.current || callEpochRef.current !== callEpoch || sessionRef.current?.id !== sessionId)
         return;
+      const retryMessage = "El participante sigue sin conexión. Podés volver a intentarlo desde su tarjeta.";
       setParticipants((current) => {
         const next: LocalParticipant[] = current.map((item) =>
           item.avatar.id === avatarId
             ? {
                 ...item,
                 clientStatus: "errored",
-                clientError: error instanceof Error ? error.message : "No pudimos reconectar.",
+                clientError: retryMessage,
               }
             : item
         );
         participantsRef.current = next;
         return next;
+      });
+      toast.error(retryMessage, {
+        title: "No pudimos reconectar al participante",
+        dedupeKey: `group-call:${groupId}:participant:${avatarId}:retry:error`,
       });
     } finally {
       if (participantRetryInFlightRef.current.get(avatarId) === retryToken) {
@@ -1933,11 +1974,6 @@ export function GroupInteractCall({ groupId }: { groupId: string }) {
         }
         dock={
           <>
-            {callError ? (
-              <p className={styles.inlineError} role="alert">
-                {callError}
-              </p>
-            ) : null}
             {partialTranscript ? (
               <p className={styles.liveCaption} aria-live="polite">
                 Vos: {partialTranscript}
@@ -2173,6 +2209,51 @@ function isRetryableParticipantFailure(error: unknown) {
 function isTerminalHeartbeatError(error: unknown) {
   if (!(error instanceof ApiClientError)) return false;
   return [401, 404, 409, 410].includes(error.status);
+}
+
+function isGroupCallWarning(message: string) {
+  return /no respondió|transcripción|tiempo|límite|limit|continúa|interrumpió/i.test(message);
+}
+
+function groupCallErrorMessage(
+  status: "idle" | "starting" | "active" | "degraded" | "ending" | "ended" | "error",
+  warning: boolean,
+  message: string
+) {
+  const normalized = message.trim();
+  if (/^.{1,80} no respondió a tiempo\. Ya podés volver a hablar\.$/i.test(normalized)) {
+    return normalized;
+  }
+  if (
+    /límite|limit|llamadas permitidas|capacidad de llamadas|demasiados intentos|llamada activa/i.test(
+      normalized
+    )
+  ) {
+    return "Se alcanzó un límite de uso para esta llamada. Intentá nuevamente más tarde.";
+  }
+  if (/transcrip/i.test(normalized)) {
+    return "La transcripción en vivo se interrumpió. Intentá reactivar el micrófono para continuar.";
+  }
+  if (warning) {
+    return "La llamada continúa, pero una operación tardó más de lo esperado.";
+  }
+  if (status === "starting") {
+    return "No pudimos conectar la llamada grupal. Revisá tu conexión e intentá nuevamente.";
+  }
+  if (status === "ending" || status === "ended" || status === "error") {
+    return "No pudimos completar o guardar la llamada. Intentá nuevamente.";
+  }
+  return "La llamada tuvo un problema de conexión. Intentá nuevamente.";
+}
+
+function groupCallErrorTitle(
+  status: "idle" | "starting" | "active" | "degraded" | "ending" | "ended" | "error",
+  warning: boolean
+) {
+  if (warning) return "Advertencia durante la llamada";
+  if (status === "starting") return "No pudimos iniciar la llamada";
+  if (status === "ending" || status === "error") return "No pudimos completar la llamada";
+  return "Hubo un problema con la llamada";
 }
 
 function formatGroupCallStatus(status: string) {

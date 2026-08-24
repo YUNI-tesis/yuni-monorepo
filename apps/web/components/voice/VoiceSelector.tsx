@@ -8,9 +8,10 @@ export type VoiceSelectorProps = {
   selectedId: string;
   error?: string | undefined;
   onSelect: (voiceId: string) => void;
+  onPreviewError?: (voice: VoiceOption) => void;
 };
 
-export function VoiceSelector({ options, selectedId, error, onSelect }: VoiceSelectorProps) {
+export function VoiceSelector({ options, selectedId, error, onSelect, onPreviewError }: VoiceSelectorProps) {
   const groupId = useId().replace(/:/g, "");
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [playingVoiceId, setPlayingVoiceId] = useState<string | null>(null);
@@ -34,12 +35,13 @@ export function VoiceSelector({ options, selectedId, error, onSelect }: VoiceSel
     setPlayingVoiceId(null);
   }
 
-  function togglePreview(voiceId: string, previewUrl: string) {
+  function togglePreview(voice: VoiceOption, previewUrl: string) {
     if (typeof Audio === "undefined") {
+      onPreviewError?.(voice);
       return;
     }
 
-    if (playingVoiceId === voiceId) {
+    if (playingVoiceId === voice.id) {
       stopPreview();
       return;
     }
@@ -48,7 +50,8 @@ export function VoiceSelector({ options, selectedId, error, onSelect }: VoiceSel
 
     const audio = new Audio(previewUrl);
     audioRef.current = audio;
-    setPlayingVoiceId(voiceId);
+    setPlayingVoiceId(voice.id);
+    let failureReported = false;
 
     const clearPreview = () => {
       if (audioRef.current === audio) {
@@ -57,9 +60,16 @@ export function VoiceSelector({ options, selectedId, error, onSelect }: VoiceSel
       }
     };
 
+    const failPreview = () => {
+      if (failureReported || audioRef.current !== audio) return;
+      failureReported = true;
+      clearPreview();
+      onPreviewError?.(voice);
+    };
+
     audio.addEventListener("ended", clearPreview, { once: true });
-    audio.addEventListener("error", clearPreview, { once: true });
-    void audio.play().catch(clearPreview);
+    audio.addEventListener("error", failPreview, { once: true });
+    void audio.play().catch(failPreview);
   }
 
   return (
@@ -111,7 +121,7 @@ export function VoiceSelector({ options, selectedId, error, onSelect }: VoiceSel
                   aria-label={`${isPlaying ? "Pausar" : "Reproducir"} muestra de ${presentation.name}`}
                   aria-pressed={isPlaying}
                   title={`${isPlaying ? "Pausar" : "Reproducir"} muestra`}
-                  onClick={() => togglePreview(voice.id, previewUrl)}
+                  onClick={() => togglePreview(voice, previewUrl)}
                 >
                   <YuniIcon name={isPlaying ? "pause" : "play"} size={20} strokeWidth={2} />
                 </button>

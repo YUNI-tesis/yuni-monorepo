@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Card, ErrorState, FormField, Input, LoadingState, Textarea } from "@yuni/ui";
+import { Button, Card, ErrorState, FormField, Input, LoadingState, Textarea, useToast } from "@yuni/ui";
 import { DocumentFileDrop } from "../context/DocumentFileDrop";
 import type { AvatarEditState, AvatarEditValidation } from "../../hooks/useAvatarEdit";
 import type { ElevenLabsVoiceOptionsState } from "../../hooks/useElevenLabsVoiceOptions";
@@ -31,6 +31,8 @@ export function AvatarEditForm({
   onSubmit,
   onCancel,
 }: AvatarEditFormProps) {
+  const toast = useToast();
+
   return (
     <Card padding="lg">
       <form
@@ -112,6 +114,12 @@ export function AvatarEditForm({
               selectedId={state.voiceId}
               error={errors.voiceId}
               onSelect={(voiceId) => onFieldChange("voiceId", voiceId)}
+              onPreviewError={(voice) =>
+                toast.error("Probá nuevamente o elegí otra voz.", {
+                  title: `No pudimos reproducir ${voice.displayName.split(" - ")[0] ?? "la muestra"}`,
+                  dedupeKey: `voice:${voice.id}:preview:error`,
+                })
+              }
             />
           ) : null}
         </section>
@@ -151,9 +159,6 @@ export function AvatarEditForm({
           </FormField>
           <DocumentFileDrop files={state.files} onFilesSelected={(files) => onFieldChange("files", files)} />
         </section>
-
-        {errors.form ? <ErrorState title="No pudimos guardar" description={errors.form} /> : null}
-        {errors.success ? <p className="yuni-form-field__hint">{errors.success}</p> : null}
 
         <div className={styles.actions}>
           <Button variant="secondary" onClick={onCancel} disabled={isSubmitting}>

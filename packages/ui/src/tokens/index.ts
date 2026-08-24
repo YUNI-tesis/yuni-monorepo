@@ -51,6 +51,7 @@ export const yuniTokens = {
   zIndex: {
     dropdown: 20,
     dialog: 50,
+    toast: 70,
   },
 } as const;
 

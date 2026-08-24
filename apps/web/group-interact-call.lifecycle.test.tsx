@@ -1,6 +1,7 @@
 import { JSDOM } from "jsdom";
 import React from "react";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { ToastProvider } from "@yuni/ui";
 import { GroupInteractCall } from "./components/interact/GroupInteractCall";
 import { ApiClientError } from "./lib/api/http-client";
 
@@ -185,12 +186,20 @@ const participants = group.members.map((avatar, index) => ({
   error: null,
 }));
 
+function TestGroupInteractCall({ groupId }: { groupId: string }) {
+  return (
+    <ToastProvider>
+      <GroupInteractCall groupId={groupId} />
+    </ToastProvider>
+  );
+}
+
 async function flushAsyncWork() {
   for (let index = 0; index < 12; index += 1) await Promise.resolve();
 }
 
 async function renderActiveCall() {
-  const view = render(<GroupInteractCall groupId="group-1" />);
+  const view = render(<TestGroupInteractCall groupId="group-1" />);
   await act(flushAsyncWork);
   await act(async () => {
     fireEvent.click(screen.getByRole("button", { name: "Iniciar llamada" }));
@@ -388,6 +397,22 @@ describe("GroupInteractCall lifecycle", () => {
     );
     expect(scribeMocks.connection?.close).toHaveBeenCalledTimes(1);
     expect(liveAvatarMocks.instances.every((instance) => instance.stop.mock.calls.length === 1)).toBe(true);
+  });
+
+  it("does not expose raw provider errors in global notifications", async () => {
+    const { unmount } = await renderActiveCall();
+    const providerError = "ElevenLabs websocket 1006: upstream connection failed";
+
+    await act(async () => {
+      scribeMocks.connection?.emit("error", { error: providerError });
+      await flushAsyncWork();
+    });
+
+    expect(screen.queryByText(providerError)).toBeNull();
+    expect(screen.getByRole("alert").textContent).toContain(
+      "La llamada tuvo un problema de conexión. Intentá nuevamente."
+    );
+    unmount();
   });
 
   it("keeps the valid owner audible when a different avatar starts without authorization", async () => {
@@ -820,7 +845,7 @@ describe("GroupInteractCall lifecycle", () => {
     apiMocks.getAvatarGroup.mockResolvedValueOnce({ group: mixedGroup });
     window.localStorage.setItem("yuni:shared-call-consent:v1:user-1:avatar-2", "true");
 
-    const view = render(<GroupInteractCall groupId="group-1" />);
+    const view = render(<TestGroupInteractCall groupId="group-1" />);
     await act(flushAsyncWork);
     fireEvent.click(screen.getByRole("button", { name: "Iniciar llamada" }));
     await act(flushAsyncWork);
@@ -855,7 +880,7 @@ describe("GroupInteractCall lifecycle", () => {
         })
     );
 
-    const view = render(<GroupInteractCall groupId="group-1" />);
+    const view = render(<TestGroupInteractCall groupId="group-1" />);
     await act(flushAsyncWork);
     fireEvent.click(screen.getByRole("button", { name: "Iniciar llamada" }));
     await act(flushAsyncWork);
@@ -886,7 +911,7 @@ describe("GroupInteractCall lifecycle", () => {
         members: [group.members[0]!, { ...group.members[1]!, available: false }],
       },
     });
-    const view = render(<GroupInteractCall groupId="group-1" />);
+    const view = render(<TestGroupInteractCall groupId="group-1" />);
     await act(flushAsyncWork);
     const startButton = screen.getByRole("button", { name: "Iniciar llamada" });
     expect((startButton as HTMLButtonElement).disabled).toBe(true);
@@ -923,7 +948,7 @@ describe("GroupInteractCall lifecycle", () => {
         sessionToken: "token-without-attempt",
       },
     });
-    const view = render(<GroupInteractCall groupId="group-1" />);
+    const view = render(<TestGroupInteractCall groupId="group-1" />);
     await act(flushAsyncWork);
     fireEvent.click(screen.getByRole("button", { name: "Iniciar llamada" }));
     await act(flushAsyncWork);
@@ -933,7 +958,10 @@ describe("GroupInteractCall lifecycle", () => {
     fireEvent.click(screen.getByRole("button", { name: "Reintentar" }));
     await act(flushAsyncWork);
     expect(liveAvatarMocks.instances).toHaveLength(1);
-    expect(screen.getByText("El servidor no confirmó un nuevo intento para este participante.")).toBeTruthy();
+    expect(
+      screen.getAllByText("El participante sigue sin conexión. Podés volver a intentarlo desde su tarjeta.")
+    ).toHaveLength(2);
+    expect(screen.queryByText("El servidor no confirmó un nuevo intento para este participante.")).toBeNull();
     view.unmount();
   });
 
@@ -1075,7 +1103,7 @@ describe("GroupInteractCall lifecycle", () => {
       floor: null,
       participant: { avatarId: "avatar-2", status: "errored", error: "Timeout" },
     });
-    const view = render(<GroupInteractCall groupId="group-1" />);
+    const view = render(<TestGroupInteractCall groupId="group-1" />);
     await act(flushAsyncWork);
     fireEvent.click(screen.getByRole("button", { name: "Iniciar llamada" }));
     await act(async () => {
@@ -1098,7 +1126,7 @@ describe("GroupInteractCall lifecycle", () => {
 
   it("lets the user cancel while a participant start is pending without reporting a stale failure", async () => {
     liveAvatarMocks.startBehaviors.set("token-2", () => new Promise<void>(() => undefined));
-    const view = render(<GroupInteractCall groupId="group-1" />);
+    const view = render(<TestGroupInteractCall groupId="group-1" />);
     await act(flushAsyncWork);
     fireEvent.click(screen.getByRole("button", { name: "Iniciar llamada" }));
     await act(flushAsyncWork);
@@ -1116,7 +1144,7 @@ describe("GroupInteractCall lifecycle", () => {
 
   it("does not let an old startup timeout mutate a newer call epoch", async () => {
     liveAvatarMocks.startBehaviors.set("token-2", () => new Promise<void>(() => undefined));
-    const view = render(<GroupInteractCall groupId="group-1" />);
+    const view = render(<TestGroupInteractCall groupId="group-1" />);
     await act(flushAsyncWork);
     fireEvent.click(screen.getByRole("button", { name: "Iniciar llamada" }));
     await act(flushAsyncWork);

@@ -25,7 +25,7 @@ export type AvatarEditState = {
 };
 
 export type AvatarEditField = keyof AvatarEditState;
-export type AvatarEditValidation = Partial<Record<AvatarEditField | "form" | "success", string>>;
+export type AvatarEditValidation = Partial<Record<AvatarEditField, string>>;
 
 export type AvatarEditLoadState =
   | {
@@ -198,8 +198,6 @@ export function useAvatarEdit(avatarId: string) {
     setErrors((currentErrors) => {
       const nextErrors = { ...currentErrors };
       delete nextErrors[field];
-      delete nextErrors.form;
-      delete nextErrors.success;
       return nextErrors;
     });
   }
@@ -208,7 +206,6 @@ export function useAvatarEdit(avatarId: string) {
     const currentState = loadState.state;
 
     if (!currentState) {
-      setErrors({ form: "No pudimos preparar el formulario." });
       return false;
     }
 
@@ -217,29 +214,11 @@ export function useAvatarEdit(avatarId: string) {
     return Object.keys(validationErrors).length === 0;
   }
 
-  function setFormError(message: string) {
-    setErrors((currentErrors) => {
-      const nextErrors = { ...currentErrors, form: message };
-      delete nextErrors.success;
-      return nextErrors;
-    });
-  }
-
-  function setSuccess(message: string) {
-    setErrors((currentErrors) => {
-      const nextErrors = { ...currentErrors, success: message };
-      delete nextErrors.form;
-      return nextErrors;
-    });
-  }
-
   return {
     loadState,
     errors,
     updateField,
     validateAll,
-    setFormError,
-    setSuccess,
   };
 }
 

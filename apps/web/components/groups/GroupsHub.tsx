@@ -12,6 +12,7 @@ import {
   Input,
   LoadingState,
   PageHeader,
+  useToast,
 } from "@yuni/ui";
 import { useAvatarList } from "../../hooks/useAvatarList";
 import {
@@ -30,6 +31,7 @@ type LoadStatus = "loading" | "ready" | "error";
 
 export function GroupsHub() {
   const router = useRouter();
+  const toast = useToast();
   const avatarList = useAvatarList();
   const groupDialog = useRef<HTMLDialogElement>(null);
   const [groups, setGroups] = useState<ApiAvatarGroup[]>([]);
@@ -38,7 +40,6 @@ export function GroupsHub() {
   const [editingGroup, setEditingGroup] = useState<ApiAvatarGroup | null>(null);
   const [name, setName] = useState("");
   const [selected, setSelected] = useState<string[]>([]);
-  const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   async function loadGroups() {
@@ -73,7 +74,6 @@ export function GroupsHub() {
     setEditingGroup(null);
     setName("");
     setSelected([]);
-    setFormError(null);
     groupDialog.current?.showModal();
   }
 
@@ -81,7 +81,6 @@ export function GroupsHub() {
     setEditingGroup(group);
     setName(group.name);
     setSelected(group.members.map((member) => member.id));
-    setFormError(null);
     groupDialog.current?.showModal();
   }
 
@@ -98,7 +97,6 @@ export function GroupsHub() {
   async function saveGroup() {
     if (!name.trim() || selected.length < 2 || selected.length > 3 || saving) return;
     setSaving(true);
-    setFormError(null);
     try {
       const { group } = editingGroup
         ? await updateAvatarGroup(editingGroup.id, { name: name.trim(), avatarIds: selected })
@@ -107,8 +105,15 @@ export function GroupsHub() {
         editingGroup ? current.map((item) => (item.id === group.id ? group : item)) : [group, ...current]
       );
       groupDialog.current?.close();
+      toast.success(`${group.name} quedó listo para interactuar.`, {
+        title: editingGroup ? "Grupo actualizado" : "Grupo creado",
+        dedupeKey: `group:${group.id}:saved`,
+      });
     } catch (error) {
-      setFormError(error instanceof Error ? error.message : "No pudimos guardar el grupo.");
+      toast.error(error instanceof Error ? error.message : "Intentá nuevamente.", {
+        title: editingGroup ? "No pudimos actualizar el grupo" : "No pudimos crear el grupo",
+        dedupeKey: editingGroup ? `group:${editingGroup.id}:save:error` : "group:create:error",
+      });
     } finally {
       setSaving(false);
     }
@@ -121,9 +126,15 @@ export function GroupsHub() {
     try {
       await deleteAvatarGroup(group.id);
       setGroups((current) => current.filter((item) => item.id !== group.id));
-      setPageError(null);
+      toast.success(`${group.name} fue eliminado.`, {
+        title: "Grupo eliminado",
+        dedupeKey: `group:${group.id}:deleted`,
+      });
     } catch (error) {
-      setPageError(error instanceof Error ? error.message : "No pudimos eliminar el grupo.");
+      toast.error(error instanceof Error ? error.message : "Intentá nuevamente.", {
+        title: "No pudimos eliminar el grupo",
+        dedupeKey: `group:${group.id}:delete:error`,
+      });
     }
   }
 
@@ -135,12 +146,6 @@ export function GroupsHub() {
         description="Administrá grupos de dos o tres avatares y conversá con todos en una misma llamada."
         actions={<Button onClick={openCreate}>Crear grupo</Button>}
       />
-
-      {pageError && groupStatus !== "error" ? (
-        <p className={styles.inlineError} role="alert">
-          {pageError}
-        </p>
-      ) : null}
 
       {groupStatus === "loading" ? (
         <LoadingState title="Cargando grupos" description="Estamos preparando tu lista." />
@@ -238,11 +243,6 @@ export function GroupsHub() {
               </div>
             )}
           </fieldset>
-          {formError ? (
-            <p className={styles.inlineError} role="alert">
-              {formError}
-            </p>
-          ) : null}
         </div>
       </Dialog>
     </div>

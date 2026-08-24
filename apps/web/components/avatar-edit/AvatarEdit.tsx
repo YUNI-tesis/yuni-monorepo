@@ -2,8 +2,8 @@
 
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
-import { Button, ErrorState, LoadingState, PageHeader } from "@yuni/ui";
-import { updateAvatar, uploadAvatarDocument } from "../../lib/api/avatar-api";
+import { Button, ErrorState, LoadingState, PageHeader, useToast } from "@yuni/ui";
+import { type ApiAvatar, updateAvatar, uploadAvatarDocument } from "../../lib/api/avatar-api";
 import { ApiClientError } from "../../lib/api/http-client";
 import { buildUpdateAvatarRequest, useAvatarEdit } from "../../hooks/useAvatarEdit";
 import { useElevenLabsVoiceOptions } from "../../hooks/useElevenLabsVoiceOptions";
@@ -14,6 +14,7 @@ import styles from "./AvatarEdit.module.css";
 
 export function AvatarEdit({ avatarId }: { avatarId: string }) {
   const router = useRouter();
+  const toast = useToast();
   const edit = useAvatarEdit(avatarId);
   const liveAvatarOptions = useLiveAvatarOptions({
     currentAvatarId: edit.loadState.state?.liveAvatarId,
@@ -28,6 +29,7 @@ export function AvatarEdit({ avatarId }: { avatarId: string }) {
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const uploadedFiles = useRef(new Set<string>());
+  const saveToastId = useRef<string | null>(null);
 
   if (edit.loadState.status === "loading") {
     return <LoadingState title="Cargando avatar" description="Estamos preparando la edicion." />;
@@ -67,32 +69,59 @@ export function AvatarEdit({ avatarId }: { avatarId: string }) {
       return;
     }
 
+    if (saveToastId.current) {
+      toast.dismiss(saveToastId.current);
+      saveToastId.current = null;
+    }
     setIsSubmitting(true);
 
+    let savedAvatar: ApiAvatar;
     try {
       const { avatar: updatedAvatar } = await updateAvatar(
         avatarId,
         buildUpdateAvatarRequest(editableState, selectedLiveAvatar, selectedVoice)
       );
-      for (const file of editableState.files) {
-        const key = `${file.name}:${file.size}:${file.lastModified}`;
-        if (uploadedFiles.current.has(key)) continue;
-        await uploadAvatarDocument(updatedAvatar.id, file);
-        uploadedFiles.current.add(key);
-      }
+      savedAvatar = updatedAvatar;
       invalidateAvatarListCache();
-      edit.setSuccess("Cambios guardados.");
-      router.push(`/avatars/${updatedAvatar.id}`);
-      router.refresh();
     } catch (caughtError) {
       const message =
         caughtError instanceof ApiClientError || caughtError instanceof Error
           ? caughtError.message
           : "No pudimos guardar los cambios.";
-      edit.setFormError(message);
-    } finally {
+      saveToastId.current = toast.error(message, {
+        title: "No pudimos guardar los cambios",
+        dedupeKey: `avatar:${avatarId}:update:error`,
+      });
       setIsSubmitting(false);
+      return;
     }
+
+    try {
+      for (const file of editableState.files) {
+        const key = `${file.name}:${file.size}:${file.lastModified}`;
+        if (uploadedFiles.current.has(key)) continue;
+        await uploadAvatarDocument(savedAvatar.id, file);
+        uploadedFiles.current.add(key);
+      }
+    } catch {
+      saveToastId.current = toast.warning(
+        "Los cambios ya están guardados, pero quedaron documentos sin subir. Volvé a guardar para reintentarlo.",
+        {
+          title: "Cambios guardados, con documentos pendientes",
+          dedupeKey: `avatar:${savedAvatar.id}:documents:error`,
+        }
+      );
+      setIsSubmitting(false);
+      return;
+    }
+
+    saveToastId.current = toast.success(`${savedAvatar.name} se actualizó correctamente.`, {
+      title: "Cambios guardados",
+      dedupeKey: `avatar:${savedAvatar.id}:updated`,
+    });
+    router.push(`/avatars/${savedAvatar.id}`);
+    router.refresh();
+    setIsSubmitting(false);
   }
 
   return (

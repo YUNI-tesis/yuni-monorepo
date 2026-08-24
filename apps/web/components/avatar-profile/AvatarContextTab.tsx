@@ -170,7 +170,11 @@ function ManagedContextTab({ avatarId }: { avatarId: string }) {
                 </div>
                 <div className={styles.documentActions}>
                   {document.status === "failed" ? (
-                    <Button size="sm" variant="secondary" onClick={() => void manager.retry(document.id)}>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => void manager.retry(document.id, document.fileName)}
+                    >
                       Reintentar
                     </Button>
                   ) : null}
@@ -178,7 +182,7 @@ function ManagedContextTab({ avatarId }: { avatarId: string }) {
                     size="sm"
                     variant="ghost"
                     disabled={document.status === "deleting"}
-                    onClick={() => void manager.remove(document.id)}
+                    onClick={() => void manager.remove(document.id, document.fileName)}
                   >
                     Eliminar
                   </Button>

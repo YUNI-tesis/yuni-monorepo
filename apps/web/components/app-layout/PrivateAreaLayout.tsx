@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import type { CSSProperties, ReactNode } from "react";
 import { useEffect, useId, useRef, useState } from "react";
 import { YuniLogo } from "../brand/YuniLogo";
+import { useToast } from "@yuni/ui";
 import { getMe, logout, type ApiUser } from "../../lib/api/auth-api";
 import { ApiClientError } from "../../lib/api/http-client";
 import { PrivateNavigation } from "./PrivateNavigation";
@@ -76,6 +77,7 @@ export function PrivateAreaLayout({
 }: PrivateAreaLayoutProps) {
   const pathname = usePathname();
   const router = useRouter();
+  const toast = useToast();
   const contentStyle = {
     "--yuni-private-page-width": maxWidth ?? "1280px",
   } as CSSProperties;
@@ -164,10 +166,19 @@ export function PrivateAreaLayout({
     setIsProfileMenuOpen(false);
 
     try {
-      clearSessionUserCache();
       await logout();
+      clearSessionUserCache();
+      toast.success("Cerraste tu sesión de forma segura.", {
+        title: "Sesión cerrada",
+        dedupeKey: "auth:logout:success",
+      });
       router.push("/auth/login");
       router.refresh();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Intentá nuevamente.", {
+        title: "No pudimos cerrar la sesión",
+        dedupeKey: "auth:logout:error",
+      });
     } finally {
       setIsLoggingOut(false);
     }

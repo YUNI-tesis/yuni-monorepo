@@ -215,13 +215,6 @@
 .placeholder span {
   color: var(--yuni-color-text-muted);
 }
-.pageToast {
-  position: fixed;
-  z-index: 20;
-  top: max(var(--yuni-space-4), env(safe-area-inset-top));
-  right: var(--yuni-space-4);
-  width: min(440px, calc(100% - 32px));
-}
 .callDock {
   position: absolute;
   z-index: 2;

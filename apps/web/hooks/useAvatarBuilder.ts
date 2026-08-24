@@ -22,7 +22,7 @@ export type AvatarBuilderState = {
 
 export type AvatarBuilderField = keyof AvatarBuilderState;
 
-export type AvatarBuilderValidation = Partial<Record<AvatarBuilderField | "form", string>>;
+export type AvatarBuilderValidation = Partial<Record<AvatarBuilderField, string>>;
 
 export function createInitialAvatarBuilderState(): AvatarBuilderState {
   return {
@@ -165,7 +165,6 @@ export function useAvatarBuilder(
     setErrors((currentErrors) => {
       const nextErrors = { ...currentErrors };
       delete nextErrors[field];
-      delete nextErrors.form;
       return nextErrors;
     });
   }
@@ -194,10 +193,6 @@ export function useAvatarBuilder(
     return Object.keys(validationErrors).length === 0;
   }
 
-  function setFormError(message: string) {
-    setErrors((currentErrors) => ({ ...currentErrors, form: message }));
-  }
-
   return {
     state,
     errors,
@@ -211,7 +206,6 @@ export function useAvatarBuilder(
     goBack,
     goNext,
     validateAll,
-    setFormError,
   };
 }
 

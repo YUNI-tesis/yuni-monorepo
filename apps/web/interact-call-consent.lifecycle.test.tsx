@@ -1,6 +1,7 @@
 import { JSDOM } from "jsdom";
 import React from "react";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { ToastProvider } from "@yuni/ui";
 import { InteractCall } from "./components/interact/InteractCall";
 
 let dom: JSDOM;
@@ -25,6 +26,13 @@ const liveCallMocks = vi.hoisted(() => ({
   interrupt: vi.fn(),
   sendTextProbe: vi.fn(),
   attachMediaElement: vi.fn(),
+  dismissError: vi.fn(),
+}));
+const liveCallState = vi.hoisted(() => ({
+  status: "idle",
+  error: null as string | null,
+  hasPendingEnd: false,
+  endedByLimit: false,
 }));
 
 vi.mock("next/navigation", () => ({ useRouter: () => navigationMocks }));
@@ -32,8 +40,11 @@ vi.mock("./lib/api/avatar-api", () => avatarApiMocks);
 vi.mock("./lib/api/auth-api", () => authMocks);
 vi.mock("./hooks/useLiveAvatarSession", () => ({
   useLiveAvatarSession: () => ({
-    status: "idle",
-    error: null,
+    status: liveCallState.status,
+    error: liveCallState.error,
+    hasPendingEnd: liveCallState.hasPendingEnd,
+    endedByLimit: liveCallState.endedByLimit,
+    remainingSeconds: null,
     isMuted: false,
     isUserSpeaking: false,
     isAvatarSpeaking: false,
@@ -91,6 +102,10 @@ describe("InteractCall shared consent lifecycle", () => {
     for (const mock of Object.values(liveCallMocks)) mock.mockReset();
     authMocks.getMe.mockReset();
     navigationMocks.push.mockReset();
+    liveCallState.status = "idle";
+    liveCallState.error = null;
+    liveCallState.hasPendingEnd = false;
+    liveCallState.endedByLimit = false;
     avatarApiMocks.getAvatarInteractionContext.mockResolvedValue({
       interactionContext: {
         avatar: {
@@ -116,7 +131,11 @@ describe("InteractCall shared consent lifecycle", () => {
           resolveUser = resolve;
         })
     );
-    const view = render(<InteractCall avatarId="avatar-1" />);
+    const view = render(
+      <ToastProvider>
+        <InteractCall avatarId="avatar-1" />
+      </ToastProvider>
+    );
     await act(flushAsyncWork);
     fireEvent.click(screen.getByRole("button", { name: "Iniciar llamada" }));
     await act(flushAsyncWork);
@@ -138,5 +157,45 @@ describe("InteractCall shared consent lifecycle", () => {
 
     expect(liveCallMocks.start).not.toHaveBeenCalled();
     expect(navigationMocks.push).not.toHaveBeenCalled();
+  });
+
+  it("keeps a pending save available after its toast is closed", async () => {
+    liveCallState.error = "No pudimos guardar la conversación.";
+    liveCallState.hasPendingEnd = true;
+    render(
+      <ToastProvider>
+        <InteractCall avatarId="avatar-1" />
+      </ToastProvider>
+    );
+    await act(flushAsyncWork);
+
+    expect(screen.getByRole("button", { name: "Reintentar guardado" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Cerrar notificación" }));
+
+    expect(liveCallMocks.dismissError).toHaveBeenCalledOnce();
+    expect(screen.getByRole("button", { name: "Reintentar guardado" })).toBeTruthy();
+  });
+
+  it("announces a duration limit only after the call was saved", async () => {
+    liveCallState.status = "ending";
+    liveCallState.endedByLimit = true;
+    const view = render(
+      <ToastProvider>
+        <InteractCall avatarId="avatar-1" />
+      </ToastProvider>
+    );
+    await act(flushAsyncWork);
+
+    expect(screen.queryByText("Se alcanzó el límite de duración")).toBeNull();
+
+    liveCallState.status = "ended";
+    view.rerender(
+      <ToastProvider>
+        <InteractCall avatarId="avatar-1" />
+      </ToastProvider>
+    );
+    await act(flushAsyncWork);
+
+    expect(screen.getByText("Se alcanzó el límite de duración")).toBeTruthy();
   });
 });

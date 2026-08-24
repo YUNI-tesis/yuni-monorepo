@@ -5,6 +5,7 @@ import { VoiceSelector } from "./components/voice/VoiceSelector";
 import type { VoiceOption } from "./lib/voice-config";
 
 let dom: JSDOM;
+let act: typeof import("@testing-library/react").act;
 let cleanup: typeof import("@testing-library/react").cleanup;
 let fireEvent: typeof import("@testing-library/react").fireEvent;
 let render: typeof import("@testing-library/react").render;
@@ -59,7 +60,7 @@ describe("voice selector preview lifecycle", () => {
     vi.stubGlobal("HTMLElement", dom.window.HTMLElement);
     vi.stubGlobal("Event", dom.window.Event);
     vi.stubGlobal("Audio", MockAudio);
-    ({ cleanup, fireEvent, render, screen } = await import("@testing-library/react"));
+    ({ act, cleanup, fireEvent, render, screen } = await import("@testing-library/react"));
   });
 
   afterAll(() => {
@@ -105,5 +106,32 @@ describe("voice selector preview lifecycle", () => {
     view.unmount();
 
     expect(audio.pause).toHaveBeenCalledOnce();
+  });
+
+  it("ignores late and duplicate failures from previews that are no longer active", () => {
+    const onPreviewError = vi.fn();
+    render(
+      <VoiceSelector
+        options={options}
+        selectedId="agustin"
+        onSelect={vi.fn()}
+        onPreviewError={onPreviewError}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Reproducir muestra de Agustin" }));
+    const agustinAudio = MockAudio.instances[0]!;
+    fireEvent.click(screen.getByRole("button", { name: "Reproducir muestra de Sofia" }));
+    const sofiaAudio = MockAudio.instances[1]!;
+
+    act(() => agustinAudio.listeners.get("error")?.());
+    expect(onPreviewError).not.toHaveBeenCalled();
+
+    act(() => {
+      sofiaAudio.listeners.get("error")?.();
+      sofiaAudio.listeners.get("error")?.();
+    });
+    expect(onPreviewError).toHaveBeenCalledOnce();
+    expect(onPreviewError).toHaveBeenCalledWith(options[1]);
   });
 });

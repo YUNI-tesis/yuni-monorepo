@@ -1,7 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Badge, Button, Card, ErrorState, FormField, Input, LoadingState, PageShell, Toast } from "@yuni/ui";
+import {
+  Badge,
+  Button,
+  Card,
+  ErrorState,
+  FormField,
+  Input,
+  LoadingState,
+  PageShell,
+  useToast,
+} from "@yuni/ui";
 import Link from "next/link";
 import { YuniLogo } from "../../../components/brand/YuniLogo";
 import { InteractCallControls } from "../../../components/interact/InteractCall";
@@ -29,6 +39,7 @@ type PublicAvatarState =
 type StoredIdentity = ApiPublicIdentity;
 
 export function PublicAvatarView({ slug }: { slug: string }) {
+  const toast = useToast();
   const [retryVersion, setRetryVersion] = useState(0);
   const [state, setState] = useState<PublicAvatarState>({ status: "loading", data: null, error: null });
   const [email, setEmail] = useState("");
@@ -37,6 +48,7 @@ export function PublicAvatarView({ slug }: { slug: string }) {
   const [formError, setFormError] = useState<string | null>(null);
   const [hasStarted, setHasStarted] = useState(false);
   const currentSession = useRef<ApiPublicSessionStart["publicSession"] | null>(null);
+  const callToastIdRef = useRef<string | null>(null);
 
   const startTransport = useCallback(async () => {
     let identity = readStoredIdentity(slug);
@@ -97,6 +109,45 @@ export function PublicAvatarView({ slug }: { slug: string }) {
   });
 
   useEffect(() => {
+    if (!call.error) {
+      if (callToastIdRef.current) toast.dismiss(callToastIdRef.current);
+      callToastIdRef.current = null;
+      return;
+    }
+
+    const message = formatPublicError(call.error);
+    const isLimit = isPublicLimitMessage(call.error);
+    callToastIdRef.current = toast.show({
+      tone: isLimit ? "warning" : "danger",
+      title: isLimit
+        ? "Límite de llamada alcanzado"
+        : call.hasPendingEnd
+          ? "No pudimos guardar la llamada"
+          : "Hubo un problema con la llamada",
+      message,
+      dedupeKey: `public-call:${slug}:error`,
+      announcement: "assertive",
+      onDismiss: call.dismissError,
+    });
+  }, [call.dismissError, call.error, call.hasPendingEnd, slug, toast]);
+
+  useEffect(() => {
+    if (!call.endedByLimit || call.status !== "ended") return;
+    toast.warning("La conversación finalizó y se guardó correctamente.", {
+      title: "Se alcanzó el límite de duración",
+      dedupeKey: `public-call:${slug}:duration-limit`,
+      announcement: "assertive",
+    });
+  }, [call.endedByLimit, call.status, slug, toast]);
+
+  useEffect(
+    () => () => {
+      if (callToastIdRef.current) toast.dismiss(callToastIdRef.current);
+    },
+    [toast]
+  );
+
+  useEffect(() => {
     let isMounted = true;
     setState({ status: "loading", data: null, error: null });
     getPublicSharedAvatar(slug)
@@ -154,18 +205,6 @@ export function PublicAvatarView({ slug }: { slug: string }) {
 
   return (
     <PageShell centered maxWidth={hasStarted ? "calc(100vw - 32px)" : "820px"} className={styles.page}>
-      {call.error ? (
-        <Toast
-          className={styles.pageToast}
-          tone="warning"
-          role="alert"
-          aria-live="assertive"
-          onDismiss={call.dismissError}
-        >
-          {formatPublicError(call.error)}
-        </Toast>
-      ) : null}
-
       {!hasStarted ? (
         <header>
           <Link className={styles.brand} href="/" aria-label="YUNI, volver a la landing">
@@ -435,6 +474,12 @@ function formatPublicError(message: string) {
     return "Hay demasiadas llamadas en este momento. Esperá unos minutos e intentá nuevamente.";
   if (/not found|no disponible|resource/i.test(message)) return "El link o el avatar ya no está disponible.";
   return message;
+}
+
+function isPublicLimitMessage(message: string) {
+  return /límite|limit|llamadas permitidas|capacidad de llamadas|demasiados intentos|llamada activa/i.test(
+    message
+  );
 }
 function formatCallStatus(status: ReturnType<typeof useLiveAvatarSession>["status"]) {
   if (status === "active") return "En llamada";

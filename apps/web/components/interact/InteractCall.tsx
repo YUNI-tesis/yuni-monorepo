@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Badge, Button, ErrorState, LoadingState, Toast, YuniIcon, type BadgeTone } from "@yuni/ui";
+import { Badge, Button, ErrorState, LoadingState, YuniIcon, useToast, type BadgeTone } from "@yuni/ui";
 import { useLiveAvatarSession, type LiveAvatarDiagnostics } from "../../hooks/useLiveAvatarSession";
 import {
   endVoiceSessionOnUnload,
@@ -68,7 +68,9 @@ const initialHistoryState: ConversationHistoryState = {
 
 export function InteractCall({ avatarId }: { avatarId: string }) {
   const router = useRouter();
+  const toast = useToast();
   const privacyDialog = useRef<HTMLDialogElement>(null);
+  const callToastIdRef = useRef<string | null>(null);
   const mountedRef = useRef(true);
   const startRequestTokenRef = useRef(0);
   const [avatarState, setAvatarState] = useState<AvatarState>({
@@ -176,6 +178,44 @@ export function InteractCall({ avatarId }: { avatarId: string }) {
       endVoiceSessionOnUnload(realtimeSessionId, transcript);
     },
   });
+
+  useEffect(() => {
+    if (!call.error) {
+      if (callToastIdRef.current) toast.dismiss(callToastIdRef.current);
+      callToastIdRef.current = null;
+      return;
+    }
+
+    const isLimit = isCallLimitMessage(call.error);
+    callToastIdRef.current = toast.show({
+      tone: isLimit ? "warning" : "danger",
+      title: isLimit
+        ? "Límite de llamada alcanzado"
+        : call.hasPendingEnd
+          ? "No pudimos guardar la llamada"
+          : "Hubo un problema con la llamada",
+      message: call.error,
+      dedupeKey: `call:${avatarId}:error`,
+      announcement: "assertive",
+      onDismiss: call.dismissError,
+    });
+  }, [avatarId, call.dismissError, call.error, call.hasPendingEnd, toast]);
+
+  useEffect(() => {
+    if (!call.endedByLimit || call.status !== "ended") return;
+    toast.warning("La conversación se guardó y podés volver a la pantalla anterior.", {
+      title: "Se alcanzó el límite de duración",
+      dedupeKey: `call:${avatarId}:duration-limit`,
+      announcement: "assertive",
+    });
+  }, [avatarId, call.endedByLimit, call.status, toast]);
+
+  useEffect(
+    () => () => {
+      if (callToastIdRef.current) toast.dismiss(callToastIdRef.current);
+    },
+    [toast]
+  );
 
   useEffect(() => {
     mountedRef.current = true;
@@ -454,11 +494,6 @@ export function InteractCall({ avatarId }: { avatarId: string }) {
                 Este avatar todavía no está disponible para interactuar. Avisale al creador.
               </p>
             ) : null}
-            {call.error ? (
-              <Toast tone="warning" role="alert" aria-live="assertive" onDismiss={call.dismissError}>
-                {call.error}
-              </Toast>
-            ) : null}
             {call.hasPendingEnd ? (
               <Button onClick={() => void call.end()}>Reintentar guardado</Button>
             ) : (
@@ -476,6 +511,12 @@ export function InteractCall({ avatarId }: { avatarId: string }) {
         }
       />
     </CallExperienceShell>
+  );
+}
+
+function isCallLimitMessage(message: string) {
+  return /límite|limit|llamadas permitidas|capacidad de llamadas|demasiados intentos|llamada activa/i.test(
+    message
   );
 }
 

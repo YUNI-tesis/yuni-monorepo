@@ -3,6 +3,7 @@ import "@fontsource-variable/manrope";
 import "@fontsource-variable/syne";
 import "@fontsource/audiowide";
 import { AppLayout } from "../components/app-layout/AppLayout";
+import { ToastProvider } from "@yuni/ui";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -17,7 +18,9 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="es">
       <body>
-        <AppLayout>{children}</AppLayout>
+        <ToastProvider>
+          <AppLayout>{children}</AppLayout>
+        </ToastProvider>
       </body>
     </html>
   );

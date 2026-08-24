@@ -26,6 +26,7 @@ import {
   Textarea,
   Tooltip,
   YuniIcon,
+  useToast,
 } from "@yuni/ui";
 
 const swatches = [
@@ -45,6 +46,7 @@ const rows = [
 ];
 
 export function ShowcaseClient() {
+  const toast = useToast();
   const dialogRef = useRef<HTMLDialogElement>(null);
   const drawerRef = useRef<HTMLDialogElement>(null);
 
@@ -170,6 +172,64 @@ export function ShowcaseClient() {
             </Card>
             <Card padding="md">
               <ErrorState title="Error controlado" description="No pudimos completar la accion." />
+            </Card>
+            <Card padding="md">
+              <div className="yuni-stack">
+                <strong>Toasts globales</strong>
+                <div className="yuni-cluster">
+                  <Button
+                    size="sm"
+                    onClick={() => toast.success("Los cambios quedaron guardados.", { title: "Listo" })}
+                  >
+                    Success
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="danger"
+                    onClick={() =>
+                      toast.error("Revisá la conexión e intentá nuevamente.", {
+                        title: "No pudimos guardar",
+                        dedupeKey: "design-system:error",
+                      })
+                    }
+                  >
+                    Error deduplicado
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() =>
+                      toast.warning("Queda un minuto o menos.", {
+                        title: "Límite próximo",
+                        announcement: "assertive",
+                      })
+                    }
+                  >
+                    Warning
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => toast.info("Esta es una actualización informativa.")}
+                  >
+                    Info
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      toast.info("Primera notificación", { dedupeKey: "design-system:stack:1" });
+                      toast.success("Segunda notificación", { dedupeKey: "design-system:stack:2" });
+                      toast.warning("Tercera notificación", { dedupeKey: "design-system:stack:3" });
+                      toast.error("La más antigua fue reemplazada", {
+                        dedupeKey: "design-system:stack:4",
+                      });
+                    }}
+                  >
+                    Probar pila
+                  </Button>
+                </div>
+              </div>
             </Card>
           </div>
         </section>

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Button, Card, FormField, Input, PageHeader, PageShell } from "@yuni/ui";
+import { Button, Card, FormField, Input, PageHeader, PageShell, useToast } from "@yuni/ui";
 import { login } from "../../../lib/api/auth-api";
 
 type FormSubmitEvent = {
@@ -13,12 +13,11 @@ type FormSubmitEvent = {
 
 export default function LoginPage() {
   const router = useRouter();
-  const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   async function onSubmit(event: FormSubmitEvent) {
     event.preventDefault();
-    setError(null);
     setIsSubmitting(true);
 
     const formData = new FormData(event.currentTarget);
@@ -28,10 +27,20 @@ export default function LoginPage() {
         email: String(formData.get("email") ?? ""),
         password: String(formData.get("password") ?? ""),
       });
+      toast.success("Ya podés continuar a tu espacio.", {
+        title: "Sesión iniciada",
+        dedupeKey: "auth:login:success",
+      });
       router.push("/dashboard");
       router.refresh();
     } catch (caughtError) {
-      setError(caughtError instanceof Error ? caughtError.message : "No pudimos iniciar sesion.");
+      toast.error(
+        caughtError instanceof Error ? caughtError.message : "Revisá tus datos e intentá nuevamente.",
+        {
+          title: "No pudimos iniciar sesión",
+          dedupeKey: "auth:login:error",
+        }
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -62,7 +71,6 @@ export default function LoginPage() {
               minLength={8}
             />
           </FormField>
-          {error ? <p className="yuni-form-field__error">{error}</p> : null}
           <Button type="submit" loading={isSubmitting}>
             Entrar
           </Button>

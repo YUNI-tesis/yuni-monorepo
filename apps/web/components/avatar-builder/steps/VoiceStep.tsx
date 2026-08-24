@@ -1,4 +1,6 @@
-import { ErrorState, LoadingState } from "@yuni/ui";
+"use client";
+
+import { ErrorState, LoadingState, useToast } from "@yuni/ui";
 import { VoiceSelector } from "../../voice/VoiceSelector";
 import { StepHeading } from "../StepHeading";
 import type { ElevenLabsVoiceOptionsState } from "../../../hooks/useElevenLabsVoiceOptions";
@@ -12,6 +14,8 @@ export function VoiceStep({
   builder: AvatarBuilderController;
   voiceOptions: ElevenLabsVoiceOptionsState;
 }) {
+  const toast = useToast();
+
   return (
     <section className={styles.panel}>
       <StepHeading title="Voz" description="Selecciona la voz para las respuestas habladas." />
@@ -33,6 +37,12 @@ export function VoiceStep({
           selectedId={builder.state.voiceId}
           error={builder.errors.voiceId}
           onSelect={(voiceId) => builder.updateField("voiceId", voiceId)}
+          onPreviewError={(voice) =>
+            toast.error("Probá nuevamente o elegí otra voz.", {
+              title: `No pudimos reproducir ${voice.displayName.split(" - ")[0] ?? "la muestra"}`,
+              dedupeKey: `voice:${voice.id}:preview:error`,
+            })
+          }
         />
       ) : null}
     </section>
