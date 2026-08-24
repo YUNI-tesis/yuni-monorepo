@@ -1,7 +1,8 @@
 import { createShareLinkRepository, type PrismaClientInstance } from "@yuni/db";
 import type { CreateShareLinkInput, UpdateShareLinkInput } from "@yuni/domain";
+import type { InteractionLimitRecord } from "../external-sessions/limits";
 
-export type ShareLinkRecord = {
+export type ShareLinkRecord = InteractionLimitRecord & {
   id: string;
   avatarAgentId: string;
   ownerId: string;

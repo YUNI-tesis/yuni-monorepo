@@ -1,6 +1,8 @@
 "use client";
 
-import { apiRequest } from "./http-client";
+import { apiRequest, queueApiJsonBeacon } from "./http-client";
+import type { ApiInteractionLimits } from "./sharing-api";
+import { KEEPALIVE_MAX_BODY_BYTES, normalizeVoiceTranscript } from "./transcript";
 
 export type ApiAvatarStatus = "draft" | "active" | "disabled";
 
@@ -66,6 +68,7 @@ export type ApiInteractionContext = {
   access: {
     type: "owner" | "shared";
     canInteract: boolean;
+    limits: ApiInteractionLimits | null;
   };
   contextStatus: "ready" | "processing" | "failed";
   voiceAvailability: "ready" | "processing" | "unavailable";
@@ -123,15 +126,13 @@ export type ApiAgentProviderSync = {
 export type ApiVoiceSession = {
   conversationId: string;
   realtimeSessionId: string;
-  providerAgentId: string;
   sessionToken: string;
-  sessionId: string | null;
+  expiresAt: string | null;
 };
 
 export type EndedApiVoiceSession = {
   id: string;
   conversationId: string | null;
-  providerSessionId: string | null;
   status: string;
   endedAt: string | null;
 };
@@ -321,9 +322,46 @@ export function startVoiceSession(avatarId: string) {
   });
 }
 
-export function endVoiceSession(realtimeSessionId: string, transcript: VoiceSessionTranscriptEntry[]) {
-  return apiRequest<{ voiceSession: EndedApiVoiceSession }>(`/voice-sessions/${realtimeSessionId}/end`, {
+export function endVoiceSession(
+  realtimeSessionId: string,
+  transcript: VoiceSessionTranscriptEntry[],
+  options: { keepalive?: boolean; maxBodyBytes?: number } = {}
+) {
+  const path = voiceSessionEndPath(realtimeSessionId);
+  const body = createVoiceSessionEndBody(transcript, options);
+
+  return apiRequest<{ voiceSession: EndedApiVoiceSession }>(path, {
     method: "POST",
-    body: JSON.stringify({ transcript }),
+    body: JSON.stringify(body),
+    ...(options.keepalive !== undefined ? { keepalive: options.keepalive } : {}),
   });
+}
+
+export function endVoiceSessionOnUnload(
+  realtimeSessionId: string,
+  transcript: VoiceSessionTranscriptEntry[]
+) {
+  const path = voiceSessionEndPath(realtimeSessionId);
+  const body = createVoiceSessionEndBody(transcript, { keepalive: true });
+  if (queueApiJsonBeacon(path, body)) return;
+
+  void apiRequest(path, {
+    method: "POST",
+    body: JSON.stringify(body),
+    keepalive: true,
+  }).catch(() => undefined);
+}
+
+function voiceSessionEndPath(realtimeSessionId: string) {
+  return `/voice-sessions/${encodeURIComponent(realtimeSessionId)}/end`;
+}
+
+function createVoiceSessionEndBody(
+  transcript: VoiceSessionTranscriptEntry[],
+  options: { keepalive?: boolean; maxBodyBytes?: number }
+) {
+  const maxBodyBytes = options.keepalive
+    ? Math.min(options.maxBodyBytes ?? KEEPALIVE_MAX_BODY_BYTES, KEEPALIVE_MAX_BODY_BYTES)
+    : options.maxBodyBytes;
+  return { transcript: normalizeVoiceTranscript(transcript, undefined, maxBodyBytes) };
 }

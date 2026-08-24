@@ -151,9 +151,9 @@ describe("creator dashboard helpers", () => {
     expect(formatDashboardRate(null)).toBe("—");
     expect(formatDashboardDuration(null)).toBe("—");
     expect(formatDashboardDuration(305)).toBe("5 min 05 s");
-    expect(
-      formatDashboardPeriod("2026-07-18T00:00:00.000Z", "2026-08-17T00:00:00.000Z")
-    ).toBe("18 jul–16 ago");
+    expect(formatDashboardPeriod("2026-07-18T00:00:00.000Z", "2026-08-17T00:00:00.000Z")).toBe(
+      "18 jul–16 ago"
+    );
   });
 
   it("builds deep links for attention and transcripts", () => {

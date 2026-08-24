@@ -17,4 +17,5 @@ export { createPublicSessionRepository } from "./repositories/public-session-rep
 export { createRealtimeSessionRepository } from "./repositories/realtime-session-repository";
 export { createShareLinkRepository } from "./repositories/share-link-repository";
 export { createUsageEventRepository } from "./repositories/usage-event-repository";
+export { createExternalSessionPolicyRepository } from "./repositories/external-session-policy-repository";
 export { createUserRepository, type PublicUser, type UserWithPassword } from "./repositories/user-repository";

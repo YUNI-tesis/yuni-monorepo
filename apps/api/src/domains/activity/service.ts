@@ -29,10 +29,10 @@ export function createAvatarActivityService({ repository }: AvatarActivityServic
               participant.grantStatus === null
                 ? null
                 : participant.grantStatus === "revoked"
-                ? ("revoked" as const)
-                : participant.participantUserId
-                  ? ("linked" as const)
-                  : ("pending" as const),
+                  ? ("revoked" as const)
+                  : participant.participantUserId
+                    ? ("linked" as const)
+                    : ("pending" as const),
             totalConversations: participant.totalConversations,
             lastActivityAt: participant.lastActivityAt?.toISOString() ?? null,
             sortCreatedAt: participant.grantCreatedAt,

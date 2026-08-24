@@ -6,6 +6,10 @@ import {
   type UpdateShareLinkInput,
 } from "@yuni/domain";
 import type { ShareLinkRecord, ShareLinksRepository } from "./repository";
+import { toInteractionLimits } from "../external-sessions/limits";
+import type { InteractionLimits } from "@yuni/domain";
+import { readSafeHttpUrl } from "../../utils/safe-url";
+import { hasUsableAvatarProviderVersion } from "../avatars/provider-availability";
 
 export type ShareLinkDto = {
   id: string;
@@ -17,12 +21,14 @@ export type ShareLinkDto = {
   createdAt: string;
   updatedAt: string;
   lastUsedAt: string | null;
+  limits: InteractionLimits;
 };
 
 export type PublicSharedAvatarDto = {
   shareLink: {
     slug: string;
     name: string;
+    limits: InteractionLimits;
   };
   avatar: {
     name: string;
@@ -107,20 +113,16 @@ export function createShareLinksService({ repository, publicBaseUrl }: ShareLink
         shareLink: {
           slug: shareLink.slug,
           name: shareLink.name,
+          limits: toInteractionLimits(shareLink),
         },
         avatar: {
           name: shareLink.avatarAgent.name,
           description: shareLink.avatarAgent.description,
-          thumbnailUrl: liveAvatarConfig.success ? (liveAvatarConfig.data.thumbnailUrl ?? null) : null,
+          thumbnailUrl: liveAvatarConfig.success ? readSafeHttpUrl(liveAvatarConfig.data.thumbnailUrl) : null,
         },
         capabilities: {
           voice:
-            liveAvatarConfig.success &&
-            Boolean(shareLink.avatarAgent.providerAgentId) &&
-            Boolean(
-              shareLink.avatarAgent.providerSyncStatus === "synced" ||
-              shareLink.avatarAgent.providerLastUsableAt
-            )
+            liveAvatarConfig.success && hasUsableAvatarProviderVersion(shareLink.avatarAgent)
               ? "ready"
               : "unavailable",
         },
@@ -142,6 +144,7 @@ function toShareLinkDto(record: ShareLinkRecord, publicBaseUrl: string): ShareLi
     createdAt: record.createdAt.toISOString(),
     updatedAt: record.updatedAt.toISOString(),
     lastUsedAt: record.lastUsedAt?.toISOString() ?? null,
+    limits: toInteractionLimits(record),
   };
 }
 

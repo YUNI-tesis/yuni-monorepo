@@ -33,10 +33,7 @@ export function createAvatarActivityRepository(db: Db) {
             avatarAgentId,
             participantEmail: { not: null },
             NOT: { participantEmail: avatar.owner.email },
-            OR: [
-              { visibility: "public" },
-              { visibility: "private", accessGrantId: { not: null } },
-            ],
+            OR: [{ visibility: "public" }, { visibility: "private", accessGrantId: { not: null } }],
           },
           _count: { id: true },
           _max: { createdAt: true, lastMessageAt: true },
@@ -85,9 +82,7 @@ export function createAvatarActivityRepository(db: Db) {
             ...(hasPublicActivity ? (["public_link"] as const) : []),
           ],
           totalConversations: records.reduce((total, item) => total + item._count.id, 0),
-          lastActivityAt: dates.length
-            ? new Date(Math.max(...dates.map((value) => value.getTime())))
-            : null,
+          lastActivityAt: dates.length ? new Date(Math.max(...dates.map((value) => value.getTime()))) : null,
         };
       });
     },
@@ -140,10 +135,7 @@ export function createAvatarActivityRepository(db: Db) {
           avatarAgentId,
           participantEmail: { not: null },
           NOT: { participantEmail: avatar.owner.email },
-          OR: [
-            { visibility: "public" },
-            { visibility: "private", accessGrant: { ownerId, avatarAgentId } },
-          ],
+          OR: [{ visibility: "public" }, { visibility: "private", accessGrant: { ownerId, avatarAgentId } }],
         },
         select: {
           id: true,
@@ -170,19 +162,11 @@ function participantConversationWhere(avatarAgentId: string, participantEmail: s
   return {
     avatarAgentId,
     participantEmail,
-    OR: [
-      { visibility: "public" as const },
-      { visibility: "private" as const, accessGrantId: { not: null } },
-    ],
+    OR: [{ visibility: "public" as const }, { visibility: "private" as const, accessGrantId: { not: null } }],
   };
 }
 
-async function hasParticipant(
-  db: Db,
-  ownerId: string,
-  avatarAgentId: string,
-  participantEmail: string
-) {
+async function hasParticipant(db: Db, ownerId: string, avatarAgentId: string, participantEmail: string) {
   const [grant, conversation] = await Promise.all([
     db.accessGrant.findFirst({
       where: { ownerId, avatarAgentId, participantEmail },

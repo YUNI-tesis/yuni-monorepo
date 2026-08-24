@@ -2,6 +2,7 @@ export type ApiErrorCode =
   | "BAD_REQUEST"
   | "BAD_GATEWAY"
   | "CONFLICT"
+  | "FORBIDDEN"
   | "INTERNAL_SERVER_ERROR"
   | "NOT_FOUND"
   | "RATE_LIMITED"
@@ -14,6 +15,7 @@ export type ApiErrorBody = {
     message: string;
     issues?: unknown;
     reason?: string;
+    retryAfterSeconds?: number;
   };
 };
 
@@ -45,6 +47,14 @@ export function conflictError(message: string) {
   return apiError("CONFLICT", message);
 }
 
+export function forbiddenError(message = "Forbidden") {
+  return apiError("FORBIDDEN", message);
+}
+
+export function conflictErrorWithReason(message: string, reason: string) {
+  return apiError("CONFLICT", message, undefined, reason);
+}
+
 export function notFoundError(message = "Resource not found") {
   return apiError("NOT_FOUND", message);
 }
@@ -61,6 +71,12 @@ export function serviceUnavailableError(message = "Service unavailable", reason?
   return apiError("SERVICE_UNAVAILABLE", message, undefined, reason);
 }
 
-export function rateLimitedError(message = "Too many requests") {
-  return apiError("RATE_LIMITED", message);
+export function rateLimitedError(
+  message = "Too many requests",
+  reason = "PLATFORM_RATE_LIMIT",
+  retryAfterSeconds?: number
+) {
+  const body = apiError("RATE_LIMITED", message, undefined, reason);
+  if (retryAfterSeconds !== undefined) body.error.retryAfterSeconds = retryAfterSeconds;
+  return body;
 }

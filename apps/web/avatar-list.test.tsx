@@ -15,6 +15,6 @@ describe("avatar list filters", () => {
     expect(html).toContain("Todos");
     expect(html).toContain("Propios");
     expect(html).toContain("Compartidos conmigo");
-    expect(html).toContain("aria-pressed=\"true\"");
+    expect(html).toContain('aria-pressed="true"');
   });
 });

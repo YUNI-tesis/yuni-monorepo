@@ -1,14 +1,7 @@
 "use client";
 
 import Lenis from "lenis";
-import {
-  motion,
-  useReducedMotion,
-  useScroll,
-  useSpring,
-  useTransform,
-  type MotionValue,
-} from "motion/react";
+import { motion, useReducedMotion, useScroll, useSpring, useTransform, type MotionValue } from "motion/react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import React, {
@@ -308,8 +301,14 @@ function ThesisConvergence({ reducedMotion }: { reducedMotion: boolean }) {
           </filter>
         </defs>
 
-        <path className={styles.convergenceGuide} d="M150 135 C340 135 350 220 536 230 C586 233 616 230 660 230" />
-        <path className={styles.convergenceGuide} d="M150 330 C340 330 350 244 536 230 C586 226 616 230 660 230" />
+        <path
+          className={styles.convergenceGuide}
+          d="M150 135 C340 135 350 220 536 230 C586 233 616 230 660 230"
+        />
+        <path
+          className={styles.convergenceGuide}
+          d="M150 330 C340 330 350 244 536 230 C586 226 616 230 660 230"
+        />
         <path
           className={`${styles.convergenceGlow} ${styles.convergenceGlowLucas}`}
           d="M150 135 C340 135 350 220 536 230 C586 233 616 230 660 230"
@@ -697,7 +696,8 @@ export function LandingExperience() {
                 </h2>
                 <p className={styles.thesisQuestion}>¿Qué hace que una IA se sienta viva?</p>
                 <p className={styles.thesisAnswer}>
-                  YUNI fue nuestra forma de responderla: identidad, contexto y voz reunidos en una experiencia real.
+                  YUNI fue nuestra forma de responderla: identidad, contexto y voz reunidos en una experiencia
+                  real.
                 </p>
               </Reveal>
               <Reveal className={styles.thesisVisual} delay={0.12} reducedMotion={reducedMotion}>

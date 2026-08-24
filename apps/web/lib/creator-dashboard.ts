@@ -64,11 +64,7 @@ export function getDashboardAttentionPath(item: ApiDashboardAttentionItem) {
     : participantPath;
 }
 
-export function getDashboardTranscriptPath(
-  avatarId: string,
-  participantKey: string,
-  conversationId: string
-) {
+export function getDashboardTranscriptPath(avatarId: string, participantKey: string, conversationId: string) {
   return `/avatars/${encodeURIComponent(avatarId)}/activity/${encodeURIComponent(participantKey)}?conversation=${encodeURIComponent(conversationId)}`;
 }
 

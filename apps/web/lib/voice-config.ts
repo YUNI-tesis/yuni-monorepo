@@ -57,8 +57,12 @@ export function createVoiceConfig({
   fallbackDescription = "",
 }: VoiceConfigInput): ApiVoiceConfig {
   const isCurrentOption = selectedVoice?.displayName === currentVoiceOptionName;
-  const displayName = isCurrentOption ? fallbackDisplayName : selectedVoice?.displayName ?? fallbackDisplayName;
-  const description = isCurrentOption ? fallbackDescription : selectedVoice?.description ?? fallbackDescription;
+  const displayName = isCurrentOption
+    ? fallbackDisplayName
+    : (selectedVoice?.displayName ?? fallbackDisplayName);
+  const description = isCurrentOption
+    ? fallbackDescription
+    : (selectedVoice?.description ?? fallbackDescription);
   const config: ApiVoiceConfig = {
     provider: selectedVoice?.provider ?? fallbackProvider,
     voiceId,

@@ -2,6 +2,7 @@
 
 import type { DialogHTMLAttributes, MouseEvent, ReactNode } from "react";
 import { forwardRef } from "react";
+import { cn } from "../utils";
 import { Button } from "./Button";
 
 export type DialogProps = DialogHTMLAttributes<HTMLDialogElement> & {
@@ -13,7 +14,7 @@ export type DialogProps = DialogHTMLAttributes<HTMLDialogElement> & {
 };
 
 export const Dialog = forwardRef<HTMLDialogElement, DialogProps>(function Dialog(
-  { title, description, children, footer, closeLabel = "Cerrar", ...props },
+  { title, description, children, footer, closeLabel = "Cerrar", className, ...props },
   ref
 ) {
   function onDialogClick(event: MouseEvent<HTMLDialogElement>) {
@@ -23,7 +24,13 @@ export const Dialog = forwardRef<HTMLDialogElement, DialogProps>(function Dialog
   }
 
   return (
-    <dialog ref={ref} className="yuni-dialog" aria-label={title} onClick={onDialogClick} {...props}>
+    <dialog
+      ref={ref}
+      className={cn("yuni-dialog", className)}
+      aria-label={title}
+      onClick={onDialogClick}
+      {...props}
+    >
       <div className="yuni-dialog__body">
         <form method="dialog" className="yuni-dialog__close-form">
           <button className="yuni-dialog__close" type="submit" aria-label="Cerrar">

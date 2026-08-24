@@ -106,7 +106,7 @@ export function PrivateAreaLayout({
       .catch((error) => {
         if (error instanceof ApiClientError && error.status === 401) {
           clearSessionUserCache();
-          router.push("/auth/login");
+          router.replace("/auth/login");
           return;
         }
 

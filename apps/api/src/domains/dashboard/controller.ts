@@ -12,9 +12,7 @@ const DAY_MS = 24 * 60 * 60 * 1_000;
 
 export type CreatorDashboardControllerDependencies = CreatorDashboardServiceDependencies;
 
-export function createCreatorDashboardController(
-  dependencies: CreatorDashboardControllerDependencies
-) {
+export function createCreatorDashboardController(dependencies: CreatorDashboardControllerDependencies) {
   const dashboard = new Hono();
   const service = createCreatorDashboardService(dependencies);
 

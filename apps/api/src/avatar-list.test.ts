@@ -78,12 +78,45 @@ describe("avatar list DTO", () => {
 
   it.each([
     ["valid owner", "owner", {}, "ready"],
-    ["owner with pending sync", "owner", { providerSyncStatus: "not_synced" }, "ready"],
+    ["owner with pending sync", "owner", { providerSyncStatus: "not_synced" }, "preparing"],
+    [
+      "owner syncing a new version while a previous version remains usable",
+      "owner",
+      {
+        providerSyncStatus: "syncing",
+        providerLastUsableAt: new Date("2026-08-16T12:00:00.000Z"),
+      },
+      "ready",
+    ],
     ["owner with failed sync", "owner", { providerSyncStatus: "failed" }, "needs_attention"],
+    [
+      "owner with failed sync and a previous usable version",
+      "owner",
+      {
+        providerSyncStatus: "failed",
+        providerLastUsableAt: new Date("2026-08-16T12:00:00.000Z"),
+      },
+      "ready",
+    ],
     ["shared and synced", "shared", {}, "ready"],
     ["shared while syncing", "shared", { providerSyncStatus: "not_synced" }, "preparing"],
-    ["shared without a provider agent", "shared", { providerAgentId: null }, "preparing"],
+    ["shared with a synced state but no provider agent", "shared", { providerAgentId: null }, "unavailable"],
+    [
+      "owner with a synced state but no provider agent",
+      "owner",
+      { providerAgentId: null },
+      "needs_attention",
+    ],
     ["shared with failed sync", "shared", { providerSyncStatus: "failed" }, "unavailable"],
+    [
+      "shared with failed sync and a previous usable version",
+      "shared",
+      {
+        providerSyncStatus: "failed",
+        providerLastUsableAt: new Date("2026-08-16T12:00:00.000Z"),
+      },
+      "ready",
+    ],
   ] as const)("resolves %s as %s", (_name, accessType, overrides, expected) => {
     const dto = toAvatarListItemDto(createAvatarRecord(overrides as Partial<AvatarAgentRecord>), accessType);
 

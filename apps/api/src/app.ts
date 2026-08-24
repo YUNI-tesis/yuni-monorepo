@@ -7,6 +7,7 @@ import {
   liveAvatarConfig,
   rateLimitConfig,
   hasS3Config,
+  serverConfig,
 } from "@yuni/config";
 import { LiveAvatarProvider } from "@yuni/avatars";
 import {
@@ -17,6 +18,7 @@ import {
   createRealtimeSessionRepository,
   createJobRepository,
   createAvatarGroupRepository,
+  createExternalSessionPolicyRepository,
   prisma,
 } from "@yuni/db";
 import { S3ObjectStorage } from "@yuni/storage";
@@ -40,6 +42,7 @@ import {
   createVoiceSessionsController,
   type VoiceSessionsControllerDependencies,
 } from "./domains/voice-sessions/controller.js";
+import { createVoiceSessionsService } from "./domains/voice-sessions/service.js";
 import {
   createVoiceProvidersController,
   type VoiceProvidersControllerDependencies,
@@ -64,14 +67,14 @@ import {
   type CreatorDashboardControllerDependencies,
 } from "./domains/dashboard/controller.js";
 import { createCreatorDashboardDataRepository } from "./domains/dashboard/repository.js";
-import { requestLogger } from "./middleware/request-logger.js";
-import { internalServerError } from "./utils/errors.js";
+import { requestLogger, shouldIncludeErrorStack } from "./middleware/request-logger.js";
+import { forbiddenError, internalServerError } from "./utils/errors.js";
 import {
   createPublicSessionsController,
   type PublicSessionsControllerDependencies,
 } from "./domains/public-sessions/controller.js";
 import { createPublicTokenService } from "./domains/public-sessions/tokens.js";
-import { createInMemoryPublicSessionRateLimiter } from "./domains/public-sessions/rate-limiter.js";
+import { createInMemoryRateLimiter } from "./domains/public-sessions/rate-limiter.js";
 import { createProviderTokenProtector } from "./domains/public-sessions/provider-token-protector.js";
 import { createPublicSessionsService } from "./domains/public-sessions/service.js";
 import {
@@ -84,6 +87,8 @@ import {
   type AvatarGroupsControllerDependencies,
 } from "./domains/avatar-groups/controller.js";
 import { createAvatarGroupsService } from "./domains/avatar-groups/service.js";
+import { createExternalSessionPolicyService } from "./domains/external-sessions/policy.js";
+import { createClientIpResolver } from "./middleware/client-ip.js";
 
 export type AppDependencies = {
   auth: AuthControllerDependencies;
@@ -105,10 +110,17 @@ const liveAvatarProvider = new LiveAvatarProvider();
 const elevenLabsAgentProvider = new ElevenLabsAgentProvider();
 const conversationTitleGenerator = createOpenAiConversationTitleGenerator();
 const groupOrchestrator = createOpenAiGroupOrchestrator();
-const publicSessionRateLimiter = createInMemoryPublicSessionRateLimiter({
-  maxPerAvatar: rateLimitConfig.maxPublicSessionsPerAvatarPerHour,
-  maxPerIpAndLink: rateLimitConfig.maxPublicSessionsPerIpPerHour,
+const externalSessionRateLimiter = createInMemoryRateLimiter({ secret: authConfig.secret });
+const externalSessionPolicyRepository = createExternalSessionPolicyRepository(prisma);
+const externalSessionPolicyService = createExternalSessionPolicyService({
+  repository: externalSessionPolicyRepository,
+  hardMaxMinutes: rateLimitConfig.maxExternalSessionMinutes,
+  maxConcurrentPerParticipant: rateLimitConfig.maxExternalConcurrentPerParticipant,
+  maxConcurrentPerAvatar: rateLimitConfig.maxExternalConcurrentPerAvatar,
 });
+const providerTokenProtector = createProviderTokenProtector(authConfig.secret);
+const resolveClientIp = createClientIpResolver(serverConfig.trustProxyHops);
+const allowedWebOrigin = normalizeBrowserOrigin(clientEnv.NEXT_PUBLIC_WEB_URL);
 
 const defaultDependencies: AppDependencies = {
   auth: {
@@ -135,18 +147,29 @@ const defaultDependencies: AppDependencies = {
     avatarsRepository: createAvatarsRepository(prisma),
     conversationsRepository: createConversationRepository(prisma),
     realtimeSessionsRepository: createRealtimeSessionRepository(prisma),
-    messagesRepository: createMessageRepository(prisma),
     liveAvatarProvider,
     elevenLabsAgentProvider,
     conversationTitleGenerator,
     backgroundSyncEnabled: true,
+    resolveClientIp,
+    externalSessions: {
+      policyService: externalSessionPolicyService,
+      policyRepository: externalSessionPolicyRepository,
+      rateLimiter: externalSessionRateLimiter,
+      providerTokenProtector,
+      rateLimits: {
+        startIpTarget: rateLimitConfig.maxExternalSessionStartsPerIpTargetHour,
+        startParticipantTarget: rateLimitConfig.maxExternalSessionStartsPerParticipantTargetHour,
+        startAvatar: rateLimitConfig.maxExternalSessionStartsPerAvatarHour,
+      },
+    },
   },
   voiceProviders: {
     elevenLabsVoiceProvider: elevenLabsAgentProvider,
   },
   share: {
     repository: createShareLinksRepository(prisma),
-    publicBaseUrl: clientEnv.NEXT_PUBLIC_WEB_URL,
+    publicBaseUrl: allowedWebOrigin,
   },
   accessGrants: {
     repository: createAccessGrantsRepository(prisma),
@@ -161,11 +184,20 @@ const defaultDependencies: AppDependencies = {
     repository: createPublicSessionRepository(prisma),
     liveAvatarProvider,
     tokenService: createPublicTokenService(),
-    rateLimiter: publicSessionRateLimiter,
-    publicSessionMaxMinutes: rateLimitConfig.publicSessionMaxMinutes,
+    rateLimiter: externalSessionRateLimiter,
+    policyService: externalSessionPolicyService,
+    rateLimits: {
+      identifyIpLink: rateLimitConfig.maxPublicIdentificationsPerIpLink15Minutes,
+      identifyEmailLink: rateLimitConfig.maxPublicIdentificationsPerEmailLink15Minutes,
+      startIpTarget: rateLimitConfig.maxExternalSessionStartsPerIpTargetHour,
+      startParticipantTarget: rateLimitConfig.maxExternalSessionStartsPerParticipantTargetHour,
+      startLink: rateLimitConfig.maxPublicSessionStartsPerLinkHour,
+      startAvatar: rateLimitConfig.maxExternalSessionStartsPerAvatarHour,
+    },
     publicSessionMaxMessages: rateLimitConfig.publicSessionMaxMessages,
-    providerTokenProtector: createProviderTokenProtector(authConfig.secret),
+    providerTokenProtector,
     conversationTitleGenerator,
+    resolveClientIp,
   },
   context: {
     repository: createAvatarContextRepository(prisma),
@@ -177,7 +209,7 @@ const defaultDependencies: AppDependencies = {
     liveAvatarProvider,
     elevenLabsAgentProvider,
     orchestrator: groupOrchestrator,
-    providerTokenProtector: createProviderTokenProtector(authConfig.secret),
+    providerTokenProtector,
     maxMinutes: 10,
   },
 };
@@ -192,7 +224,7 @@ export function createApp(dependencies: AppDependencies = defaultDependencies) {
       error: {
         name: error.name,
         message: error.message,
-        stack: error.stack,
+        ...(shouldIncludeErrorStack() ? { stack: error.stack } : {}),
       },
       method: context.req.method,
       path: context.req.path,
@@ -203,13 +235,21 @@ export function createApp(dependencies: AppDependencies = defaultDependencies) {
 
   app.use("*", requestLogger());
 
+  app.use("*", async (context, next) => {
+    const origin = context.req.header("origin");
+    if (origin && origin !== allowedWebOrigin) {
+      return context.json(forbiddenError("Origin not allowed"), 403);
+    }
+    await next();
+  });
+
   app.use(
     "*",
     cors({
-      origin: clientEnv.NEXT_PUBLIC_WEB_URL,
+      origin: allowedWebOrigin,
       credentials: true,
       allowMethods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
-      allowHeaders: ["Content-Type", "Authorization"],
+      allowHeaders: ["Content-Type", "Authorization", "X-Request-ID"],
     })
   );
 
@@ -263,18 +303,24 @@ export function createApp(dependencies: AppDependencies = defaultDependencies) {
 
 export const app = createApp();
 
-export function startPublicSessionMaintenance(intervalMs = 15_000) {
-  const dependencies = defaultDependencies.publicSessions;
-  if (!dependencies) return () => undefined;
-  const service = createPublicSessionsService(dependencies);
+export function normalizeBrowserOrigin(value: string) {
+  return new URL(value).origin;
+}
+
+export function startExternalSessionMaintenance(intervalMs = 15_000) {
+  const publicDependencies = defaultDependencies.publicSessions;
+  const voiceDependencies = defaultDependencies.voiceSessions;
+  if (!publicDependencies && !voiceDependencies) return () => undefined;
+  const publicService = publicDependencies ? createPublicSessionsService(publicDependencies) : null;
+  const voiceService = voiceDependencies ? createVoiceSessionsService(voiceDependencies) : null;
   let running = false;
   const cleanup = async () => {
     if (running) return;
     running = true;
     try {
-      await service.cleanupExpired();
+      await Promise.all([publicService?.cleanupExpired(), voiceService?.cleanupExpiredShared()]);
     } catch (error) {
-      logger.error("Public session maintenance failed", {
+      logger.error("External session maintenance failed", {
         error: error instanceof Error ? error.message : "Unknown cleanup error",
       });
     } finally {

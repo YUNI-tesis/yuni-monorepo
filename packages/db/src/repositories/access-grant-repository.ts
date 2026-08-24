@@ -1,5 +1,5 @@
-import { Prisma, type AccessGrantStatus, type PrismaClient } from "@prisma/client";
-import type { CreateAccessGrantInput } from "@yuni/domain";
+import { Prisma, type PrismaClient } from "@prisma/client";
+import type { CreateAccessGrantInput, UpdateAccessGrantInput } from "@yuni/domain";
 import { OwnershipError, SelfAccessGrantError } from "@yuni/domain";
 
 type Db = PrismaClient | Prisma.TransactionClient;
@@ -21,6 +21,7 @@ export function createAccessGrantRepository(db: Db) {
           avatarAgentId,
           participantEmail: input.email,
           participantUserId: participant?.id ?? null,
+          ...(input.limits ?? {}),
         },
       });
     },
@@ -42,7 +43,7 @@ export function createAccessGrantRepository(db: Db) {
       ownerId: string,
       avatarAgentId: string,
       accessGrantId: string,
-      status: AccessGrantStatus
+      input: UpdateAccessGrantInput
     ) {
       return withTransaction(db, async (transaction) => {
         await lockAccessGrant(transaction, accessGrantId);
@@ -52,39 +53,55 @@ export function createAccessGrantRepository(db: Db) {
         if (!current) throw new OwnershipError();
 
         const participant =
-          status === "active" && current.participantUserId === null
+          input.status === "active" && current.participantUserId === null
             ? await transaction.user.findUnique({
                 where: { email: current.participantEmail },
                 select: { id: true },
               })
             : null;
 
+        const data: Prisma.AccessGrantUncheckedUpdateInput = {};
+        if (input.status !== undefined) {
+          data.status = input.status;
+          data.revokedAt = input.status === "revoked" ? new Date() : null;
+        }
+        if (input.limits !== undefined) {
+          data.maxSessionDurationSeconds = input.limits.maxSessionDurationSeconds;
+          data.maxSessionsPer24Hours = input.limits.maxSessionsPer24Hours;
+        }
+        if (participant) data.participantUserId = participant.id;
+
         return transaction.accessGrant.update({
           where: { id: accessGrantId },
-          data: {
-            status,
-            revokedAt: status === "revoked" ? new Date() : null,
-            ...(participant ? { participantUserId: participant.id } : {}),
-          },
+          data,
         });
       });
     },
 
     deleteForAvatar(ownerId: string, avatarAgentId: string, accessGrantId: string) {
       return withTransaction(db, async (transaction) => {
-        await lockAccessGrant(transaction, accessGrantId);
-        const current = await transaction.accessGrant.findFirst({
-          where: { id: accessGrantId, ownerId, avatarAgentId },
-        });
+        const grants = await transaction.$queryRaw<
+          Array<{ id: string; status: "active" | "revoked"; revokedAt: Date | null }>
+        >`
+          SELECT "id", "status", "revokedAt"
+          FROM "AccessGrant"
+          WHERE "id" = ${accessGrantId}
+            AND "ownerId" = ${ownerId}
+            AND "avatarAgentId" = ${avatarAgentId}
+          FOR UPDATE
+        `;
+        const current = grants[0];
         if (!current) throw new OwnershipError();
 
-        const [conversationCount, groupConversationCount, groupMembershipCount] = await Promise.all([
-          transaction.conversation.count({ where: { accessGrantId } }),
-          transaction.conversationAvatar.count({ where: { accessGrantId } }),
-          transaction.avatarGroupMember.count({ where: { accessGrantId } }),
-        ]);
+        const [conversationCount, realtimeSessionCount, groupConversationCount, groupMembershipCount] =
+          await Promise.all([
+            transaction.conversation.count({ where: { accessGrantId } }),
+            transaction.realtimeSession.count({ where: { accessGrantId } }),
+            transaction.conversationAvatar.count({ where: { accessGrantId } }),
+            transaction.avatarGroupMember.count({ where: { accessGrantId } }),
+          ]);
 
-        if (conversationCount + groupConversationCount + groupMembershipCount > 0) {
+        if (conversationCount + realtimeSessionCount + groupConversationCount + groupMembershipCount > 0) {
           const accessGrant = await transaction.accessGrant.update({
             where: { id: accessGrantId },
             data: {

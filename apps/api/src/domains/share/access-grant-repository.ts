@@ -1,7 +1,8 @@
 import { createAccessGrantRepository, type PrismaClientInstance } from "@yuni/db";
-import type { AccessGrantStatus, CreateAccessGrantInput } from "@yuni/domain";
+import type { AccessGrantStatus, CreateAccessGrantInput, UpdateAccessGrantInput } from "@yuni/domain";
+import type { InteractionLimitRecord } from "../external-sessions/limits";
 
-export type AccessGrantRecord = {
+export type AccessGrantRecord = InteractionLimitRecord & {
   id: string;
   avatarAgentId: string;
   ownerId: string;
@@ -20,7 +21,7 @@ export type AccessGrantsRepository = {
     ownerId: string,
     avatarAgentId: string,
     accessGrantId: string,
-    status: AccessGrantStatus
+    input: UpdateAccessGrantInput
   ): Promise<AccessGrantRecord>;
   deleteForAvatar(
     ownerId: string,

@@ -2,9 +2,10 @@
 
 import { useRouter } from "next/navigation";
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Badge, Button, ErrorState, LoadingState, YuniIcon, type BadgeTone } from "@yuni/ui";
+import { Badge, Button, ErrorState, LoadingState, Toast, YuniIcon, type BadgeTone } from "@yuni/ui";
 import { useLiveAvatarSession, type LiveAvatarDiagnostics } from "../../hooks/useLiveAvatarSession";
 import {
+  endVoiceSessionOnUnload,
   getAvatarInteractionContext,
   getConversation,
   listAvatarConversations,
@@ -13,7 +14,8 @@ import {
   type ApiConversationSummary,
 } from "../../lib/api/avatar-api";
 import { getMe } from "../../lib/api/auth-api";
-import { ApiClientError } from "../../lib/api/http-client";
+import { ApiClientError, toUserFacingApiError } from "../../lib/api/http-client";
+import { formatInteractionLimitsSummary, hasConfiguredInteractionLimits } from "../../lib/avatar-sharing";
 import {
   CallExperienceShell,
   CallParticipantStage,
@@ -91,26 +93,32 @@ export function InteractCall({ avatarId }: { avatarId: string }) {
       try {
         const { conversation } = await getConversation(conversationId);
 
-        setHistoryState((current) => ({
-          ...current,
-          selectedConversationId: conversationId,
-          detailStatus: "ready",
-          detail: conversation,
-          detailError: null,
-        }));
+        setHistoryState((current) =>
+          current.selectedConversationId === conversationId
+            ? {
+                ...current,
+                detailStatus: "ready",
+                detail: conversation,
+                detailError: null,
+              }
+            : current
+        );
       } catch (error) {
         if (error instanceof ApiClientError && error.status === 401) {
           router.push("/auth/login");
           return;
         }
 
-        setHistoryState((current) => ({
-          ...current,
-          selectedConversationId: conversationId,
-          detailStatus: "error",
-          detail: null,
-          detailError: error instanceof Error ? error.message : "No pudimos abrir este chat.",
-        }));
+        setHistoryState((current) =>
+          current.selectedConversationId === conversationId
+            ? {
+                ...current,
+                detailStatus: "error",
+                detail: null,
+                detailError: toUserFacingApiError(error, "No pudimos abrir este chat."),
+              }
+            : current
+        );
       }
     },
     [router]
@@ -155,7 +163,7 @@ export function InteractCall({ avatarId }: { avatarId: string }) {
         setHistoryState((current) => ({
           ...current,
           summariesStatus: "error",
-          summariesError: error instanceof Error ? error.message : "No pudimos cargar el historial.",
+          summariesError: toUserFacingApiError(error, "No pudimos cargar el historial."),
         }));
       }
     },
@@ -164,6 +172,9 @@ export function InteractCall({ avatarId }: { avatarId: string }) {
 
   const call = useLiveAvatarSession(avatarId, {
     onEnded: () => loadHistory({ selectLatest: false }),
+    endSessionOnUnload: (realtimeSessionId, transcript) => {
+      endVoiceSessionOnUnload(realtimeSessionId, transcript);
+    },
   });
 
   useEffect(() => {
@@ -176,6 +187,9 @@ export function InteractCall({ avatarId }: { avatarId: string }) {
 
   useEffect(() => {
     let isMounted = true;
+    setAvatarState({ status: "loading", avatar: null, error: null });
+    setHistoryState(initialHistoryState);
+    setIsHistoryOpen(false);
 
     getAvatarInteractionContext(avatarId)
       .then(({ interactionContext }) => {
@@ -193,7 +207,7 @@ export function InteractCall({ avatarId }: { avatarId: string }) {
           setAvatarState({
             status: error instanceof ApiClientError && error.status === 404 ? "not-found" : "error",
             avatar: null,
-            error: error instanceof Error ? error.message : "No pudimos cargar el avatar.",
+            error: toUserFacingApiError(error, "No pudimos cargar el avatar."),
           });
         }
       });
@@ -223,8 +237,10 @@ export function InteractCall({ avatarId }: { avatarId: string }) {
 
   const interactionContext = avatarState.avatar;
   const avatar = interactionContext.avatar;
+  const isInCall = call.status === "starting" || call.status === "active" || call.status === "ending";
   const canStart =
     interactionContext.voiceAvailability === "ready" &&
+    !call.hasPendingEnd &&
     (call.status === "idle" || call.status === "ended" || call.status === "error");
   const contextNotice =
     interactionContext.access.type === "shared" && interactionContext.voiceAvailability !== "ready"
@@ -356,6 +372,11 @@ export function InteractCall({ avatarId }: { avatarId: string }) {
                 setRememberPrivacyChoice(false);
                 setPrivacyStorageKey(null);
               }}
+              limitsSummary={
+                hasConfiguredInteractionLimits(interactionContext.access.limits)
+                  ? formatInteractionLimitsSummary(interactionContext.access.limits)
+                  : null
+              }
             />
           ) : null}
         </>
@@ -376,8 +397,9 @@ export function InteractCall({ avatarId }: { avatarId: string }) {
             ownsTurn: call.conversationState === "thinking" || call.conversationState === "speaking",
             attachMediaElement: call.attachMediaElement,
             placeholderTitle: call.status === "starting" ? "Conectando con el avatar" : "Listo para llamar",
-            placeholderDescription:
-              call.status === "starting"
+            placeholderDescription: call.endedByLimit
+              ? "La llamada terminó al alcanzar la duración disponible."
+              : call.status === "starting"
                 ? "Estamos abriendo la sesión de voz."
                 : "Cuando inicies, el historial se guarda al finalizar la llamada.",
           },
@@ -393,6 +415,17 @@ export function InteractCall({ avatarId }: { avatarId: string }) {
             <Badge tone={formatContextStatusTone(interactionContext.contextStatus)}>
               {formatContextStatusLabel(interactionContext.contextStatus)}
             </Badge>
+            {call.remainingSeconds !== null ? (
+              <Badge tone={call.remainingSeconds <= 60 ? "warning" : "neutral"}>
+                {call.remainingSeconds <= 60 ? "Un minuto o menos · " : "Disponible · "}
+                {formatInteractionCountdown(call.remainingSeconds)}
+              </Badge>
+            ) : null}
+            <span className={styles.srOnly} role="status" aria-live="polite">
+              {call.remainingSeconds !== null && call.remainingSeconds <= 60
+                ? "Queda un minuto o menos de llamada."
+                : ""}
+            </span>
           </>
         }
         dock={
@@ -406,30 +439,39 @@ export function InteractCall({ avatarId }: { avatarId: string }) {
               </p>
             ) : null}
             {interactionContext.access.type === "shared" &&
+            !isInCall &&
+            hasConfiguredInteractionLimits(interactionContext.access.limits) ? (
+              <p className={styles.limitsNotice} role="status">
+                <YuniIcon name="warning" size={20} />
+                <span>
+                  Límites de uso: {formatInteractionLimitsSummary(interactionContext.access.limits)}
+                </span>
+              </p>
+            ) : null}
+            {interactionContext.access.type === "shared" &&
             interactionContext.voiceAvailability !== "ready" ? (
               <p className={styles.contextNotice} role="status">
                 Este avatar todavía no está disponible para interactuar. Avisale al creador.
               </p>
             ) : null}
             {call.error ? (
-              <div className={styles.inlineError} role="alert">
-                <span>{call.error}</span>
-                {canStart ? (
-                  <Button variant="secondary" onClick={() => void requestCallStart()}>
-                    Reintentar
-                  </Button>
-                ) : null}
-              </div>
+              <Toast tone="warning" role="alert" aria-live="assertive" onDismiss={call.dismissError}>
+                {call.error}
+              </Toast>
             ) : null}
-            <InteractCallControls
-              status={call.status}
-              isMuted={call.isMuted}
-              canStart={canStart}
-              onStart={() => void requestCallStart()}
-              onToggleMute={call.toggleMute}
-              onInterrupt={call.interrupt}
-              onEnd={call.end}
-            />
+            {call.hasPendingEnd ? (
+              <Button onClick={() => void call.end()}>Reintentar guardado</Button>
+            ) : (
+              <InteractCallControls
+                status={call.status}
+                isMuted={call.isMuted}
+                canStart={canStart}
+                onStart={() => void requestCallStart()}
+                onToggleMute={call.toggleMute}
+                onInterrupt={call.interrupt}
+                onEnd={call.end}
+              />
+            )}
           </>
         }
       />
@@ -441,6 +483,19 @@ export function formatContextStatusLabel(status: ApiInteractionContext["contextS
   if (status === "ready") return "Listo";
   if (status === "failed") return "No se pudo actualizar";
   return "Procesando";
+}
+
+export function formatInteractionCountdown(totalSeconds: number) {
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+}
+
+export function formatSharedCallPrivacyDescription(limits: ApiInteractionContext["access"]["limits"]) {
+  const privacy = "La llamada y su transcripción se guardarán. El creador podrá consultarlas en Actividad.";
+  return hasConfiguredInteractionLimits(limits)
+    ? `${privacy} Límites: ${formatInteractionLimitsSummary(limits)}.`
+    : privacy;
 }
 
 export function formatContextStatusTone(status: ApiInteractionContext["contextStatus"]): BadgeTone {

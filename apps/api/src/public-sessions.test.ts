@@ -5,9 +5,14 @@ import { createPublicSessionsController } from "./domains/public-sessions/contro
 import type { PublicSessionsControllerDependencies } from "./domains/public-sessions/controller";
 import { createPublicSessionsService } from "./domains/public-sessions/service";
 import { createPublicTokenService } from "./domains/public-sessions/tokens";
-import { createInMemoryPublicSessionRateLimiter } from "./domains/public-sessions/rate-limiter";
+import { createInMemoryRateLimiter } from "./domains/public-sessions/rate-limiter";
 import { createProviderTokenProtector } from "./domains/public-sessions/provider-token-protector";
 import { verifySessionToken as verifyUserSessionToken } from "./domains/auth/session";
+import {
+  ActiveSessionExistsError,
+  ExternalSessionCapacityError,
+  ShareSessionCountLimitError,
+} from "./domains/external-sessions/policy";
 
 function createFixture(
   options: {
@@ -17,11 +22,13 @@ function createFixture(
     deletedLinkDuringEnd?: boolean;
     maxMessages?: number;
     expiredProviderSession?: boolean;
+    policyError?: Error;
+    syncingWithUsableVersion?: boolean;
   } = {}
 ) {
   let ended = false;
-  const markStarted = vi.fn(async () => ({ id: "realtime-1" }));
-  const markPrepared = vi.fn(async () => ({ id: "realtime-1" }));
+  const markStarted = vi.fn(async () => true);
+  const markPrepared = vi.fn(async () => true);
   const markStartFailed = vi.fn(async () => []);
   const stopSession = vi.fn(async () => undefined);
   const markProviderStopped = vi.fn(async () => ({ count: 1 }));
@@ -41,6 +48,8 @@ function createFixture(
     id: "link-1",
     slug: "demo",
     avatarAgentId: "avatar-1",
+    maxSessionDurationSeconds: null,
+    maxSessionsPer24Hours: null,
     avatarAgent: {
       id: "avatar-1",
       name: "Avatar público",
@@ -50,8 +59,9 @@ function createFixture(
         mode: "lite",
         sandbox: true,
       },
-      providerSyncStatus: "synced",
+      providerSyncStatus: options.syncingWithUsableVersion ? "syncing" : "synced",
       providerAgentId: "agent-1",
+      providerLastUsableAt: options.syncingWithUsableVersion ? new Date("2026-08-10T15:00:00.000Z") : null,
     },
   };
   const dependencies = {
@@ -60,16 +70,6 @@ function createFixture(
       findUserByEmail: vi.fn(async (email: string) =>
         email === "known@example.com" ? { id: "user-1" } : null
       ),
-      createSession: vi.fn(async (input: { participantEmail: string; participantUserId?: string }) => ({
-        publicSession: {
-          id: "public-session-1",
-          shareLinkId: "link-1",
-          participantEmail: input.participantEmail,
-          participantUserId: input.participantUserId ?? null,
-        },
-        conversation: { id: "conversation-1" },
-        realtimeSession: { id: "realtime-1" },
-      })),
       markStarted,
       markPrepared,
       findForStartConfirmation: vi.fn(async () => ({
@@ -151,7 +151,25 @@ function createFixture(
         options.limited ? ({ allowed: false, retryAfterSeconds: 60 } as const) : ({ allowed: true } as const)
       ),
     },
-    publicSessionMaxMinutes: 5,
+    policyService: {
+      reservePublic: vi.fn(async () => {
+        if (options.policyError) throw options.policyError;
+        return {
+          publicSession: { id: "public-session-1" },
+          conversation: { id: "conversation-1" },
+          realtimeSession: { id: "realtime-1" },
+          expiresAt: new Date(Date.now() + 5 * 60_000),
+        };
+      }),
+    },
+    rateLimits: {
+      identifyIpLink: 60,
+      identifyEmailLink: 10,
+      startIpTarget: 60,
+      startParticipantTarget: 20,
+      startLink: 120,
+      startAvatar: 200,
+    },
     publicSessionMaxMessages: options.maxMessages ?? 20,
     providerTokenProtector: {
       encrypt: vi.fn((token: string) => `encrypted:${token}`),
@@ -213,25 +231,16 @@ describe("@yuni/api public sessions", () => {
 
   it("limits attempts independently by avatar and IP/link", () => {
     let now = 0;
-    const limiter = createInMemoryPublicSessionRateLimiter({
-      maxPerAvatar: 3,
-      maxPerIpAndLink: 1,
-      windowMs: 1_000,
-      now: () => now,
-    });
-    expect(limiter.consume({ avatarId: "avatar-1", shareLinkId: "link-1", ip: "ip-1" })).toEqual({
-      allowed: true,
-    });
-    expect(limiter.consume({ avatarId: "avatar-1", shareLinkId: "link-1", ip: "ip-1" })).toMatchObject({
-      allowed: false,
-    });
-    expect(limiter.consume({ avatarId: "avatar-1", shareLinkId: "link-1", ip: "ip-2" })).toEqual({
-      allowed: true,
-    });
+    const limiter = createInMemoryRateLimiter({ secret: "test-secret", now: () => now });
+    const rules = (ip: string) => [
+      { namespace: "avatar", identifiers: ["avatar-1"], limit: 3, windowMs: 1_000 },
+      { namespace: "ip-link", identifiers: [ip, "link-1"], limit: 1, windowMs: 1_000 },
+    ];
+    expect(limiter.consume(rules("ip-1"))).toEqual({ allowed: true });
+    expect(limiter.consume(rules("ip-1"))).toMatchObject({ allowed: false });
+    expect(limiter.consume(rules("ip-2"))).toEqual({ allowed: true });
     now = 1_001;
-    expect(limiter.consume({ avatarId: "avatar-1", shareLinkId: "link-1", ip: "ip-1" })).toEqual({
-      allowed: true,
-    });
+    expect(limiter.consume(rules("ip-1"))).toEqual({ allowed: true });
   });
 
   it("normalizes identity input and requires explicit consent", async () => {
@@ -257,6 +266,18 @@ describe("@yuni/api public sessions", () => {
     });
   });
 
+  it("rejects oversized public identification bodies before parsing them", async () => {
+    const fixture = createFixture();
+    const response = await fixture.app.request("/public/links/demo/identify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: `${"a".repeat(17_000)}@example.com`, consent: true }),
+    });
+
+    expect(response.status).toBe(413);
+    expect(fixture.dependencies.repository.resolveEnabledLink).not.toHaveBeenCalled();
+  });
+
   it("rejects missing or invalid public identity tokens", async () => {
     const { app } = createFixture();
     expect((await app.request("/public/links/demo/sessions", { method: "POST" })).status).toBe(401);
@@ -280,9 +301,15 @@ describe("@yuni/api public sessions", () => {
     expect(response.status).toBe(201);
     expect(body).toMatchObject({
       publicSession: { id: "public-session-1", token: "public-session-token" },
-      voiceSession: { conversationId: "conversation-1", sessionToken: "live-token" },
+      voiceSession: {
+        conversationId: "conversation-1",
+        sessionToken: "live-token",
+        expiresAt: expect.any(String),
+      },
     });
-    expect(JSON.stringify(body)).not.toMatch(/participantUserId|known@example.com|providerAgentId|ownerId/);
+    expect(JSON.stringify(body)).not.toMatch(
+      /participantUserId|known@example.com|providerAgentId|providerSessionId|"sessionId"|ownerId/
+    );
     expect(fixture.markPrepared).toHaveBeenCalledOnce();
     expect(fixture.markStarted).not.toHaveBeenCalled();
 
@@ -292,6 +319,104 @@ describe("@yuni/api public sessions", () => {
     });
     expect(confirmed.status).toBe(200);
     expect(fixture.markStarted).toHaveBeenCalledOnce();
+  });
+
+  it("keeps the participant rate-limit key stable after the email is linked to an account", async () => {
+    const fixture = createFixture();
+
+    const response = await fixture.app.request("/public/links/demo/sessions", {
+      method: "POST",
+      headers: { Authorization: "Bearer identity-token" },
+    });
+
+    expect(response.status).toBe(201);
+    expect(fixture.dependencies.rateLimiter.consume).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({
+          namespace: "public-start-participant-target",
+          identifiers: ["known@example.com", "link-1"],
+        }),
+      ])
+    );
+  });
+
+  it("uses the last usable provider version while a new public context is syncing", async () => {
+    const fixture = createFixture({ syncingWithUsableVersion: true });
+    const response = await fixture.app.request("/public/links/demo/sessions", {
+      method: "POST",
+      headers: { Authorization: "Bearer identity-token" },
+    });
+
+    expect(response.status).toBe(201);
+    expect(fixture.dependencies.policyService.reservePublic).toHaveBeenCalledOnce();
+    expect(fixture.dependencies.liveAvatarProvider.createLiteSessionToken).toHaveBeenCalledWith({
+      avatarId: "live-avatar-1",
+      elevenLabsAgentId: "agent-1",
+    });
+  });
+
+  it("does not create a provider session when the locked public link is no longer usable", async () => {
+    const fixture = createFixture();
+    vi.mocked(fixture.dependencies.policyService.reservePublic).mockResolvedValueOnce(null);
+
+    const response = await fixture.app.request("/public/links/demo/sessions", {
+      method: "POST",
+      headers: { Authorization: "Bearer identity-token" },
+    });
+
+    expect(response.status).toBe(404);
+    expect(fixture.dependencies.liveAvatarProvider.createLiteSessionToken).not.toHaveBeenCalled();
+  });
+
+  it("does not return a provider token when the reserved public session expires during preparation", async () => {
+    const fixture = createFixture();
+    fixture.markPrepared.mockResolvedValueOnce(false);
+
+    const response = await fixture.app.request("/public/links/demo/sessions", {
+      method: "POST",
+      headers: { Authorization: "Bearer identity-token" },
+    });
+
+    expect(response.status).toBe(502);
+    expect(fixture.stopSession).toHaveBeenCalledWith("live-token");
+    expect(fixture.markStartFailed).toHaveBeenCalledOnce();
+  });
+
+  it("rejects a start confirmation that lost the connecting-to-active transition", async () => {
+    const fixture = createFixture();
+    fixture.markStarted.mockResolvedValueOnce(false);
+
+    const response = await fixture.app.request("/public/sessions/public-session-1/started", {
+      method: "POST",
+      headers: { Authorization: "Bearer public-session-token" },
+    });
+
+    expect(response.status).toBe(404);
+  });
+
+  it("keeps an issued public call confirmable after its link is removed", async () => {
+    const fixture = createFixture();
+    vi.mocked(fixture.dependencies.repository.findForStartConfirmation).mockResolvedValueOnce({
+      id: "public-session-1",
+      shareLinkId: null,
+      status: "active",
+      expiresAt: new Date(Date.now() + 60_000),
+      shareLink: null,
+      avatarAgent: { status: "disabled" },
+      realtimeSessions: [{ id: "realtime-1", status: "connecting" }],
+    } as never);
+
+    const response = await fixture.app.request("/public/sessions/public-session-1/started", {
+      method: "POST",
+      headers: { Authorization: "Bearer public-session-token" },
+    });
+
+    expect(response.status).toBe(200);
+    expect(fixture.markStarted).toHaveBeenCalledWith({
+      publicSessionId: "public-session-1",
+      realtimeSessionId: "realtime-1",
+      shareLinkId: "link-1",
+    });
   });
 
   it("stops the provider session at the server deadline and cleans up after the grace period", async () => {
@@ -319,15 +444,64 @@ describe("@yuni/api public sessions", () => {
     );
   });
 
+  it("starts the public finalization grace without waiting for a slow provider stop", async () => {
+    let releaseStop: () => void = () => undefined;
+    const stopCanFinish = new Promise<void>((resolve) => {
+      releaseStop = resolve;
+    });
+    const fixture = createFixture();
+    fixture.stopSession.mockImplementationOnce(() => stopCanFinish.then(() => undefined));
+
+    const response = await fixture.app.request("/public/links/demo/sessions", {
+      method: "POST",
+      headers: { Authorization: "Bearer identity-token" },
+    });
+    expect(response.status).toBe(201);
+
+    fixture.scheduled[0]?.callback();
+    expect(fixture.scheduled[1]?.delayMs).toBe(30_000);
+
+    fixture.scheduled[1]?.callback();
+    await vi.waitFor(() =>
+      expect(fixture.expireIfActive).toHaveBeenCalledWith({
+        publicSessionId: "public-session-1",
+        conversationId: "conversation-1",
+        realtimeSessionId: "realtime-1",
+      })
+    );
+
+    releaseStop();
+    await vi.waitFor(() => expect(fixture.markProviderStopped).toHaveBeenCalledWith("realtime-1"));
+  });
+
   it("stops expired provider sessions immediately after an API restart", async () => {
     const fixture = createFixture({ expiredProviderSession: true });
     const service = createPublicSessionsService(fixture.dependencies);
 
     await service.cleanupExpired(new Date("2026-08-11T15:00:00.000Z"));
 
-    expect(fixture.stopSession).toHaveBeenCalledWith("live-token");
-    expect(fixture.markProviderStopped).toHaveBeenCalledWith("realtime-1");
+    await vi.waitFor(() => expect(fixture.stopSession).toHaveBeenCalledWith("live-token"));
+    await vi.waitFor(() => expect(fixture.markProviderStopped).toHaveBeenCalledWith("realtime-1"));
     expect(fixture.expireIfActive).not.toHaveBeenCalled();
+  });
+
+  it("counts only public sessions that maintenance actually closes", async () => {
+    const fixture = createFixture();
+    vi.mocked(fixture.dependencies.repository.listExpiredForCleanup).mockResolvedValue([
+      {
+        publicSessionId: "public-session-1",
+        conversationId: "conversation-1",
+        realtimeSessionId: "realtime-1",
+      },
+    ]);
+    fixture.expireIfActive
+      .mockRejectedValueOnce(new Error("temporary database failure"))
+      .mockResolvedValueOnce(true);
+    const service = createPublicSessionsService(fixture.dependencies);
+    const cleanupAt = new Date("2026-08-11T15:00:00.000Z");
+
+    await expect(service.cleanupExpired(cleanupAt)).resolves.toBe(0);
+    await expect(service.cleanupExpired(cleanupAt)).resolves.toBe(1);
   });
 
   it("blocks session creation when the link changes state or a limit is reached", async () => {
@@ -340,6 +514,29 @@ describe("@yuni/api public sessions", () => {
     const response = await limited.app.request("/public/links/demo/sessions", { method: "POST", headers });
     expect(response.status).toBe(429);
     expect(response.headers.get("Retry-After")).toBe("60");
+    expect(await response.json()).toMatchObject({
+      error: {
+        code: "RATE_LIMITED",
+        reason: "PLATFORM_RATE_LIMIT",
+        retryAfterSeconds: 60,
+      },
+    });
+    expect(limited.dependencies.repository.findUserByEmail).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [new ShareSessionCountLimitError(120), "SHARE_SESSION_COUNT_LIMIT", 429],
+    [new ExternalSessionCapacityError(60), "EXTERNAL_SESSION_CAPACITY", 429],
+    [new ActiveSessionExistsError(), "ACTIVE_SESSION_EXISTS", 409],
+  ])("returns the public reason for %s", async (policyError, reason, status) => {
+    const fixture = createFixture({ policyError });
+    const response = await fixture.app.request("/public/links/demo/sessions", {
+      method: "POST",
+      headers: { Authorization: "Bearer identity-token" },
+    });
+    expect(response.status).toBe(status);
+    expect(await response.json()).toMatchObject({ error: { reason } });
+    if (status === 429) expect(response.headers.get("Retry-After")).toMatch(/^\d+$/);
   });
 
   it("marks failed starts without leaking provider details", async () => {
@@ -350,7 +547,31 @@ describe("@yuni/api public sessions", () => {
     });
     expect(response.status).toBe(502);
     expect(JSON.stringify(await response.json())).not.toContain("provider secret failure");
-    expect(fixture.markStartFailed).toHaveBeenCalledOnce();
+    expect(fixture.markStartFailed).toHaveBeenCalledWith({
+      publicSessionId: "public-session-1",
+      realtimeSessionId: "realtime-1",
+      conversationId: "conversation-1",
+      errorMessage: "External voice session start failed",
+    });
+  });
+
+  it("keeps the provider token recoverable when preparation and immediate stop both fail", async () => {
+    const fixture = createFixture();
+    fixture.markPrepared.mockRejectedValueOnce(new Error("temporary database failure"));
+    fixture.stopSession.mockRejectedValueOnce(new Error("temporary provider failure"));
+
+    await fixture.app.request("/public/links/demo/sessions", {
+      method: "POST",
+      headers: { Authorization: "Bearer identity-token" },
+    });
+
+    expect(fixture.markStartFailed).toHaveBeenCalledWith({
+      publicSessionId: "public-session-1",
+      realtimeSessionId: "realtime-1",
+      conversationId: "conversation-1",
+      errorMessage: "External voice session start failed",
+      providerSessionTokenCiphertext: "encrypted:live-token",
+    });
   });
 
   it("persists safe transcript messages and ends idempotently", async () => {
@@ -373,6 +594,22 @@ describe("@yuni/api public sessions", () => {
     expect(fixture.generateTitle).toHaveBeenCalledOnce();
     expect(fixture.stopSession).toHaveBeenCalledWith("live-token");
     expect(fixture.markProviderStopped).toHaveBeenCalledWith("realtime-1");
+  });
+
+  it("persists the public transcript before stopping the provider", async () => {
+    const fixture = createFixture();
+    fixture.stopSession.mockImplementationOnce(async () => {
+      expect(fixture.finalize).toHaveBeenCalledOnce();
+    });
+
+    const response = await fixture.app.request("/public/sessions/public-session-1/end", {
+      method: "POST",
+      headers: { Authorization: "Bearer public-session-token", "Content-Type": "application/json" },
+      body: JSON.stringify({ transcript: [{ role: "user", content: "Conservar antes del stop" }] }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(fixture.finalizedTranscript).toEqual([{ role: "user", content: "Conservar antes del stop" }]);
   });
 
   it("honors a configured transcript limit without rejecting finalization", async () => {
@@ -401,9 +638,9 @@ describe("@yuni/api public sessions", () => {
         body: JSON.stringify({ transcript }),
       });
 
-    expect((await request([{ role: "user", content: "x".repeat(501) }])).status).toBe(400);
+    expect((await request([{ role: "user", content: "x".repeat(1001) }])).status).toBe(400);
     expect(
-      (await request(Array.from({ length: 21 }, () => ({ role: "user", content: "Hola" })))).status
+      (await request(Array.from({ length: 201 }, () => ({ role: "user", content: "Hola" })))).status
     ).toBe(400);
     expect(
       (await request([{ role: "user", content: "Hola", metadata: { providerId: "secret" } }])).status

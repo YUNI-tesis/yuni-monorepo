@@ -22,68 +22,45 @@ export function createPublicSessionRepository(db: Db) {
       });
     },
 
-    createSession(input: {
-      shareLinkId: string;
-      avatarAgentId: string;
-      participantEmail: string;
-      participantUserId?: string;
-      consentedAt: Date;
-      expiresAt: Date;
-    }) {
-      return db.$transaction(async (tx: Prisma.TransactionClient) => {
-        const publicSession = await tx.publicSession.create({
-          data: {
-            shareLinkId: input.shareLinkId,
-            avatarAgentId: input.avatarAgentId,
-            participantEmail: input.participantEmail,
-            ...(input.participantUserId ? { participantUserId: input.participantUserId } : {}),
-            consentedAt: input.consentedAt,
-            expiresAt: input.expiresAt,
-          },
-        });
-        const conversation = await tx.conversation.create({
-          data: {
-            avatarAgentId: input.avatarAgentId,
-            shareLinkId: input.shareLinkId,
-            publicSessionId: publicSession.id,
-            participantEmail: input.participantEmail,
-            visibility: "public",
-            mode: "voice",
-          },
-        });
-        const realtimeSession = await tx.realtimeSession.create({
-          data: {
-            avatarAgentId: input.avatarAgentId,
-            publicSessionId: publicSession.id,
-            conversationId: conversation.id,
-          },
-        });
-
-        return { publicSession, conversation, realtimeSession };
-      });
-    },
-
     markPrepared(input: {
       publicSessionId: string;
       realtimeSessionId: string;
       providerSessionId?: string;
       providerSessionTokenCiphertext: string;
     }) {
-      return db.realtimeSession.update({
-        where: { id: input.realtimeSessionId },
-        data: {
-          ...(input.providerSessionId ? { providerSessionId: input.providerSessionId } : {}),
-          providerSessionTokenCiphertext: input.providerSessionTokenCiphertext,
-        },
+      return db.$transaction(async (transaction) => {
+        const sessions = await transaction.$queryRaw<Array<{ id: string }>>`
+          SELECT "id"
+          FROM "PublicSession"
+          WHERE "id" = ${input.publicSessionId}
+            AND "status" = 'active'::"PublicSessionStatus"
+            AND "expiresAt" > NOW()
+          FOR UPDATE
+        `;
+        if (!sessions[0]) return false;
+
+        const transition = await transaction.realtimeSession.updateMany({
+          where: {
+            id: input.realtimeSessionId,
+            publicSessionId: input.publicSessionId,
+            status: "connecting",
+          },
+          data: {
+            ...(input.providerSessionId ? { providerSessionId: input.providerSessionId } : {}),
+            providerSessionTokenCiphertext: input.providerSessionTokenCiphertext,
+          },
+        });
+        return transition.count === 1;
       });
     },
 
     findForStartConfirmation(publicSessionId: string) {
       return db.publicSession.findUnique({
         where: { id: publicSessionId },
-        include: {
-          shareLink: { select: { id: true, isEnabled: true } },
-          avatarAgent: { select: { status: true } },
+        select: {
+          shareLinkId: true,
+          status: true,
+          expiresAt: true,
           realtimeSessions: { orderBy: { startedAt: "desc" }, take: 1 },
         },
       });
@@ -91,6 +68,17 @@ export function createPublicSessionRepository(db: Db) {
 
     markStarted(input: { publicSessionId: string; realtimeSessionId: string; shareLinkId: string }) {
       return db.$transaction(async (tx: Prisma.TransactionClient) => {
+        const sessions = await tx.$queryRaw<Array<{ id: string }>>`
+          SELECT "id"
+          FROM "PublicSession"
+          WHERE "id" = ${input.publicSessionId}
+            AND ("shareLinkId" = ${input.shareLinkId} OR "shareLinkId" IS NULL)
+            AND "status" = 'active'::"PublicSessionStatus"
+            AND "expiresAt" > NOW()
+          FOR UPDATE
+        `;
+        if (!sessions[0]) return false;
+
         const transition = await tx.realtimeSession.updateMany({
           where: {
             id: input.realtimeSessionId,
@@ -100,7 +88,7 @@ export function createPublicSessionRepository(db: Db) {
           data: { status: "active" },
         });
         if (transition.count === 1) {
-          await tx.shareLink.update({
+          await tx.shareLink.updateMany({
             where: { id: input.shareLinkId },
             data: { lastUsedAt: new Date() },
           });
@@ -114,26 +102,48 @@ export function createPublicSessionRepository(db: Db) {
       realtimeSessionId: string;
       conversationId: string;
       errorMessage: string;
+      providerSessionTokenCiphertext?: string;
     }) {
       const endedAt = new Date();
-      return db.$transaction([
-        db.realtimeSession.update({
-          where: { id: input.realtimeSessionId },
+      return db.$transaction(async (transaction) => {
+        const transition = await transaction.realtimeSession.updateMany({
+          where: {
+            id: input.realtimeSessionId,
+            publicSessionId: input.publicSessionId,
+            status: { in: ["connecting", "active"] },
+          },
           data: {
             status: "errored",
             endedAt,
             errorMessage: input.errorMessage,
+            ...(input.providerSessionTokenCiphertext
+              ? { providerSessionTokenCiphertext: input.providerSessionTokenCiphertext }
+              : {}),
           },
-        }),
-        db.conversation.update({
-          where: { id: input.conversationId },
-          data: { status: "ended" },
-        }),
-        db.publicSession.update({
-          where: { id: input.publicSessionId },
-          data: { status: "errored", endedAt },
-        }),
-      ]);
+        });
+
+        if (transition.count === 0) {
+          if (input.providerSessionTokenCiphertext) {
+            await transaction.realtimeSession.updateMany({
+              where: { id: input.realtimeSessionId, providerStoppedAt: null },
+              data: { providerSessionTokenCiphertext: input.providerSessionTokenCiphertext },
+            });
+          }
+          return false;
+        }
+
+        await Promise.all([
+          transaction.conversation.updateMany({
+            where: { id: input.conversationId, status: "active" },
+            data: { status: "ended" },
+          }),
+          transaction.publicSession.updateMany({
+            where: { id: input.publicSessionId, status: "active" },
+            data: { status: "errored", endedAt },
+          }),
+        ]);
+        return true;
+      });
     },
 
     findForEnd(publicSessionId: string) {
@@ -217,34 +227,42 @@ export function createPublicSessionRepository(db: Db) {
       });
     },
 
-    expireIfActive(input: { publicSessionId: string; conversationId: string; realtimeSessionId: string }) {
+    expireIfActive(input: {
+      publicSessionId: string;
+      conversationId: string | null;
+      realtimeSessionId: string | null;
+    }) {
       const endedAt = new Date();
       return db.$transaction(async (tx: Prisma.TransactionClient) => {
-        const current = await tx.publicSession.findUnique({
-          where: { id: input.publicSessionId },
-          select: { status: true },
-        });
-        if (!current || current.status !== "active") return false;
-        await tx.conversation.update({
-          where: { id: input.conversationId },
-          data: { status: "ended" },
-        });
-        await tx.realtimeSession.update({
-          where: { id: input.realtimeSessionId },
+        const claimed = await tx.publicSession.updateMany({
+          where: { id: input.publicSessionId, status: "active" },
           data: { status: "ended", endedAt },
         });
-        await tx.publicSession.update({
-          where: { id: input.publicSessionId },
-          data: { status: "ended", endedAt },
-        });
+        if (claimed.count === 0) return false;
+        if (input.conversationId) {
+          await tx.conversation.updateMany({
+            where: { id: input.conversationId, status: "active" },
+            data: { status: "ended" },
+          });
+        }
+        if (input.realtimeSessionId) {
+          await tx.realtimeSession.updateMany({
+            where: { id: input.realtimeSessionId, status: { in: ["connecting", "active"] } },
+            data: { status: "ended", endedAt },
+          });
+        }
         return true;
       });
     },
 
-    async listExpiredForCleanup(now: Date, limit = 50) {
+    async listExpiredForCleanup(now: Date, limit = 50, afterId?: string) {
       const sessions = await db.publicSession.findMany({
-        where: { status: "active", expiresAt: { lte: now } },
-        orderBy: { expiresAt: "asc" },
+        where: {
+          ...(afterId ? { id: { gt: afterId } } : {}),
+          status: "active",
+          expiresAt: { lte: now },
+        },
+        orderBy: { id: "asc" },
         take: limit,
         include: {
           conversation: { select: { id: true } },
@@ -256,28 +274,21 @@ export function createPublicSessionRepository(db: Db) {
           },
         },
       });
-      return sessions.flatMap((session) => {
+      return sessions.map((session) => {
         const realtimeSession = session.realtimeSessions[0];
-        return session.conversation && realtimeSession
-          ? [
-              {
-                publicSessionId: session.id,
-                conversationId: session.conversation.id,
-                realtimeSessionId: realtimeSession.id,
-                providerSessionTokenCiphertext: realtimeSession.providerSessionTokenCiphertext,
-              },
-            ]
-          : [];
+        return {
+          publicSessionId: session.id,
+          conversationId: session.conversation?.id ?? null,
+          realtimeSessionId: realtimeSession?.id ?? null,
+        };
       });
     },
 
-    async listExpiredForProviderStop(now: Date, limit = 50) {
+    async listExpiredForProviderStop(now: Date, limit = 50, afterId?: string) {
       const sessions = await db.publicSession.findMany({
         where: {
-          OR: [
-            { status: "active", expiresAt: { lte: now } },
-            { status: { in: ["ended", "errored"] } },
-          ],
+          ...(afterId ? { id: { gt: afterId } } : {}),
+          OR: [{ status: "active", expiresAt: { lte: now } }, { status: { in: ["ended", "errored"] } }],
           realtimeSessions: {
             some: {
               status: { in: ["connecting", "active", "ended", "errored"] },
@@ -286,7 +297,7 @@ export function createPublicSessionRepository(db: Db) {
             },
           },
         },
-        orderBy: { expiresAt: "asc" },
+        orderBy: { id: "asc" },
         take: limit,
         include: {
           realtimeSessions: {

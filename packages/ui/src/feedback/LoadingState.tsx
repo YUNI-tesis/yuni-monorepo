@@ -3,7 +3,10 @@ export type LoadingStateProps = {
   description?: string;
 };
 
-export function LoadingState({ title = "Cargando", description = "Estamos preparando la informacion." }: LoadingStateProps) {
+export function LoadingState({
+  title = "Cargando",
+  description = "Estamos preparando la informacion.",
+}: LoadingStateProps) {
   return (
     <div className="yuni-state" aria-live="polite">
       <span className="yuni-loading-dots" aria-hidden="true">

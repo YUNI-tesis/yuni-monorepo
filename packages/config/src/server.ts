@@ -8,6 +8,7 @@ export type ServerEnv = {
   API_PORT: number;
   REALTIME_PORT: number;
   WORKER_CONCURRENCY: number;
+  TRUST_PROXY_HOPS: number;
 };
 
 export function createServerEnv(env: RawEnv): ServerEnv {
@@ -18,6 +19,7 @@ export function createServerEnv(env: RawEnv): ServerEnv {
     API_PORT: env.API_PORT,
     REALTIME_PORT: env.REALTIME_PORT,
     WORKER_CONCURRENCY: env.WORKER_CONCURRENCY,
+    TRUST_PROXY_HOPS: env.TRUST_PROXY_HOPS,
   };
 }
 
@@ -30,4 +32,5 @@ export const serverConfig = {
   apiPort: serverEnv.API_PORT,
   realtimePort: serverEnv.REALTIME_PORT,
   workerConcurrency: serverEnv.WORKER_CONCURRENCY,
+  trustProxyHops: serverEnv.TRUST_PROXY_HOPS,
 } as const;

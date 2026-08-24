@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { AvatarProviderError, type AvatarOption } from "@yuni/avatars";
 import type { CreateAvatarAgentInput } from "@yuni/domain";
 import { ElevenLabsProviderError } from "@yuni/voice";
@@ -76,6 +76,8 @@ function createTestDependencies(
     liveAvatarError?: Error;
     generatedTitle?: string | null;
     titleError?: Error;
+    finalizeFailures?: number;
+    activationError?: Error;
   } = {}
 ) {
   const users = new Map((options.users ?? [createUser()]).map((user) => [user.email, user]));
@@ -117,6 +119,7 @@ function createTestDependencies(
       providerSessionId: string | null;
       status: string;
       endedAt: Date | null;
+      errorMessage: string | null;
     }
   >();
   const messages: Array<{
@@ -128,6 +131,8 @@ function createTestDependencies(
     createdAt: Date;
   }> = [];
   const providerSyncCalls: string[] = [];
+  const stopProviderSession = vi.fn(async () => undefined);
+  let remainingFinalizeFailures = options.finalizeFailures ?? 0;
   const initialAvatar = avatarRecord("user-1", avatarInput());
   avatars.set(initialAvatar.id, initialAvatar);
 
@@ -146,6 +151,7 @@ function createTestDependencies(
         sessionId: "liveavatar-session-id",
       };
     },
+    stopSession: stopProviderSession,
   };
   const avatarRepository: AppDependencies["avatars"]["repository"] = {
     async create(ownerId, input) {
@@ -294,6 +300,7 @@ function createTestDependencies(
             providerSessionId: null,
             status: "connecting",
             endedAt: null,
+            errorMessage: null,
           });
 
           return { id };
@@ -309,6 +316,7 @@ function createTestDependencies(
           return { ...realtimeSession, conversation };
         },
         async markActive(id, providerSessionId) {
+          if (options.activationError) throw options.activationError;
           const realtimeSession = realtimeSessions.get(id);
           if (!realtimeSession) throw new Error("missing realtime session");
           realtimeSession.status = "active";
@@ -324,27 +332,59 @@ function createTestDependencies(
 
           return realtimeSession;
         },
+        async finalizePrivate(input) {
+          const realtimeSession = realtimeSessions.get(input.realtimeSessionId);
+          const conversation = conversations.get(input.conversationId);
+          if (!realtimeSession || !conversation) return null;
+          if (realtimeSession.status === "ended") {
+            return { session: realtimeSession, finalized: false };
+          }
+          if (remainingFinalizeFailures > 0) {
+            remainingFinalizeFailures -= 1;
+            throw new Error("temporary finalize failure");
+          }
+
+          const endedAt = new Date("2026-06-08T00:02:00.000Z");
+          for (const entry of input.transcript) {
+            const createdAt = new Date(endedAt.getTime() + messages.length);
+            messages.push({
+              id: `message-${messages.length + 1}`,
+              conversationId: input.conversationId,
+              role: entry.role,
+              content: entry.content,
+              metadata: { source: "liveavatar_sdk" },
+              createdAt,
+            });
+            conversation.lastMessageAt = createdAt;
+          }
+          conversation.status = "ended";
+          conversation.title = input.title;
+          conversation.updatedAt = endedAt;
+          realtimeSession.status = "ended";
+          realtimeSession.endedAt = endedAt;
+
+          return { session: realtimeSession, finalized: true };
+        },
         async markErrored(id, errorMessage) {
           const realtimeSession = realtimeSessions.get(id);
           if (!realtimeSession) throw new Error(errorMessage);
           realtimeSession.status = "errored";
           realtimeSession.endedAt = new Date("2026-06-08T00:02:00.000Z");
+          realtimeSession.errorMessage = errorMessage;
         },
-      },
-      messagesRepository: {
-        async append(conversationId, input) {
-          const createdAt = new Date(`2026-06-08T00:01:0${messages.length}.000Z`);
-          messages.push({
-            id: `message-${messages.length + 1}`,
-            conversationId,
-            role: input.role,
-            content: input.content,
-            metadata: input.metadata ?? null,
-            createdAt,
-          });
-          const conversation = conversations.get(conversationId);
-          if (conversation) {
-            conversation.lastMessageAt = createdAt;
+        async markProviderStopped() {},
+        async expireSharedIfActive(id, conversationId) {
+          const realtimeSession = realtimeSessions.get(id);
+          if (realtimeSession && realtimeSession.status !== "ended") {
+            realtimeSession.status = "ended";
+            realtimeSession.endedAt = new Date("2026-06-08T00:02:00.000Z");
+          }
+          if (conversationId) {
+            const conversation = conversations.get(conversationId);
+            if (conversation) {
+              conversation.status = "ended";
+              conversation.updatedAt = new Date("2026-06-08T00:02:00.000Z");
+            }
           }
         },
       },
@@ -471,6 +511,51 @@ function createTestDependencies(
     realtimeSessions,
     messages,
     providerSyncCalls,
+    stopProviderSession,
+  };
+}
+
+function enableSharedExternalSessions(state: ReturnType<typeof createTestDependencies>) {
+  const voiceDependencies = state.dependencies.voiceSessions!;
+  voiceDependencies.externalSessions = {
+    policyService: {
+      reservePublic: vi.fn(async () => null),
+      reserveShared: vi.fn(async ({ targetId, avatarId, participantUserId }) => {
+        const grant = state.accessGrants.get(targetId);
+        if (
+          !grant ||
+          grant.avatarAgentId !== avatarId ||
+          grant.participantUserId !== participantUserId ||
+          grant.status !== "active"
+        ) {
+          return null;
+        }
+
+        const conversation = await voiceDependencies.conversationsRepository.createPrivateForParticipant({
+          ownerId: participantUserId,
+          avatarAgentId: avatarId,
+          accessGrantId: grant.id,
+          participantEmail: grant.participantEmail,
+          mode: "voice",
+        });
+        const expiresAt = new Date("2026-06-08T01:00:00.000Z");
+        const realtimeSession = await voiceDependencies.realtimeSessionsRepository.create({
+          avatarAgentId: avatarId,
+          conversationId: conversation.id,
+          accessGrantId: grant.id,
+          expiresAt,
+        });
+        return { conversation, realtimeSession, expiresAt };
+      }),
+    } as never,
+    policyRepository: {} as never,
+    rateLimiter: { consume: vi.fn(() => ({ allowed: true as const })) },
+    providerTokenProtector: {
+      encrypt: vi.fn((token: string) => `encrypted:${token}`),
+      decrypt: vi.fn((token: string) => token.replace("encrypted:", "")),
+    },
+    rateLimits: { startIpTarget: 60, startParticipantTarget: 20, startAvatar: 200 },
+    schedule: vi.fn(),
   };
 }
 
@@ -513,9 +598,8 @@ describe("@yuni/api voice sessions", () => {
       voiceSession: {
         conversationId: string;
         realtimeSessionId: string;
-        providerAgentId: string;
         sessionToken: string;
-        sessionId: string;
+        expiresAt: string | null;
         apiKey?: string;
       };
     };
@@ -524,12 +608,49 @@ describe("@yuni/api voice sessions", () => {
     expect(body.voiceSession).toMatchObject({
       conversationId: "conversation-1",
       realtimeSessionId: "realtime-1",
-      providerAgentId: "agent-1",
       sessionToken: "liveavatar-session-token",
-      sessionId: "liveavatar-session-id",
+      expiresAt: null,
     });
     expect(body.voiceSession.apiKey).toBeUndefined();
+    expect(JSON.stringify(body.voiceSession)).not.toMatch(/providerAgentId|providerSessionId|"sessionId"/);
     expect(state.avatars.get("avatar-1")?.providerSyncStatus).toBe("synced");
+  });
+
+  it("keeps the owner unlimited while a new context sync uses the last usable provider version", async () => {
+    const state = createTestDependencies();
+    const avatar = state.avatars.get("avatar-1")!;
+    state.avatars.set("avatar-1", {
+      ...avatar,
+      providerAgentId: "agent-previous",
+      providerSyncStatus: "syncing",
+      providerLastUsableAt: new Date("2026-06-08T00:00:00.000Z"),
+    });
+    const reservePublic = vi.fn();
+    const reserveShared = vi.fn();
+    state.dependencies.voiceSessions!.backgroundSyncEnabled = true;
+    state.dependencies.voiceSessions!.externalSessions = {
+      policyService: { reservePublic, reserveShared } as never,
+      policyRepository: {} as never,
+      rateLimiter: { consume: vi.fn(() => ({ allowed: true as const })) },
+      providerTokenProtector: {
+        encrypt: vi.fn((token: string) => token),
+        decrypt: vi.fn((token: string) => token),
+      },
+      rateLimits: { startIpTarget: 60, startParticipantTarget: 20, startAvatar: 200 },
+    };
+    const app = createApp(state.dependencies);
+    const cookie = await login(app);
+    const response = await app.request("/avatars/avatar-1/voice-sessions", {
+      method: "POST",
+      headers: { Cookie: cookie },
+    });
+    const body = (await json(response)) as { voiceSession: { expiresAt: string | null } };
+
+    expect(response.status).toBe(201);
+    expect(body.voiceSession.expiresAt).toBeNull();
+    expect(state.providerSyncCalls).toEqual([]);
+    expect(reservePublic).not.toHaveBeenCalled();
+    expect(reserveShared).not.toHaveBeenCalled();
   });
 
   it("does not start a voice session for an avatar owned by another user", async () => {
@@ -544,6 +665,34 @@ describe("@yuni/api voice sessions", () => {
     });
 
     expect(response.status).toBe(404);
+  });
+
+  it.each([
+    ["syncing without a usable version", "syncing", "processing"],
+    ["failed without a usable version", "failed", "unavailable"],
+    ["synced without a provider agent", "synced", "unavailable"],
+  ] as const)("reports owner voice as %s", async (_case, providerSyncStatus, expected) => {
+    const state = createTestDependencies();
+    const avatar = state.avatars.get("avatar-1")!;
+    state.avatars.set("avatar-1", {
+      ...avatar,
+      status: "active",
+      providerSyncStatus,
+      providerAgentId: null,
+      providerLastUsableAt: null,
+    });
+    const app = createApp(state.dependencies);
+    const cookie = await login(app);
+
+    const response = await app.request("/avatars/avatar-1/interaction-context", {
+      headers: { Cookie: cookie },
+    });
+    const body = (await json(response)) as {
+      interactionContext: { voiceAvailability: string };
+    };
+
+    expect(response.status).toBe(200);
+    expect(body.interactionContext.voiceAvailability).toBe(expected);
   });
 
   it("exposes a safe interaction context and starts an attributed shared voice session", async () => {
@@ -568,6 +717,7 @@ describe("@yuni/api voice sessions", () => {
       participantUserId: participant.id,
       status: "active",
     });
+    enableSharedExternalSessions(state);
     const app = createApp(state.dependencies);
     const participantCookie = await login(app, participant.email);
 
@@ -581,7 +731,14 @@ describe("@yuni/api voice sessions", () => {
     expect(contextResponse.status).toBe(200);
     expect(contextBody.interactionContext).toMatchObject({
       avatar: { id: "avatar-1", name: "Tutor Demo", status: "active" },
-      access: { type: "shared", canInteract: true },
+      access: {
+        type: "shared",
+        canInteract: true,
+        limits: {
+          maxSessionDurationSeconds: null,
+          maxSessionsPer24Hours: null,
+        },
+      },
       contextStatus: "ready",
       voiceAvailability: "ready",
     });
@@ -601,6 +758,77 @@ describe("@yuni/api voice sessions", () => {
       accessGrantId: "grant-1",
       participantEmail: participant.email,
       mode: "voice",
+    });
+  });
+
+  it("fails closed when shared session protections are not configured", async () => {
+    const participant = createUser({ id: "user-2", email: "participant@yuni.local" });
+    const state = createTestDependencies({ users: [createUser(), participant] });
+    const avatar = state.avatars.get("avatar-1")!;
+    state.avatars.set("avatar-1", {
+      ...avatar,
+      status: "active",
+      providerSyncStatus: "synced",
+      providerAgentId: "agent-shared",
+    });
+    state.accessGrants.set("grant-1", {
+      id: "grant-1",
+      avatarAgentId: "avatar-1",
+      ownerId: "user-1",
+      participantEmail: participant.email,
+      participantUserId: participant.id,
+      status: "active",
+    });
+    const app = createApp(state.dependencies);
+    const participantCookie = await login(app, participant.email);
+
+    const response = await app.request("/avatars/avatar-1/voice-sessions", {
+      method: "POST",
+      headers: { Cookie: participantCookie },
+    });
+
+    expect(response.status).toBe(503);
+    expect(state.conversations.size).toBe(0);
+    expect(state.realtimeSessions.size).toBe(0);
+  });
+
+  it("keeps shared interaction available after a failed sync when a previous version is usable", async () => {
+    const participant = createUser({
+      id: "user-2",
+      email: "participant@yuni.local",
+      name: "Participant",
+    });
+    const state = createTestDependencies({ users: [createUser(), participant] });
+    const avatar = state.avatars.get("avatar-1")!;
+    state.avatars.set("avatar-1", {
+      ...avatar,
+      status: "active",
+      providerSyncStatus: "failed",
+      providerAgentId: "agent-previous",
+      providerLastUsableAt: new Date("2026-08-16T12:00:00.000Z"),
+    });
+    state.accessGrants.set("grant-1", {
+      id: "grant-1",
+      avatarAgentId: "avatar-1",
+      ownerId: "user-1",
+      participantEmail: participant.email,
+      participantUserId: participant.id,
+      status: "active",
+    });
+    const app = createApp(state.dependencies);
+    const participantCookie = await login(app, participant.email);
+
+    const response = await app.request("/avatars/avatar-1/interaction-context", {
+      headers: { Cookie: participantCookie },
+    });
+    const body = (await json(response)) as {
+      interactionContext: { contextStatus: string; voiceAvailability: string };
+    };
+
+    expect(response.status).toBe(200);
+    expect(body.interactionContext).toMatchObject({
+      contextStatus: "failed",
+      voiceAvailability: "ready",
     });
   });
 
@@ -718,6 +946,7 @@ describe("@yuni/api voice sessions", () => {
       participantUserId: participant.id,
       status: "active",
     });
+    enableSharedExternalSessions(state);
     const app = createApp(state.dependencies);
     const cookie = await login(app, participant.email);
     await app.request("/avatars/avatar-1/voice-sessions", {
@@ -763,7 +992,7 @@ describe("@yuni/api voice sessions", () => {
     });
   });
 
-  it("returns LiveAvatar session errors with provider details", async () => {
+  it("returns LiveAvatar session errors without provider details", async () => {
     const state = createTestDependencies({
       liveAvatarError: new AvatarProviderError("Live Avatar returned code 4000: Invalid secret_id"),
     });
@@ -778,10 +1007,28 @@ describe("@yuni/api voice sessions", () => {
     expect(response.status).toBe(502);
     expect(body.error).toEqual({
       code: "BAD_GATEWAY",
-      message: "Live Avatar returned code 4000: Invalid secret_id",
+      message: "No pudimos iniciar la llamada.",
     });
     expect(state.realtimeSessions.get("realtime-1")?.status).toBe("errored");
+    expect(state.realtimeSessions.get("realtime-1")?.errorMessage).toBe(
+      "External voice session start failed"
+    );
     expect(state.conversations.get("conversation-1")?.status).toBe("ended");
+  });
+
+  it("stops an owner provider session when database activation fails", async () => {
+    const state = createTestDependencies({ activationError: new Error("temporary activation failure") });
+    const app = createApp(state.dependencies);
+    const cookie = await login(app);
+
+    const response = await app.request("/avatars/avatar-1/voice-sessions", {
+      method: "POST",
+      headers: { Cookie: cookie },
+    });
+
+    expect(response.status).toBe(500);
+    expect(state.stopProviderSession).toHaveBeenCalledWith("liveavatar-session-token");
+    expect(state.realtimeSessions.get("realtime-1")?.status).toBe("errored");
   });
 
   it("persists transcript entries when ending a private voice session", async () => {
@@ -816,6 +1063,49 @@ describe("@yuni/api voice sessions", () => {
     ]);
     expect(state.conversations.get("conversation-1")?.status).toBe("ended");
     expect(state.conversations.get("conversation-1")?.title).toBe("Saludo inicial");
+  });
+
+  it("accepts the text/plain JSON body used by authenticated unload beacons", async () => {
+    const state = createTestDependencies();
+    const app = createApp(state.dependencies);
+    const cookie = await login(app);
+    await app.request("/avatars/avatar-1/voice-sessions", {
+      method: "POST",
+      headers: { Cookie: cookie },
+    });
+
+    const response = await app.request("/voice-sessions/realtime-1/end", {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=UTF-8", Cookie: cookie },
+      body: JSON.stringify({ transcript: [{ role: "user", content: "Cierre desde beacon" }] }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(state.messages).toEqual([expect.objectContaining({ content: "Cierre desde beacon" })]);
+  });
+
+  it("retries an atomic private finalization without duplicating transcript entries", async () => {
+    const state = createTestDependencies({ finalizeFailures: 1 });
+    const app = createApp(state.dependencies);
+    const cookie = await login(app);
+    await app.request("/avatars/avatar-1/voice-sessions", {
+      method: "POST",
+      headers: { Cookie: cookie },
+    });
+    const request = () =>
+      app.request("/voice-sessions/realtime-1/end", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: cookie },
+        body: JSON.stringify({ transcript: [{ role: "user", content: "Guardar una sola vez" }] }),
+      });
+
+    expect((await request()).status).toBe(500);
+    expect(state.messages).toHaveLength(0);
+    expect(state.realtimeSessions.get("realtime-1")?.status).toBe("active");
+
+    expect((await request()).status).toBe(200);
+    expect((await request()).status).toBe(200);
+    expect(state.messages.map((message) => message.content)).toEqual(["Guardar una sola vez"]);
   });
 
   it("saves a fallback title when OpenAI title generation fails", async () => {
@@ -875,7 +1165,7 @@ describe("@yuni/api voice sessions", () => {
         id: "conversation-1",
         title: "Practica de derivadas",
         status: "ended",
-        lastMessageAt: "2026-06-08T00:01:00.000Z",
+        lastMessageAt: "2026-06-08T00:02:00.000Z",
       }),
     ]);
   });

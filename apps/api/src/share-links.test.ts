@@ -249,6 +249,7 @@ function createTestDependencies(
         async createLiteSessionToken() {
           return { sessionToken: "token", sessionId: "session" };
         },
+        async stopSession() {},
       },
     },
     share: {
@@ -276,6 +277,7 @@ function createTestDependencies(
             createdAt: now,
             updatedAt: now,
             lastUsedAt: null,
+            ...(input.limits ?? {}),
           };
 
           shareLinks.set(shareLink.id, shareLink);
@@ -304,6 +306,7 @@ function createTestDependencies(
 
           if (input.name !== undefined) updated.name = input.name;
           if (input.isEnabled !== undefined) updated.isEnabled = input.isEnabled;
+          if (input.limits !== undefined) Object.assign(updated, input.limits);
 
           shareLinks.set(shareLinkId, updated);
 
@@ -361,6 +364,7 @@ function createTestDependencies(
             revokedAt: null,
             createdAt: now,
             updatedAt: now,
+            ...(input.limits ?? {}),
           };
           accessGrants.set(grant.id, grant);
           return grant;
@@ -373,7 +377,7 @@ function createTestDependencies(
             (grant) => grant.ownerId === ownerId && grant.avatarAgentId === avatarAgentId
           );
         },
-        async updateForAvatar(ownerId, avatarAgentId, accessGrantId, status) {
+        async updateForAvatar(ownerId, avatarAgentId, accessGrantId, input) {
           const grant = accessGrants.get(accessGrantId);
           if (!grant || grant.ownerId !== ownerId || grant.avatarAgentId !== avatarAgentId) {
             throw new OwnershipError();
@@ -381,8 +385,14 @@ function createTestDependencies(
 
           const updated: AccessGrantRecord = {
             ...grant,
-            status,
-            revokedAt: status === "revoked" ? new Date("2026-05-16T00:00:00.000Z") : null,
+            status: input.status ?? grant.status,
+            revokedAt:
+              input.status === undefined
+                ? grant.revokedAt
+                : input.status === "revoked"
+                  ? new Date("2026-05-16T00:00:00.000Z")
+                  : null,
+            ...(input.limits ?? {}),
             updatedAt: new Date("2026-05-16T00:00:00.000Z"),
           };
           accessGrants.set(accessGrantId, updated);
@@ -492,6 +502,10 @@ describe("@yuni/api share links", () => {
       slug: "demo-link",
       publicUrl: "http://localhost:3000/a/demo-link",
       isEnabled: true,
+      limits: {
+        maxSessionDurationSeconds: null,
+        maxSessionsPer24Hours: null,
+      },
     });
     expect(body.shareLink.ownerId).toBeUndefined();
   });
@@ -557,6 +571,49 @@ describe("@yuni/api share links", () => {
 
     expect(response.status).toBe(200);
     expect(body.shareLink).toMatchObject({ name: "Updated link", isEnabled: false });
+  });
+
+  it("creates and updates all share link interaction limits", async () => {
+    const app = createApp(createTestDependencies([createUser()]));
+    const cookie = await login(app);
+    const avatarId = await createAvatar(app, cookie);
+    const created = await app.request(`/avatars/${avatarId}/share-links`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify({
+        slug: "limited-link",
+        name: "Limited",
+        limits: {
+          maxSessionDurationSeconds: 45,
+          maxSessionsPer24Hours: 3,
+        },
+      }),
+    });
+    const createdBody = (await json(created)) as { shareLink: { id: string; limits: object } };
+    expect(created.status).toBe(201);
+    expect(createdBody.shareLink.limits).toEqual({
+      maxSessionDurationSeconds: 45,
+      maxSessionsPer24Hours: 3,
+    });
+
+    const updated = await app.request(`/avatars/${avatarId}/share-links/${createdBody.shareLink.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify({
+        limits: {
+          maxSessionDurationSeconds: null,
+          maxSessionsPer24Hours: 5,
+        },
+      }),
+    });
+    expect((await json(updated)) as object).toMatchObject({
+      shareLink: {
+        limits: {
+          maxSessionDurationSeconds: null,
+          maxSessionsPer24Hours: 5,
+        },
+      },
+    });
   });
 
   it("rejects empty or forbidden update payloads", async () => {
@@ -663,6 +720,10 @@ describe("@yuni/api share links", () => {
       shareLink: {
         slug: "public-demo",
         name: "Demo public link",
+        limits: {
+          maxSessionDurationSeconds: null,
+          maxSessionsPer24Hours: null,
+        },
       },
       avatar: {
         name: "YUNI Demo",
@@ -739,8 +800,57 @@ describe("@yuni/api access grants", () => {
       participantEmail: "guest@yuni.local",
       participantUserId: null,
       state: "pending",
+      limits: {
+        maxSessionDurationSeconds: null,
+        maxSessionsPer24Hours: null,
+      },
     });
     expect(body.accessGrant.ownerId).toBeUndefined();
+  });
+
+  it("creates and patches limits for an individual access grant", async () => {
+    const app = createApp(createTestDependencies([createUser()]));
+    const cookie = await login(app);
+    const avatarId = await createAvatar(app, cookie);
+    const created = await app.request(`/avatars/${avatarId}/access-grants`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify({
+        email: "limited@yuni.local",
+        limits: {
+          maxSessionDurationSeconds: 45,
+          maxSessionsPer24Hours: 2,
+        },
+      }),
+    });
+    const createdBody = (await json(created)) as { accessGrant: { id: string; limits: object } };
+    expect(created.status).toBe(201);
+    expect(createdBody.accessGrant.limits).toEqual({
+      maxSessionDurationSeconds: 45,
+      maxSessionsPer24Hours: 2,
+    });
+
+    const updated = await app.request(`/avatars/${avatarId}/access-grants/${createdBody.accessGrant.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify({
+        limits: {
+          maxSessionDurationSeconds: null,
+          maxSessionsPer24Hours: 5,
+        },
+      }),
+    });
+    expect(updated.status).toBe(200);
+    expect(await json(updated)).toMatchObject({
+      accessGrant: {
+        id: createdBody.accessGrant.id,
+        state: "pending",
+        limits: {
+          maxSessionDurationSeconds: null,
+          maxSessionsPer24Hours: 5,
+        },
+      },
+    });
   });
 
   it("links an existing account and rejects duplicate or self grants", async () => {

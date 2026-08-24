@@ -1,10 +1,7 @@
 import { Hono } from "hono";
 import { describe, expect, it, vi } from "vitest";
 import { createCreatorDashboardController } from "./domains/dashboard/controller";
-import type {
-  CreatorDashboardRepository,
-  CreatorDashboardSummaryData,
-} from "./domains/dashboard/repository";
+import type { CreatorDashboardRepository, CreatorDashboardSummaryData } from "./domains/dashboard/repository";
 import { createCreatorDashboardService } from "./domains/dashboard/service";
 import { createSessionToken, SESSION_COOKIE_NAME } from "./domains/auth/session";
 
@@ -37,9 +34,7 @@ function createSummaryData(): CreatorDashboardSummaryData {
         participantEmail: "Person@Example.com",
         createdAt: "2026-08-01T10:00:00.000Z",
         userTurns: 3,
-        sessions: [
-          session("session-ended", "ended", "2026-08-01T10:00:00.000Z", "2026-08-01T10:05:00.000Z"),
-        ],
+        sessions: [session("session-ended", "ended", "2026-08-01T10:00:00.000Z", "2026-08-01T10:05:00.000Z")],
       }),
       conversation({
         id: "current-2",
@@ -97,12 +92,7 @@ function conversation(input: {
   };
 }
 
-function session(
-  id: string,
-  status: "active" | "ended" | "errored",
-  startedAt: string,
-  endedAt?: string
-) {
+function session(id: string, status: "active" | "ended" | "errored", startedAt: string, endedAt?: string) {
   return {
     id,
     status,
@@ -201,18 +191,15 @@ describe("@yuni/api creator dashboard endpoint", () => {
 
   it("accepts inclusive date-only ranges and rejects invalid boundaries", async () => {
     const { app, repository, cookie } = await setup();
-    const response = await app.request(
-      "/dashboard/creator-summary?from=2026-08-01&to=2026-08-15",
-      { headers: { Cookie: cookie } }
-    );
-    const invalid = await app.request(
-      "/dashboard/creator-summary?from=2026-08-15&to=2026-08-01",
-      { headers: { Cookie: cookie } }
-    );
-    const impossibleDate = await app.request(
-      "/dashboard/creator-summary?from=2026-02-31&to=2026-03-15",
-      { headers: { Cookie: cookie } }
-    );
+    const response = await app.request("/dashboard/creator-summary?from=2026-08-01&to=2026-08-15", {
+      headers: { Cookie: cookie },
+    });
+    const invalid = await app.request("/dashboard/creator-summary?from=2026-08-15&to=2026-08-01", {
+      headers: { Cookie: cookie },
+    });
+    const impossibleDate = await app.request("/dashboard/creator-summary?from=2026-02-31&to=2026-03-15", {
+      headers: { Cookie: cookie },
+    });
 
     expect(response.status).toBe(200);
     expect(repository.getSummaryData).toHaveBeenLastCalledWith(

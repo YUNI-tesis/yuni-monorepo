@@ -45,13 +45,27 @@ export default function RegisterPage() {
         <PageHeader eyebrow="YUNI" title="Crear cuenta" />
         <form className="yuni-stack" onSubmit={onSubmit}>
           <FormField label="Nombre" htmlFor="name" hint="Opcional. Lo usamos para personalizar tu espacio.">
-            <Input id="name" name="name" type="text" autoComplete="name" />
+            <Input id="name" name="name" type="text" autoComplete="name" placeholder="Juan Martinez" />
           </FormField>
           <FormField label="Email" htmlFor="email">
-            <Input id="email" name="email" type="email" autoComplete="email" required />
+            <Input
+              id="email"
+              name="email"
+              type="email"
+              autoComplete="email"
+              placeholder="example@gmail.com"
+              required
+            />
           </FormField>
           <FormField label="Password" htmlFor="password" hint="Minimo 8 caracteres.">
-            <Input id="password" name="password" type="password" autoComplete="new-password" required minLength={8} />
+            <Input
+              id="password"
+              name="password"
+              type="password"
+              autoComplete="new-password"
+              required
+              minLength={8}
+            />
           </FormField>
           {error ? <p className="yuni-form-field__error">{error}</p> : null}
           <Button type="submit" loading={isSubmitting}>

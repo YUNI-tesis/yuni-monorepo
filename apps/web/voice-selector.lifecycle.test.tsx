@@ -79,9 +79,9 @@ describe("voice selector preview lifecycle", () => {
     fireEvent.click(screen.getByRole("button", { name: "Reproducir muestra de Agustin" }));
     const agustinAudio = MockAudio.instances[0]!;
     expect(agustinAudio.play).toHaveBeenCalledOnce();
-    expect(screen.getByRole("button", { name: "Pausar muestra de Agustin" }).getAttribute("aria-pressed")).toBe(
-      "true"
-    );
+    expect(
+      screen.getByRole("button", { name: "Pausar muestra de Agustin" }).getAttribute("aria-pressed")
+    ).toBe("true");
 
     fireEvent.click(screen.getByRole("button", { name: "Reproducir muestra de Sofia" }));
     const sofiaAudio = MockAudio.instances[1]!;

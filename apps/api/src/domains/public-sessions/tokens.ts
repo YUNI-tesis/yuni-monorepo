@@ -20,10 +20,7 @@ export type PublicTokenService = ReturnType<typeof createPublicTokenService>;
 
 export function createPublicTokenService() {
   return {
-    async createIdentityToken(
-      claims: Omit<PublicIdentityTokenClaims, "type">,
-      maxAgeSeconds = 600
-    ) {
+    async createIdentityToken(claims: Omit<PublicIdentityTokenClaims, "type">, maxAgeSeconds = 600) {
       const expiresAt = new Date(Date.now() + maxAgeSeconds * 1000);
       const token = await new SignJWT({ ...claims, type: "public_identity" })
         .setProtectedHeader({ alg: "HS256" })

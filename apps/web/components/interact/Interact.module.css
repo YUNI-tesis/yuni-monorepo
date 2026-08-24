@@ -382,8 +382,7 @@
   display: block;
 }
 
-.contextNotice,
-.inlineError {
+.contextNotice {
   width: min(720px, 100%);
   margin: 0;
   border: 1px solid rgba(255, 193, 90, 0.28);
@@ -395,14 +394,33 @@
   backdrop-filter: blur(16px);
 }
 
-.inlineError {
-  display: flex;
-  flex-wrap: wrap;
+.limitsNotice {
+  display: inline-flex;
+  width: fit-content;
+  max-width: min(720px, 100%);
   align-items: center;
-  justify-content: space-between;
-  gap: var(--yuni-space-3);
-  border-color: rgba(255, 114, 114, 0.32);
-  background: rgba(49, 14, 22, 0.82);
+  gap: var(--yuni-space-2);
+  margin: 0;
+  border: 1px solid rgba(255, 193, 90, 0.34);
+  border-radius: 14px;
+  padding: 10px var(--yuni-space-4);
+  background: rgba(22, 17, 10, 0.78);
+  color: var(--yuni-color-text);
+  line-height: 1.4;
+  backdrop-filter: blur(16px);
+}
+
+.limitsNotice svg {
+  flex: 0 0 auto;
+  color: var(--yuni-color-warning);
+}
+
+.callToast {
+  position: absolute;
+  z-index: 6;
+  top: var(--yuni-space-4);
+  right: var(--yuni-space-4);
+  width: min(440px, calc(100% - 32px));
 }
 
 .historySidePanel {
@@ -720,6 +738,16 @@
   accent-color: var(--yuni-color-primary);
 }
 
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  clip-path: inset(50%);
+}
+
 @media (max-width: 560px) {
   .focusTitle h1 {
     font-size: var(--yuni-font-lg);
@@ -764,6 +792,13 @@
   .videoStatus {
     right: var(--yuni-space-3);
     left: var(--yuni-space-3);
+  }
+
+  .callToast {
+    top: 68px;
+    right: var(--yuni-space-3);
+    left: var(--yuni-space-3);
+    width: auto;
   }
 
   .floatingDock {

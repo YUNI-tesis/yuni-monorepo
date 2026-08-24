@@ -26,6 +26,20 @@ import {
 } from "@yuni/voice";
 import { createLogger } from "@yuni/observability";
 import type { AvatarAgentRecord, AvatarsRepository } from "../avatars/repository";
+import { hasUsableAvatarProviderVersion } from "../avatars/provider-availability";
+import type { RateLimiter } from "../public-sessions/rate-limiter";
+import type { ExternalSessionPolicyService } from "../external-sessions/policy";
+import type { ProviderTokenProtector } from "../public-sessions/provider-token-protector";
+import type { createExternalSessionPolicyRepository } from "@yuni/db";
+import {
+  EXTERNAL_MAINTENANCE_BATCH_SIZE,
+  EXTERNAL_MAINTENANCE_MAX_BATCHES,
+  EXTERNAL_PROVIDER_STOP_CONCURRENCY,
+  EXTERNAL_RECORD_CLEANUP_CONCURRENCY,
+  EXTERNAL_SESSION_FINALIZATION_GRACE_MS,
+  EXTERNAL_SESSION_START_ERROR_MESSAGE,
+  runWithConcurrency,
+} from "../external-sessions/lifecycle";
 
 const logger = createLogger("@yuni/api:voice-sessions");
 
@@ -71,6 +85,13 @@ export class LiveAvatarSessionTimeoutServiceError extends Error {
   }
 }
 
+export class ExternalSessionLifecycleConfigurationError extends Error {
+  constructor() {
+    super("External session lifecycle is not configured");
+    this.name = "ExternalSessionLifecycleConfigurationError";
+  }
+}
+
 export type VoiceSessionsServiceDependencies = {
   avatarsRepository: Pick<
     AvatarsRepository,
@@ -88,7 +109,12 @@ export type VoiceSessionsServiceDependencies = {
     updateTitle(id: string, title: string): Promise<unknown>;
   };
   realtimeSessionsRepository: {
-    create(input: { avatarAgentId: string; conversationId: string }): Promise<{ id: string }>;
+    create(input: {
+      avatarAgentId: string;
+      conversationId: string;
+      expiresAt?: Date;
+      accessGrantId?: string;
+    }): Promise<{ id: string }>;
     findPrivateForParticipant(
       participantUserId: string,
       realtimeSessionId: string
@@ -97,20 +123,27 @@ export type VoiceSessionsServiceDependencies = {
       conversationId: string | null;
       avatarAgentId: string;
       providerSessionId: string | null;
+      providerSessionTokenCiphertext?: string | null;
+      providerStoppedAt?: Date | null;
+      expiresAt?: Date | null;
       status: string;
       endedAt: Date | null;
       conversation: { id: string; status: string } | null;
     } | null>;
     markActive(
       id: string,
-      providerSessionId?: string
+      providerSessionId?: string,
+      providerSessionTokenCiphertext?: string
     ): Promise<{
       id: string;
       conversationId: string | null;
       providerSessionId: string | null;
+      providerSessionTokenCiphertext?: string | null;
+      providerStoppedAt?: Date | null;
+      expiresAt?: Date | null;
       status: string;
       endedAt: Date | null;
-    }>;
+    } | null>;
     markEnded(id: string): Promise<{
       id: string;
       conversationId: string | null;
@@ -118,21 +151,46 @@ export type VoiceSessionsServiceDependencies = {
       status: string;
       endedAt: Date | null;
     }>;
-    markErrored(id: string, errorMessage: string): Promise<unknown>;
+    finalizePrivate(input: {
+      realtimeSessionId: string;
+      conversationId: string;
+      transcript: Array<{ role: "user" | "assistant"; content: string }>;
+      title: string;
+    }): Promise<{
+      session: {
+        id: string;
+        conversationId: string | null;
+        status: string;
+        endedAt: Date | null;
+      };
+      finalized: boolean;
+    } | null>;
+    markErrored(id: string, errorMessage: string, providerSessionTokenCiphertext?: string): Promise<unknown>;
+    markProviderStopped(id: string): Promise<unknown>;
+    expireSharedIfActive(id: string, conversationId: string | null): Promise<unknown>;
   };
-  messagesRepository: {
-    append(
-      conversationId: string,
-      input: { role: "user" | "assistant"; content: string; metadata?: Record<string, unknown> }
-    ): Promise<unknown>;
-  };
-  liveAvatarProvider: Pick<AvatarProvider, "createLiteSessionToken">;
+  liveAvatarProvider: Pick<AvatarProvider, "createLiteSessionToken" | "stopSession">;
   elevenLabsAgentProvider: Pick<ElevenLabsAgentProvider, "syncAvatarAgent">;
   conversationTitleGenerator?: ConversationTitleGenerator;
   backgroundSyncEnabled?: boolean;
+  externalSessions?: {
+    policyService: ExternalSessionPolicyService;
+    policyRepository: ReturnType<typeof createExternalSessionPolicyRepository>;
+    rateLimiter: RateLimiter;
+    providerTokenProtector: ProviderTokenProtector;
+    rateLimits: {
+      startIpTarget: number;
+      startParticipantTarget: number;
+      startAvatar: number;
+    };
+    schedule?: (callback: () => void, delayMs: number) => void;
+  };
 };
 
 export function createVoiceSessionsService(dependencies: VoiceSessionsServiceDependencies) {
+  let providerStopCursor: string | undefined;
+  let providerStopRun: Promise<void> | null = null;
+
   return {
     async syncAgentProvider(ownerId: string, avatarId: string) {
       const avatar = await findOwnedAvatar(dependencies.avatarsRepository, ownerId, avatarId);
@@ -140,7 +198,7 @@ export function createVoiceSessionsService(dependencies: VoiceSessionsServiceDep
       return syncAvatarAgent(dependencies, ownerId, avatar, { force: true });
     },
 
-    async startVoiceSession(userId: string, avatarId: string) {
+    async startVoiceSession(userId: string, avatarId: string, ip = "unknown") {
       const access = await dependencies.avatarsRepository.findAccessibleForUser(userId, avatarId);
 
       if (!access) {
@@ -154,41 +212,71 @@ export function createVoiceSessionsService(dependencies: VoiceSessionsServiceDep
         access.type === "owner" && !dependencies.backgroundSyncEnabled
           ? (await syncAvatarAgent(dependencies, userId, avatar, { force: false })).providerAgentId
           : getUsableProviderAgentId(avatar, access.type);
-      const conversation = await dependencies.conversationsRepository.createPrivateForParticipant({
-        ownerId: userId,
-        avatarAgentId: avatar.id,
-        mode: "voice",
-        ...(access.type === "shared"
+      const { conversation, realtimeSession, expiresAt } = await reserveVoiceSession(
+        dependencies,
+        userId,
+        avatar.id,
+        access.type === "shared"
           ? {
-              accessGrantId: access.accessGrant.id,
+              id: access.accessGrant.id,
               participantEmail: access.accessGrant.participantEmail,
             }
-          : {}),
-      });
-      const realtimeSession = await dependencies.realtimeSessionsRepository.create({
-        avatarAgentId: avatar.id,
-        conversationId: conversation.id,
-      });
+          : null,
+        ip
+      );
 
+      let createdProviderSessionToken: string | null = null;
+      let createdProviderSessionTokenCiphertext: string | null = null;
       try {
         const liveAvatarSession = await dependencies.liveAvatarProvider.createLiteSessionToken({
           avatarId: liveAvatarConfig.avatarId,
           elevenLabsAgentId: providerAgentId,
         });
+        createdProviderSessionToken = liveAvatarSession.sessionToken;
+        createdProviderSessionTokenCiphertext =
+          access.type === "shared" && dependencies.externalSessions
+            ? dependencies.externalSessions.providerTokenProtector.encrypt(liveAvatarSession.sessionToken)
+            : null;
         const activeSession = await dependencies.realtimeSessionsRepository.markActive(
           realtimeSession.id,
-          liveAvatarSession.sessionId ?? undefined
+          liveAvatarSession.sessionId ?? undefined,
+          createdProviderSessionTokenCiphertext ?? undefined
         );
+        if (!activeSession) throw new LiveAvatarSessionTimeoutServiceError();
+        if (access.type === "shared" && expiresAt) {
+          scheduleSharedExpiry(dependencies, {
+            realtimeSessionId: realtimeSession.id,
+            conversationId: conversation.id,
+            sessionToken: liveAvatarSession.sessionToken,
+            delayMs: Math.max(0, expiresAt.getTime() - Date.now()),
+          });
+        }
 
         return {
           conversationId: conversation.id,
           realtimeSessionId: activeSession.id,
-          providerAgentId,
           sessionToken: liveAvatarSession.sessionToken,
-          sessionId: liveAvatarSession.sessionId,
+          expiresAt: expiresAt?.toISOString() ?? null,
         };
       } catch (error) {
-        await markRealtimeSessionErrored(dependencies, realtimeSession.id, error);
+        let providerTokenForRecovery: string | undefined;
+        if (createdProviderSessionToken) {
+          const stopped = await stopVoiceProviderSession(
+            dependencies,
+            realtimeSession.id,
+            createdProviderSessionToken
+          );
+          if (access.type === "shared" && !stopped) {
+            providerTokenForRecovery =
+              createdProviderSessionTokenCiphertext ??
+              encryptSharedProviderTokenForRecovery(
+                dependencies,
+                createdProviderSessionToken,
+                realtimeSession.id
+              );
+          }
+        }
+        await markRealtimeSessionErrored(dependencies, realtimeSession.id, providerTokenForRecovery);
         await markConversationEndedAfterStartFailure(dependencies, conversation.id, error);
         logger.error("Live Avatar session creation failed", {
           error: summarizeStructuredError(error),
@@ -229,25 +317,309 @@ export function createVoiceSessionsService(dependencies: VoiceSessionsServiceDep
         return toVoiceSessionDto(realtimeSession);
       }
 
-      if (realtimeSession.conversationId) {
-        await appendTranscript(dependencies, realtimeSession.conversationId, parsed.transcript);
-        await dependencies.conversationsRepository.markEnded(realtimeSession.conversationId);
-        await updateEndedVoiceConversationTitle(dependencies, userId, realtimeSession, parsed.transcript);
+      if (!realtimeSession.conversationId) {
+        const endedSession = await dependencies.realtimeSessionsRepository.markEnded(realtimeSession.id);
+        await stopStoredSharedProviderSession(dependencies, realtimeSession).catch(() => false);
+        return toVoiceSessionDto(endedSession);
       }
 
-      return toVoiceSessionDto(await dependencies.realtimeSessionsRepository.markEnded(realtimeSession.id));
+      const immediateTitleInput = {
+        messages: parsed.transcript.map(toConversationTitleMessage),
+      };
+      const fallbackTitle = fallbackConversationTitle(immediateTitleInput);
+      const result = await dependencies.realtimeSessionsRepository.finalizePrivate({
+        realtimeSessionId: realtimeSession.id,
+        conversationId: realtimeSession.conversationId,
+        transcript: parsed.transcript.map(({ role, content }) => ({ role, content })),
+        title: fallbackTitle,
+      });
+      if (!result) throw new NotFoundError("Voice session not found");
+
+      await stopStoredSharedProviderSession(dependencies, realtimeSession).catch(() => false);
+
+      if (result.finalized) {
+        const titleInput = await createVoiceConversationTitleInput(
+          dependencies,
+          userId,
+          realtimeSession,
+          parsed.transcript
+        );
+        await updateEndedVoiceConversationTitle(dependencies, realtimeSession, titleInput, fallbackTitle);
+      }
+
+      return toVoiceSessionDto(result.session);
+    },
+
+    async cleanupExpiredShared(now = new Date()) {
+      const external = dependencies.externalSessions;
+      if (!external) return 0;
+      requireSharedLifecycleCapabilities(dependencies);
+      const stopProviders = async () => {
+        let sessions = await external.policyRepository.listSharedForProviderStop(
+          now,
+          EXTERNAL_MAINTENANCE_BATCH_SIZE,
+          providerStopCursor
+        );
+        if (sessions.length === 0 && providerStopCursor) {
+          providerStopCursor = undefined;
+          sessions = await external.policyRepository.listSharedForProviderStop(
+            now,
+            EXTERNAL_MAINTENANCE_BATCH_SIZE
+          );
+        }
+        providerStopCursor = sessions.at(-1)?.id;
+
+        await runWithConcurrency(sessions, EXTERNAL_PROVIDER_STOP_CONCURRENCY, async (session) => {
+          if (!session.providerSessionTokenCiphertext) return;
+          try {
+            const token = external.providerTokenProtector.decrypt(session.providerSessionTokenCiphertext);
+            await stopVoiceProviderSession(dependencies, session.id, token);
+          } catch (error) {
+            logger.error("Could not recover shared LiveAvatar session", {
+              realtimeSessionId: session.id,
+              error: summarizeStructuredError(error),
+            });
+          }
+        });
+      };
+      const closeExpiredRecords = async () => {
+        const cutoff = new Date(now.getTime() - EXTERNAL_SESSION_FINALIZATION_GRACE_MS);
+        let afterId: string | undefined;
+        let expiredCount = 0;
+
+        for (let batch = 0; batch < EXTERNAL_MAINTENANCE_MAX_BATCHES; batch += 1) {
+          const expired = afterId
+            ? await external.policyRepository.listExpiredSharedForCleanup(
+                cutoff,
+                EXTERNAL_MAINTENANCE_BATCH_SIZE,
+                afterId
+              )
+            : await external.policyRepository.listExpiredSharedForCleanup(
+                cutoff,
+                EXTERNAL_MAINTENANCE_BATCH_SIZE
+              );
+          if (expired.length === 0) break;
+
+          await runWithConcurrency(expired, EXTERNAL_RECORD_CLEANUP_CONCURRENCY, async (session) => {
+            const didExpire = await dependencies.realtimeSessionsRepository
+              .expireSharedIfActive(session.id, session.conversationId)
+              .catch((error) => {
+                logger.error("Could not clean up expired shared session", {
+                  realtimeSessionId: session.id,
+                  error: summarizeStructuredError(error),
+                });
+                return false;
+              });
+            if (didExpire === true) expiredCount += 1;
+          });
+          afterId = expired.at(-1)?.id;
+          if (expired.length < EXTERNAL_MAINTENANCE_BATCH_SIZE) break;
+        }
+
+        return expiredCount;
+      };
+
+      if (!providerStopRun) {
+        providerStopRun = stopProviders()
+          .catch((error) =>
+            logger.error("Could not list shared LiveAvatar sessions for provider stop", {
+              error: summarizeStructuredError(error),
+            })
+          )
+          .then(() => {
+            providerStopRun = null;
+          });
+      }
+
+      return closeExpiredRecords();
     },
   };
+}
+
+async function reserveVoiceSession(
+  dependencies: VoiceSessionsServiceDependencies,
+  userId: string,
+  avatarId: string,
+  grant: { id: string; participantEmail: string } | null,
+  ip: string
+) {
+  const reserve = async (expiresAt?: Date) => {
+    const conversation = await dependencies.conversationsRepository.createPrivateForParticipant({
+      ownerId: userId,
+      avatarAgentId: avatarId,
+      mode: "voice",
+      ...(grant ? { accessGrantId: grant.id, participantEmail: grant.participantEmail } : {}),
+    });
+    const realtimeSession = await dependencies.realtimeSessionsRepository.create({
+      avatarAgentId: avatarId,
+      conversationId: conversation.id,
+      ...(grant ? { accessGrantId: grant.id } : {}),
+      ...(expiresAt ? { expiresAt } : {}),
+    });
+    return { conversation, realtimeSession, expiresAt: expiresAt ?? null };
+  };
+
+  const external = dependencies.externalSessions;
+  if (!grant) return reserve();
+  if (!external) throw new ExternalSessionLifecycleConfigurationError();
+  requireSharedLifecycleCapabilities(dependencies);
+  enforceSharedRateLimit(external, ip, userId, grant.id, avatarId);
+  const reservation = await external.policyService.reserveShared({
+    targetId: grant.id,
+    avatarId,
+    participantUserId: userId,
+  });
+  if (!reservation) throw new NotFoundError("Avatar not found");
+  return reservation;
+}
+
+function enforceSharedRateLimit(
+  external: NonNullable<VoiceSessionsServiceDependencies["externalSessions"]>,
+  ip: string,
+  userId: string,
+  grantId: string,
+  avatarId: string
+) {
+  const result = external.rateLimiter.consume([
+    rule("shared-start-ip-target", [ip, grantId], external.rateLimits.startIpTarget),
+    rule("shared-start-participant-target", [userId, grantId], external.rateLimits.startParticipantTarget),
+    rule("external-start-avatar", [avatarId], external.rateLimits.startAvatar),
+  ]);
+  if (!result.allowed) {
+    const error = new Error("External session rate limit reached") as Error & {
+      retryAfterSeconds: number;
+      code: "PLATFORM_RATE_LIMIT";
+    };
+    error.retryAfterSeconds = result.retryAfterSeconds;
+    error.code = "PLATFORM_RATE_LIMIT";
+    throw error;
+  }
+}
+
+function rule(namespace: string, identifiers: string[], limit: number) {
+  return { namespace, identifiers, limit, windowMs: 60 * 60_000 };
+}
+
+function requireSharedLifecycleCapabilities(dependencies: VoiceSessionsServiceDependencies) {
+  if (
+    typeof dependencies.liveAvatarProvider.stopSession !== "function" ||
+    typeof dependencies.realtimeSessionsRepository.markProviderStopped !== "function" ||
+    typeof dependencies.realtimeSessionsRepository.expireSharedIfActive !== "function"
+  ) {
+    throw new ExternalSessionLifecycleConfigurationError();
+  }
+}
+
+function scheduleSharedExpiry(
+  dependencies: VoiceSessionsServiceDependencies,
+  input: { realtimeSessionId: string; conversationId: string; sessionToken: string; delayMs: number }
+) {
+  const schedule = dependencies.externalSessions?.schedule ?? scheduleUnref;
+  schedule(() => {
+    void stopAndScheduleSharedExpiration(dependencies, input, schedule).catch((error) =>
+      logger.error("Could not schedule shared LiveAvatar expiration", {
+        realtimeSessionId: input.realtimeSessionId,
+        error: summarizeStructuredError(error),
+      })
+    );
+  }, input.delayMs);
+}
+
+async function stopAndScheduleSharedExpiration(
+  dependencies: VoiceSessionsServiceDependencies,
+  input: { realtimeSessionId: string; conversationId: string; sessionToken: string },
+  schedule: (callback: () => void, delayMs: number) => void
+) {
+  const stopPromise = stopVoiceProviderSession(dependencies, input.realtimeSessionId, input.sessionToken);
+  schedule(() => {
+    void expireSharedSafely(dependencies, input.realtimeSessionId, input.conversationId);
+  }, EXTERNAL_SESSION_FINALIZATION_GRACE_MS);
+  await stopPromise;
+}
+
+async function expireSharedSafely(
+  dependencies: VoiceSessionsServiceDependencies,
+  realtimeSessionId: string,
+  conversationId: string | null
+) {
+  try {
+    await dependencies.realtimeSessionsRepository.expireSharedIfActive(realtimeSessionId, conversationId);
+  } catch (error) {
+    logger.error("Could not expire shared LiveAvatar session", {
+      realtimeSessionId,
+      error: summarizeStructuredError(error),
+    });
+  }
+}
+
+async function stopStoredSharedProviderSession(
+  dependencies: VoiceSessionsServiceDependencies,
+  session: {
+    id: string;
+    providerSessionTokenCiphertext?: string | null;
+    providerStoppedAt?: Date | null;
+  }
+) {
+  const external = dependencies.externalSessions;
+  if (!external || !session.providerSessionTokenCiphertext || session.providerStoppedAt) return true;
+  try {
+    return await stopVoiceProviderSession(
+      dependencies,
+      session.id,
+      external.providerTokenProtector.decrypt(session.providerSessionTokenCiphertext)
+    );
+  } catch (error) {
+    logger.error("Could not decrypt shared LiveAvatar session token", {
+      realtimeSessionId: session.id,
+      error: summarizeStructuredError(error),
+    });
+    return false;
+  }
+}
+
+async function stopVoiceProviderSession(
+  dependencies: VoiceSessionsServiceDependencies,
+  realtimeSessionId: string,
+  sessionToken: string
+) {
+  try {
+    await dependencies.liveAvatarProvider.stopSession(sessionToken);
+    await dependencies.realtimeSessionsRepository.markProviderStopped(realtimeSessionId);
+    return true;
+  } catch (error) {
+    logger.error("Could not stop LiveAvatar session", {
+      realtimeSessionId,
+      error: summarizeStructuredError(error),
+    });
+    return false;
+  }
+}
+
+function encryptSharedProviderTokenForRecovery(
+  dependencies: VoiceSessionsServiceDependencies,
+  sessionToken: string,
+  realtimeSessionId: string
+) {
+  try {
+    return dependencies.externalSessions?.providerTokenProtector.encrypt(sessionToken);
+  } catch (error) {
+    logger.error("Could not encrypt shared LiveAvatar session token for recovery", {
+      realtimeSessionId,
+      error: summarizeStructuredError(error),
+    });
+    return undefined;
+  }
+}
+
+function scheduleUnref(callback: () => void, delayMs: number) {
+  const timer = setTimeout(callback, delayMs);
+  timer.unref?.();
 }
 
 function getReadySharedProviderAgentId(avatar: AvatarAgentRecord): string {
   const parsedVoiceConfig = VoiceConfigSchema.safeParse(avatar.voiceConfig);
 
-  if (
-    !parsedVoiceConfig.success ||
-    !avatar.providerAgentId ||
-    (avatar.providerSyncStatus !== "synced" && !avatar.providerLastUsableAt)
-  ) {
+  if (!parsedVoiceConfig.success || !hasUsableAvatarProviderVersion(avatar)) {
     throw new SharedAvatarNotReadyError();
   }
 
@@ -365,49 +737,49 @@ function parseLiveAvatarConfig(avatar: AvatarAgentRecord) {
   return parsed.data;
 }
 
-async function appendTranscript(
-  dependencies: VoiceSessionsServiceDependencies,
-  conversationId: string,
-  transcript: VoiceSessionTranscriptEntry[]
-) {
-  for (const entry of transcript) {
-    await dependencies.messagesRepository.append(conversationId, {
-      role: entry.role,
-      content: entry.content,
-      metadata: {
-        source: "liveavatar_sdk",
-        ...(entry.metadata ?? {}),
-      },
-    });
-  }
-}
-
-async function updateEndedVoiceConversationTitle(
+async function createVoiceConversationTitleInput(
   dependencies: VoiceSessionsServiceDependencies,
   ownerId: string,
-  realtimeSession: { conversationId: string | null; avatarAgentId: string },
+  realtimeSession: { avatarAgentId: string },
   transcript: VoiceSessionTranscriptEntry[]
 ) {
-  if (!realtimeSession.conversationId) {
-    return;
-  }
+  const messages = transcript.map(toConversationTitleMessage);
 
   try {
     const avatar = await dependencies.avatarsRepository.findByIdForOwner(
       ownerId,
       realtimeSession.avatarAgentId
     );
-    const titleInput = {
+    return {
       ...(avatar?.name ? { avatarName: avatar.name } : {}),
-      messages: transcript.map(toConversationTitleMessage),
+      messages,
     };
+  } catch (error) {
+    logger.error("Failed to prepare voice conversation title", {
+      error: summarizeStructuredError(error),
+      avatarAgentId: realtimeSession.avatarAgentId,
+    });
+    return { messages };
+  }
+}
+
+async function updateEndedVoiceConversationTitle(
+  dependencies: VoiceSessionsServiceDependencies,
+  realtimeSession: { conversationId: string | null; avatarAgentId: string },
+  titleInput: { avatarName?: string; messages: ConversationTitleMessage[] },
+  currentTitle?: string
+) {
+  if (!realtimeSession.conversationId) return;
+
+  try {
     const generatedTitle = await generateConversationTitle(
       dependencies.conversationTitleGenerator,
       titleInput
     );
-    const title = generatedTitle ?? fallbackConversationTitle(titleInput);
-
-    await dependencies.conversationsRepository.updateTitle(realtimeSession.conversationId, title);
+    const title = generatedTitle ?? currentTitle ?? fallbackConversationTitle(titleInput);
+    if (title !== currentTitle) {
+      await dependencies.conversationsRepository.updateTitle(realtimeSession.conversationId, title);
+    }
   } catch (error) {
     logger.error("Failed to update voice conversation title", {
       error: summarizeStructuredError(error),
@@ -441,30 +813,28 @@ function toConversationTitleMessage(entry: VoiceSessionTranscriptEntry): Convers
 function toVoiceSessionDto(session: {
   id: string;
   conversationId: string | null;
-  providerSessionId: string | null;
   status: string;
   endedAt: Date | null;
 }) {
   return {
     id: session.id,
     conversationId: session.conversationId,
-    providerSessionId: session.providerSessionId,
     status: session.status,
     endedAt: session.endedAt?.toISOString() ?? null,
   };
 }
 
-function summarizeError(error: unknown): string {
-  return error instanceof Error ? error.message : "Voice session failed";
-}
-
 async function markRealtimeSessionErrored(
   dependencies: VoiceSessionsServiceDependencies,
   realtimeSessionId: string,
-  error: unknown
+  providerSessionTokenCiphertext?: string
 ) {
   try {
-    await dependencies.realtimeSessionsRepository.markErrored(realtimeSessionId, summarizeError(error));
+    await dependencies.realtimeSessionsRepository.markErrored(
+      realtimeSessionId,
+      EXTERNAL_SESSION_START_ERROR_MESSAGE,
+      providerSessionTokenCiphertext
+    );
   } catch (cleanupError) {
     logger.error("Failed to mark realtime session as errored", {
       error: summarizeStructuredError(cleanupError),

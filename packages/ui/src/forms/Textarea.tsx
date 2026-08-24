@@ -7,6 +7,10 @@ export type TextareaProps = TextareaHTMLAttributes<HTMLTextAreaElement> & {
 
 export function Textarea({ invalid = false, className, ...props }: TextareaProps) {
   return (
-    <textarea className={cn("yuni-textarea", invalid && "yuni-textarea--invalid", className)} aria-invalid={invalid} {...props} />
+    <textarea
+      className={cn("yuni-textarea", invalid && "yuni-textarea--invalid", className)}
+      aria-invalid={invalid}
+      {...props}
+    />
   );
 }

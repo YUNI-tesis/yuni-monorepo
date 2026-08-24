@@ -3,10 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { ApiClientError } from "../lib/api/http-client";
-import {
-  getElevenLabsVoiceOptions,
-  type ApiElevenLabsVoiceOption,
-} from "../lib/api/voice-provider-api";
+import { getElevenLabsVoiceOptions, type ApiElevenLabsVoiceOption } from "../lib/api/voice-provider-api";
 import { currentVoiceOptionName, type VoiceOption } from "../lib/voice-config";
 
 export type ElevenLabsVoiceOptionsState =

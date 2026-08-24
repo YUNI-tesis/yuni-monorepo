@@ -33,15 +33,15 @@ describe("voice selector", () => {
       })
     );
 
-    expect(html).toContain("role=\"radiogroup\"");
+    expect(html).toContain('role="radiogroup"');
     expect(html).toContain("Agustin");
     expect(html).toContain("Tono cálido, relajado y cercano.");
     expect(html).toContain("Argentina");
     expect(html).toContain("Masculina");
     expect(html).toContain("Adulta");
     expect(html).toContain("Reproducir muestra de Agustin");
-    expect(html).toContain("type=\"radio\"");
-    expect(html).toContain("checked=\"\"");
+    expect(html).toContain('type="radio"');
+    expect(html).toContain('checked=""');
     expect(html).not.toContain("ElevenLabs");
     expect(html).not.toContain("middle_aged");
     expect(html).not.toContain("Redes sociales");

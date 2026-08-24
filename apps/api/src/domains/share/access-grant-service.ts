@@ -3,9 +3,11 @@ import {
   OwnershipError,
   SelfAccessGrantError,
   type CreateAccessGrantInput,
+  type InteractionLimits,
   type UpdateAccessGrantInput,
 } from "@yuni/domain";
 import type { AccessGrantRecord, AccessGrantsRepository } from "./access-grant-repository";
+import { toInteractionLimits } from "../external-sessions/limits";
 
 export type AccessGrantDto = {
   id: string;
@@ -16,6 +18,7 @@ export type AccessGrantDto = {
   createdAt: string;
   updatedAt: string;
   revokedAt: string | null;
+  limits: InteractionLimits;
 };
 
 export class DuplicateAccessGrantError extends Error {
@@ -58,9 +61,7 @@ export function createAccessGrantsService({ repository }: AccessGrantsServiceDep
       input: UpdateAccessGrantInput
     ): Promise<AccessGrantDto> {
       try {
-        return toAccessGrantDto(
-          await repository.updateForAvatar(ownerId, avatarId, accessGrantId, input.status)
-        );
+        return toAccessGrantDto(await repository.updateForAvatar(ownerId, avatarId, accessGrantId, input));
       } catch (error) {
         throw normalizeAccessGrantError(error);
       }
@@ -87,6 +88,7 @@ function toAccessGrantDto(record: AccessGrantRecord): AccessGrantDto {
     createdAt: record.createdAt.toISOString(),
     updatedAt: record.updatedAt.toISOString(),
     revokedAt: record.revokedAt?.toISOString() ?? null,
+    limits: toInteractionLimits(record),
   };
 }
 

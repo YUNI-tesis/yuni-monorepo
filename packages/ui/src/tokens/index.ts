@@ -33,8 +33,7 @@ export const yuniTokens = {
     12: "48px",
   },
   typography: {
-    fontFamily:
-      'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+    fontFamily: 'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
     sizes: {
       xs: "0.75rem",
       sm: "0.875rem",

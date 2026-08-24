@@ -2,10 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import {
-  getCreatorDashboardSummary,
-  type ApiCreatorDashboardSummary,
-} from "../lib/api/dashboard-api";
+import { getCreatorDashboardSummary, type ApiCreatorDashboardSummary } from "../lib/api/dashboard-api";
 import { ApiClientError } from "../lib/api/http-client";
 
 export type CreatorDashboardState =

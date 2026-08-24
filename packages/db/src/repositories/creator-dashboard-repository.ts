@@ -28,10 +28,7 @@ export function createCreatorDashboardRepository(db: Db) {
         avatarAgent: { ownerId },
         participantEmail: { not: null },
         NOT: { participantEmail: owner.email },
-        OR: [
-          { visibility: "public" },
-          { visibility: "private", accessGrantId: { not: null } },
-        ],
+        OR: [{ visibility: "public" }, { visibility: "private", accessGrantId: { not: null } }],
       };
 
       const [grants, conversations] = await Promise.all([

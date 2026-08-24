@@ -62,6 +62,7 @@ export function createAuthController(dependencies: AuthControllerDependencies) {
     const user = await service.getCurrentUserByToken(getSessionToken(context));
 
     if (!user) {
+      clearSessionCookie(context);
       return context.json(unauthorizedError(), 401);
     }
 

@@ -98,6 +98,14 @@ describe("AvatarCard", () => {
     expect(html).not.toContain("Más acciones");
   });
 
+  it("explains an owned avatar that is still preparing without offering an early call", () => {
+    const html = renderCard(createAvatar({ interactionAvailability: "preparing" }));
+
+    expect(html).toContain("Preparándose");
+    expect(html).toContain("Lo estamos preparando. Vas a poder interactuar pronto.");
+    expect(html).not.toContain("Interactuar");
+  });
+
   it("explains an unavailable shared avatar without management actions", () => {
     const html = renderCard(
       createAvatar({

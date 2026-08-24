@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Badge, Button, Card, ErrorState, FormField, Input, LoadingState, PageShell } from "@yuni/ui";
+import { Badge, Button, Card, ErrorState, FormField, Input, LoadingState, PageShell, Toast } from "@yuni/ui";
 import Link from "next/link";
 import { YuniLogo } from "../../../components/brand/YuniLogo";
 import { InteractCallControls } from "../../../components/interact/InteractCall";
@@ -16,8 +16,9 @@ import {
   type ApiPublicSessionStart,
   type ApiPublicSharedAvatar,
 } from "../../../lib/api/sharing-api";
-import { ApiClientError } from "../../../lib/api/http-client";
-import { requiresRenewedPublicConsent } from "../../../lib/avatar-sharing";
+import { ApiClientError, toUserFacingApiError } from "../../../lib/api/http-client";
+import { formatRetryAfter, requiresRenewedPublicConsent } from "../../../lib/avatar-sharing";
+import { readSessionValue, removeSessionValue, storeSessionValue } from "../../../lib/browser-storage";
 import styles from "./PublicAvatar.module.css";
 
 type PublicAvatarState =
@@ -35,7 +36,6 @@ export function PublicAvatarView({ slug }: { slug: string }) {
   const [consentRestoredFromIdentity, setConsentRestoredFromIdentity] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [hasStarted, setHasStarted] = useState(false);
-  const [limitReached, setLimitReached] = useState(false);
   const currentSession = useRef<ApiPublicSessionStart["publicSession"] | null>(null);
 
   const startTransport = useCallback(async () => {
@@ -49,14 +49,13 @@ export function PublicAvatarView({ slug }: { slug: string }) {
       const started = await startPublicSession(slug, identity.token);
       currentSession.current = started.publicSession;
       setHasStarted(true);
-      setLimitReached(false);
       return { voiceSession: started.voiceSession };
     } catch (error) {
       if (error instanceof ApiClientError && error.status === 401) {
         clearStoredIdentity(slug);
         setConsent(false);
+        setConsentRestoredFromIdentity(false);
         setHasStarted(false);
-        setFormError("Tu identificación venció. Volvé a aceptar el aviso de privacidad para continuar.");
       }
       throw error;
     }
@@ -110,9 +109,7 @@ export function PublicAvatarView({ slug }: { slug: string }) {
           error:
             error instanceof ApiClientError && error.status === 404
               ? "Este link no existe o ya no está disponible."
-              : error instanceof Error
-                ? error.message
-                : "No pudimos cargar este avatar.",
+              : toUserFacingApiError(error, "No pudimos cargar este avatar."),
         });
       });
     const stored = readStoredIdentity(slug);
@@ -129,21 +126,6 @@ export function PublicAvatarView({ slug }: { slug: string }) {
       isMounted = false;
     };
   }, [retryVersion, slug]);
-
-  useEffect(() => {
-    if (call.status !== "active" || !currentSession.current) return;
-    const remaining = new Date(currentSession.current.expiresAt).getTime() - Date.now();
-    if (remaining <= 0) {
-      setLimitReached(true);
-      void call.end();
-      return;
-    }
-    const timer = window.setTimeout(() => {
-      setLimitReached(true);
-      void call.end();
-    }, remaining);
-    return () => window.clearTimeout(timer);
-  }, [call.end, call.status]);
 
   function requestStart() {
     const normalized = normalizeEmail(email);
@@ -164,7 +146,7 @@ export function PublicAvatarView({ slug }: { slug: string }) {
       setFormError("Tu identificación venció. Volvé a aceptar el aviso de privacidad para continuar.");
       return;
     }
-    sessionStorage.setItem(emailStorageKey(slug), normalized);
+    storeSessionValue(emailStorageKey(slug), normalized);
     setEmail(normalized);
     setFormError(null);
     void call.start();
@@ -172,6 +154,18 @@ export function PublicAvatarView({ slug }: { slug: string }) {
 
   return (
     <PageShell centered maxWidth={hasStarted ? "calc(100vw - 32px)" : "820px"} className={styles.page}>
+      {call.error ? (
+        <Toast
+          className={styles.pageToast}
+          tone="warning"
+          role="alert"
+          aria-live="assertive"
+          onDismiss={call.dismissError}
+        >
+          {formatPublicError(call.error)}
+        </Toast>
+      ) : null}
+
       {!hasStarted ? (
         <header>
           <Link className={styles.brand} href="/" aria-label="YUNI, volver a la landing">
@@ -202,18 +196,13 @@ export function PublicAvatarView({ slug }: { slug: string }) {
         </Card>
       ) : state.status === "ready" ? (
         hasStarted ? (
-          <PublicCallExperience
-            avatar={state.data}
-            call={call}
-            limitReached={limitReached}
-            onStart={requestStart}
-          />
+          <PublicCallExperience avatar={state.data} call={call} onStart={requestStart} />
         ) : (
           <PublicIntroduction
             data={state.data}
             email={email}
             consent={consent}
-            formError={formError ?? call.error}
+            formError={formError}
             isStarting={call.status === "starting"}
             onEmailChange={(value) => {
               setEmail(value);
@@ -298,17 +287,16 @@ function PublicIntroduction(props: {
 function PublicCallExperience({
   avatar,
   call,
-  limitReached,
   onStart,
 }: {
   avatar: ApiPublicSharedAvatar;
   call: ReturnType<typeof useLiveAvatarSession>;
-  limitReached: boolean;
   onStart: () => void;
 }) {
   const inCall = call.status === "active" || call.status === "starting" || call.status === "ending";
-  const canStart = call.status === "ended" || call.status === "error";
-  const needsEndRetry = call.status === "error" && Boolean(call.voiceSession);
+  const canStart =
+    !call.hasPendingEnd && (call.status === "idle" || call.status === "ended" || call.status === "error");
+
   return (
     <div className={styles.callLayout}>
       <header className={styles.callHeader}>
@@ -335,19 +323,25 @@ function PublicCallExperience({
                   ? "Guardando la llamada"
                   : "Llamada finalizada"}
             </strong>
-            {limitReached ? (
-              <span>La llamada alcanzó el tiempo máximo.</span>
+            {call.endedByLimit ? (
+              <span>La llamada terminó al alcanzar la duración disponible.</span>
             ) : call.status === "starting" || call.status === "ending" ? (
               <span>Estamos preparando la experiencia.</span>
             ) : null}
           </div>
         ) : null}
         <div className={styles.callDock}>
-          {call.error ? (
-            <p className={styles.inlineError} role="alert">
-              {formatPublicError(call.error)}
+          {call.remainingSeconds !== null ? (
+            <p className={styles.countdown} role="timer">
+              {call.remainingSeconds <= 60 ? "Queda un minuto o menos · " : "Tiempo disponible · "}
+              {formatPublicCountdown(call.remainingSeconds)}
             </p>
           ) : null}
+          <span className={styles.srOnly} role="status" aria-live="polite">
+            {call.remainingSeconds !== null && call.remainingSeconds <= 60
+              ? "Queda un minuto o menos de llamada."
+              : ""}
+          </span>
           {inCall ? (
             <InteractCallControls
               status={call.status}
@@ -358,7 +352,7 @@ function PublicCallExperience({
               onInterrupt={call.interrupt}
               onEnd={call.end}
             />
-          ) : needsEndRetry ? (
+          ) : call.hasPendingEnd ? (
             <Button onClick={() => void call.end()}>Reintentar guardado</Button>
           ) : canStart ? (
             <Button onClick={onStart}>Volver a llamar</Button>
@@ -394,20 +388,17 @@ function emailStorageKey(slug: string) {
   return `yuni:public-email:${slug}`;
 }
 function readStoredEmail(slug: string) {
-  return typeof window === "undefined" ? "" : (sessionStorage.getItem(emailStorageKey(slug)) ?? "");
+  return readSessionValue(emailStorageKey(slug)) ?? "";
 }
 function storeIdentity(slug: string, identity: StoredIdentity) {
-  sessionStorage.setItem(identityStorageKey(slug), JSON.stringify(identity));
+  storeSessionValue(identityStorageKey(slug), JSON.stringify(identity));
 }
 function clearStoredIdentity(slug: string) {
-  sessionStorage.removeItem(identityStorageKey(slug));
+  removeSessionValue(identityStorageKey(slug));
 }
 function readStoredIdentity(slug: string): StoredIdentity | null {
-  if (typeof window === "undefined") return null;
   try {
-    const value = JSON.parse(
-      sessionStorage.getItem(identityStorageKey(slug)) ?? "null"
-    ) as StoredIdentity | null;
+    const value = JSON.parse(readSessionValue(identityStorageKey(slug)) ?? "null") as StoredIdentity | null;
     if (!value || new Date(value.expiresAt).getTime() <= Date.now()) {
       clearStoredIdentity(slug);
       return null;
@@ -418,11 +409,22 @@ function readStoredIdentity(slug: string): StoredIdentity | null {
     return null;
   }
 }
-function formatPublicSessionStartError(error: unknown, fallback: (error: unknown) => string) {
+export function formatPublicSessionStartError(error: unknown, fallback: (error: unknown) => string) {
   if (error instanceof ApiClientError) {
+    if (error.status === 401)
+      return "Tu identificación venció. Volvé a aceptar el aviso de privacidad para continuar.";
     if (error.status === 404) return "El link o el avatar ya no está disponible.";
+    const retry = formatRetryAfter(error.retryAfterSeconds);
+    if (error.reason === "SHARE_SESSION_COUNT_LIMIT")
+      return "Ya alcanzaste la cantidad de llamadas permitidas.";
+    if (error.reason === "PLATFORM_RATE_LIMIT")
+      return `Se hicieron demasiados intentos. Volvé a intentar en ${retry}.`;
+    if (error.reason === "EXTERNAL_SESSION_CAPACITY")
+      return `El avatar alcanzó su capacidad de llamadas. Volvé a intentar en ${retry}.`;
+    if (error.reason === "ACTIVE_SESSION_EXISTS")
+      return "Ya tenés una llamada activa con este link. Finalizala antes de iniciar otra.";
     if (error.status === 429)
-      return "Hay demasiadas llamadas en este momento. Esperá unos minutos e intentá nuevamente.";
+      return `No se puede iniciar otra llamada todavía. Volvé a intentar en ${retry}.`;
     if (error.status === 502 || error.status === 503)
       return "No pudimos conectar la llamada en este momento. Intentá nuevamente en unos minutos.";
   }
@@ -441,4 +443,10 @@ function formatCallStatus(status: ReturnType<typeof useLiveAvatarSession>["statu
   if (status === "ended") return "Finalizada";
   if (status === "error") return "Error";
   return "Lista";
+}
+
+export function formatPublicCountdown(totalSeconds: number) {
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
 }

@@ -20,7 +20,11 @@ export function IdentityStep({ builder }: { builder: AvatarBuilderController }) 
             onChange={(event) => builder.updateField("name", event.currentTarget.value)}
           />
         </FormField>
-        <FormField label="Descripcion" htmlFor="avatar-description" hint="Corta, concreta y visible para visitantes.">
+        <FormField
+          label="Descripcion"
+          htmlFor="avatar-description"
+          hint="Corta, concreta y visible para visitantes."
+        >
           <Textarea
             id="avatar-description"
             value={builder.state.description}

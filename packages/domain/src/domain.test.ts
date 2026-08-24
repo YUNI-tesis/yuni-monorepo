@@ -7,6 +7,7 @@ import {
   GroupProviderEventInputSchema,
   GroupVoiceParticipantFailureInputSchema,
   GroupVoiceTurnInputSchema,
+  InteractionLimitsSchema,
   CreateShareLinkInputSchema,
   LiveAvatarConfigSchema,
   LoginInputSchema,
@@ -134,6 +135,47 @@ describe("@yuni/domain", () => {
     expect(updated.status).toBe("revoked");
   });
 
+  it("validates configurable interaction limits and nullable unlimited values", () => {
+    expect(
+      InteractionLimitsSchema.parse({
+        maxSessionDurationSeconds: null,
+        maxSessionsPer24Hours: null,
+      })
+    ).toEqual({
+      maxSessionDurationSeconds: null,
+      maxSessionsPer24Hours: null,
+    });
+    expect(
+      CreateShareLinkInputSchema.parse({
+        slug: "limited-link",
+        name: "Limited",
+        limits: {
+          maxSessionDurationSeconds: 15,
+          maxSessionsPer24Hours: 3,
+        },
+      }).limits
+    ).toMatchObject({ maxSessionDurationSeconds: 15, maxSessionsPer24Hours: 3 });
+  });
+
+  it.each([
+    { maxSessionDurationSeconds: 9, maxSessionsPer24Hours: null },
+    { maxSessionDurationSeconds: 3601, maxSessionsPer24Hours: null },
+    { maxSessionDurationSeconds: null, maxSessionsPer24Hours: 101 },
+  ])("rejects invalid interaction limits: $maxSessionDurationSeconds/$maxSessionsPer24Hours", (limits) => {
+    expect(() => InteractionLimitsSchema.parse(limits)).toThrow();
+  });
+
+  it("requires at least one status or limits field when updating a grant", () => {
+    expect(() => UpdateAccessGrantInputSchema.parse({})).toThrow();
+    expect(
+      UpdateAccessGrantInputSchema.parse({
+        limits: { maxSessionDurationSeconds: 30, maxSessionsPer24Hours: null },
+      })
+    ).toMatchObject({
+      limits: { maxSessionDurationSeconds: 30, maxSessionsPer24Hours: null },
+    });
+  });
+
   it("rejects invalid access grants and oversized share link names", () => {
     expect(() => CreateAccessGrantInputSchema.parse({ email: "not-an-email" })).toThrow();
     expect(() => UpdateAccessGrantInputSchema.parse({ status: "pending" })).toThrow();
@@ -173,6 +215,11 @@ describe("@yuni/domain", () => {
     });
 
     expect(parsed.transcript).toHaveLength(1);
+    expect(() =>
+      EndVoiceSessionInputSchema.parse({
+        transcript: [{ role: "assistant", content: "Hola", metadata: { providerId: "secret" } }],
+      })
+    ).toThrow();
   });
 
   it("accepts only final human transcripts and typed provider events for group calls", () => {

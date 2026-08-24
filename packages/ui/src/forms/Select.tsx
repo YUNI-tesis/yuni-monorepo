@@ -28,7 +28,10 @@ type OptionElementProps = {
   children?: ReactNode;
 };
 
-export type SelectProps = Omit<ButtonHTMLAttributes<HTMLButtonElement>, "children" | "value" | "defaultValue"> & {
+export type SelectProps = Omit<
+  ButtonHTMLAttributes<HTMLButtonElement>,
+  "children" | "value" | "defaultValue"
+> & {
   invalid?: boolean;
   children: ReactNode;
   value?: string;

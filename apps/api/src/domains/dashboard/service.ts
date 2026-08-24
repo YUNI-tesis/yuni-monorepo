@@ -120,9 +120,7 @@ export function buildCreatorDashboardSummary(
       ),
       medianVoiceDurationSeconds: medianDuration(currentSessions),
       medianParticipantTurns: median(
-        currentConversations
-          .map((conversation) => conversation._count.messages)
-          .filter((turns) => turns > 0)
+        currentConversations.map((conversation) => conversation._count.messages).filter((turns) => turns > 0)
       ),
     },
     trend: buildTrend(currentConversations, range),
@@ -151,9 +149,7 @@ export function buildCreatorDashboardSummary(
 }
 
 function getDefaultRange(now: Date): CreatorDashboardRange {
-  const endOfToday = new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1)
-  );
+  const endOfToday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1));
   return {
     from: new Date(endOfToday.getTime() - DEFAULT_PERIOD_DAYS * DAY_MS),
     to: endOfToday,
@@ -378,10 +374,7 @@ function buildAttention(
 
 function attentionGroup<
   TType extends "never_used_access" | "inactive_participant" | "errored_session" | "failed_avatar",
->(
-  items: ReturnType<typeof buildAttention>["items"],
-  type: TType
-) {
+>(items: ReturnType<typeof buildAttention>["items"], type: TType) {
   const matching = items.filter((item) => item.type === type);
   return { count: matching.length, items: matching.slice(0, 5) };
 }

@@ -11,9 +11,17 @@ export type LiveAvatarSelectorProps = {
   onSelect: (avatarId: string) => void;
 };
 
-export function LiveAvatarSelector({ options, selectedId, status, error, onSelect }: LiveAvatarSelectorProps) {
+export function LiveAvatarSelector({
+  options,
+  selectedId,
+  status,
+  error,
+  onSelect,
+}: LiveAvatarSelectorProps) {
   if (status === "loading") {
-    return <LoadingState title="Cargando avatares" description="Buscando opciones disponibles en Live Avatar." />;
+    return (
+      <LoadingState title="Cargando avatares" description="Buscando opciones disponibles en Live Avatar." />
+    );
   }
 
   if (status === "error") {
@@ -21,7 +29,12 @@ export function LiveAvatarSelector({ options, selectedId, status, error, onSelec
   }
 
   if (status === "empty") {
-    return <EmptyState title="No hay avatares disponibles" description="Live Avatar no devolvio opciones visuales." />;
+    return (
+      <EmptyState
+        title="No hay avatares disponibles"
+        description="Live Avatar no devolvio opciones visuales."
+      />
+    );
   }
 
   return (

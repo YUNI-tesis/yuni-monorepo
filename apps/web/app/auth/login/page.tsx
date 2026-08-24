@@ -43,10 +43,24 @@ export default function LoginPage() {
         <PageHeader eyebrow="YUNI" title="Iniciar Sesión" />
         <form className="yuni-stack" onSubmit={onSubmit}>
           <FormField label="Email" htmlFor="email">
-            <Input id="email" name="email" type="email" placeholder="example@gmail.com" autoComplete="email" required />
+            <Input
+              id="email"
+              name="email"
+              type="email"
+              placeholder="example@gmail.com"
+              autoComplete="email"
+              required
+            />
           </FormField>
           <FormField label="Password" htmlFor="password">
-            <Input id="password" name="password" type="password" autoComplete="current-password" required minLength={8} />
+            <Input
+              id="password"
+              name="password"
+              type="password"
+              autoComplete="current-password"
+              required
+              minLength={8}
+            />
           </FormField>
           {error ? <p className="yuni-form-field__error">{error}</p> : null}
           <Button type="submit" loading={isSubmitting}>

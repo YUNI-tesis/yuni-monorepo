@@ -15,6 +15,7 @@ Decisiones de producto vigentes:
 - [0015-creator-dashboard-actionable-metrics.md](../thesis/decision-records/0015-creator-dashboard-actionable-metrics.md)
 - [0018-atomic-elevenlabs-group-agents.md](../thesis/decision-records/0018-atomic-elevenlabs-group-agents.md)
 - [0019-strict-floor-independent-liveavatar-group-sessions.md](../thesis/decision-records/0019-strict-floor-independent-liveavatar-group-sessions.md)
+- [0020-configurable-external-session-limits.md](../thesis/decision-records/0020-configurable-external-session-limits.md)
 
 ## Direccion Actual
 
@@ -67,7 +68,8 @@ Decisiones de producto vigentes:
 - `32-realtime-service-foundation.md`: pendiente; refactorizado a identities owner/shared/public.
 - `33-realtime-private-voice.md`: pendiente; refactorizado a owner/shared.
 - `34-realtime-public-voice.md`: pendiente; refactorizado a public voice con email.
-- `35-limits-rate-limits.md`: pendiente; refactorizado a IP/email/user/session/link.
+- `35-limits-rate-limits.md`: implementado; cuotas configurables persistentes, protección técnica y
+  ciclo de vida externo endurecido.
 - `36-hardening-observability.md`: pendiente; refactorizado con sync queue/retries.
 - `37-group-call-floor-hardening.md`: implementado; router semántico, audio gate, attempts por conexión, `user_activity`, eventos idempotentes y cleanup durable grupal.
 

@@ -10,11 +10,12 @@ export type SharedCallPrivacyDialogProps = {
   onRememberChoiceChange: (checked: boolean) => void;
   onConfirm: () => void;
   onCancel: () => void;
+  limitsSummary?: string | null;
 };
 
 export const SharedCallPrivacyDialog = forwardRef<HTMLDialogElement, SharedCallPrivacyDialogProps>(
   function SharedCallPrivacyDialog(
-    { sharedAvatarNames, rememberChoice, onRememberChoiceChange, onConfirm, onCancel },
+    { sharedAvatarNames, rememberChoice, onRememberChoiceChange, onConfirm, onCancel, limitsSummary },
     ref
   ) {
     const disclosure = formatSharedAvatarDisclosure(sharedAvatarNames);
@@ -23,7 +24,9 @@ export const SharedCallPrivacyDialog = forwardRef<HTMLDialogElement, SharedCallP
       <Dialog
         ref={ref}
         title="Antes de iniciar la llamada"
-        description={`La llamada y su transcripción se guardarán. ${disclosure}`}
+        description={`La llamada y su transcripción se guardarán. ${disclosure}${
+          limitsSummary ? ` Límites: ${limitsSummary}.` : ""
+        }`}
         closeLabel="Cancelar"
         footer={<Button onClick={onConfirm}>Iniciar llamada</Button>}
         onClose={onCancel}

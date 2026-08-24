@@ -853,6 +853,125 @@
   opacity: 1;
 }
 
+.yuni-toast {
+  display: grid;
+  width: min(440px, 100%);
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--yuni-space-3);
+  border: 1px solid var(--yuni-color-border);
+  border-radius: 16px;
+  padding: var(--yuni-space-3);
+  background: rgba(18, 15, 24, 0.94);
+  color: var(--yuni-color-text);
+  box-shadow: 0 18px 54px rgba(0, 0, 0, 0.34);
+  backdrop-filter: blur(18px) saturate(1.1);
+  animation: yuni-toast-enter 180ms ease-out;
+}
+
+.yuni-toast--info {
+  border-color: rgba(100, 195, 215, 0.3);
+}
+
+.yuni-toast--success {
+  border-color: rgba(101, 214, 162, 0.3);
+}
+
+.yuni-toast--warning {
+  border-color: rgba(255, 193, 90, 0.3);
+}
+
+.yuni-toast--danger {
+  border-color: rgba(255, 114, 114, 0.3);
+}
+
+.yuni-toast__icon {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border-radius: 10px;
+  background: rgba(100, 195, 215, 0.12);
+  color: var(--yuni-color-accent);
+}
+
+.yuni-toast--success .yuni-toast__icon {
+  background: var(--yuni-color-success-soft);
+  color: var(--yuni-color-success);
+}
+
+.yuni-toast--warning .yuni-toast__icon {
+  background: var(--yuni-color-warning-soft);
+  color: var(--yuni-color-warning);
+}
+
+.yuni-toast--danger .yuni-toast__icon {
+  background: var(--yuni-color-danger-soft);
+  color: var(--yuni-color-danger);
+}
+
+.yuni-toast__content {
+  display: grid;
+  min-width: 0;
+  gap: var(--yuni-space-1);
+}
+
+.yuni-toast__title {
+  font-size: var(--yuni-font-sm);
+  line-height: 1.35;
+}
+
+.yuni-toast__message {
+  color: var(--yuni-color-text-muted);
+  font-size: var(--yuni-font-sm);
+  line-height: 1.45;
+}
+
+.yuni-toast__action {
+  padding-top: var(--yuni-space-2);
+}
+
+.yuni-toast__dismiss {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border: 0;
+  border-radius: 10px;
+  padding: 0;
+  background: transparent;
+  color: var(--yuni-color-text-muted);
+  cursor: pointer;
+}
+
+.yuni-toast__dismiss:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--yuni-color-text);
+}
+
+.yuni-toast__dismiss:focus-visible {
+  outline: none;
+  box-shadow: var(--yuni-focus-ring);
+}
+
+@keyframes yuni-toast-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .yuni-toast {
+    animation: none;
+  }
+}
+
 .yuni-state {
   display: grid;
   justify-items: center;

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PublicUser, UserWithPassword } from "./domains/auth/repository";
-import { createApp, type AppDependencies } from "./app";
+import { createApp, normalizeBrowserOrigin, type AppDependencies } from "./app";
 
 function createUser(overrides: Partial<UserWithPassword> = {}): UserWithPassword {
   const now = new Date("2026-05-15T00:00:00.000Z");
@@ -64,6 +64,7 @@ function createTestDependencies(initialUsers: UserWithPassword[] = []): AppDepen
         sessionId: "liveavatar-session",
       };
     },
+    async stopSession() {},
   };
 
   return {
@@ -146,10 +147,20 @@ function createTestDependencies(initialUsers: UserWithPassword[] = []): AppDepen
             endedAt: new Date("2026-05-16T00:00:00.000Z"),
           };
         },
+        async finalizePrivate(input) {
+          return {
+            session: {
+              id: input.realtimeSessionId,
+              conversationId: input.conversationId,
+              status: "ended",
+              endedAt: new Date("2026-05-16T00:00:00.000Z"),
+            },
+            finalized: true,
+          };
+        },
         async markErrored() {},
-      },
-      messagesRepository: {
-        async append() {},
+        async markProviderStopped() {},
+        async expireSharedIfActive() {},
       },
       liveAvatarProvider,
       elevenLabsAgentProvider: {
@@ -293,6 +304,28 @@ describe("@yuni/api auth", () => {
     expect(response.status).toBe(401);
   });
 
+  it("clears a stale session cookie when its user no longer exists", async () => {
+    const appWithUser = createApp(createTestDependencies([createUser()]));
+    const loginResponse = await appWithUser.request("/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: "demo@yuni.local",
+        password: "demo-password",
+      }),
+    });
+    const cookie = loginResponse.headers.get("set-cookie")?.split(";")[0] ?? "";
+
+    const appAfterDatabaseReset = createApp(createTestDependencies());
+    const response = await appAfterDatabaseReset.request("/me", {
+      headers: { Cookie: cookie },
+    });
+
+    expect(response.status).toBe(401);
+    expect(response.headers.get("set-cookie")).toContain("yuni_session=");
+    expect(response.headers.get("set-cookie")).toContain("Max-Age=0");
+  });
+
   it("clears the session cookie on logout", async () => {
     const app = createApp(createTestDependencies([createUser()]));
     const response = await app.request("/auth/logout", {
@@ -302,5 +335,73 @@ describe("@yuni/api auth", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("set-cookie")).toContain("yuni_session=");
     expect(response.headers.get("set-cookie")).toContain("Max-Age=0");
+  });
+
+  it("allows only the exact configured browser origin", async () => {
+    const app = createApp(createTestDependencies());
+    const allowed = await app.request("/health", {
+      headers: { Origin: "http://localhost:3000" },
+    });
+    const rejected = await app.request("/health", {
+      headers: { Origin: "https://attacker.example" },
+    });
+
+    expect(allowed.status).toBe(200);
+    expect(allowed.headers.get("access-control-allow-origin")).toBe("http://localhost:3000");
+    expect(rejected.status).toBe(403);
+    expect(await json(rejected)).toMatchObject({ error: { code: "FORBIDDEN" } });
+  });
+
+  it("allows validated request IDs through browser CORS preflights", async () => {
+    const app = createApp(createTestDependencies());
+    const response = await app.request("/health", {
+      method: "OPTIONS",
+      headers: {
+        Origin: "http://localhost:3000",
+        "Access-Control-Request-Method": "GET",
+        "Access-Control-Request-Headers": "X-Request-ID",
+      },
+    });
+
+    expect(response.status).toBe(204);
+    expect(response.headers.get("access-control-allow-headers")).toContain("X-Request-ID");
+  });
+
+  it("normalizes configured web URLs to their browser origin", () => {
+    expect(normalizeBrowserOrigin("https://app.yuni.example/")).toBe("https://app.yuni.example");
+    expect(normalizeBrowserOrigin("https://app.yuni.example/dashboard")).toBe("https://app.yuni.example");
+  });
+
+  it("accepts safe request IDs and replaces invalid values", async () => {
+    const app = createApp(createTestDependencies());
+    const accepted = await app.request("/health", { headers: { "X-Request-Id": "client:request-1" } });
+    const rejected = await app.request("/health", {
+      headers: { "X-Request-Id": "invalid request id with spaces" },
+    });
+
+    expect(accepted.headers.get("x-request-id")).toBe("client:request-1");
+    expect(rejected.headers.get("x-request-id")).not.toBe("invalid request id with spaces");
+    expect(rejected.headers.get("x-request-id")).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  it("redacts credentials, emails and proxy headers from request logs", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const app = createApp(createTestDependencies());
+    await app.request("/health?email=private@example.com", {
+      headers: {
+        Authorization: "Bearer private-token",
+        Cookie: "yuni_session=private-cookie",
+        "X-Forwarded-For": "203.0.113.10",
+        "X-Api-Key": "private-key",
+      },
+    });
+
+    const output = log.mock.calls.flat().join("\n");
+    expect(output).not.toContain("private@example.com");
+    expect(output).not.toContain("private-token");
+    expect(output).not.toContain("private-cookie");
+    expect(output).not.toContain("203.0.113.10");
+    expect(output).not.toContain("private-key");
+    expect(output).toContain("[redacted]");
   });
 });

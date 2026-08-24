@@ -285,16 +285,11 @@ function AttentionGroup({
 }
 
 function ActivityTrend({ summary }: { summary: ApiCreatorDashboardSummary }) {
-  const hasActivity = summary.trend.some(
-    (point) => point.conversations > 0 || point.participants > 0
-  );
+  const hasActivity = summary.trend.some((point) => point.conversations > 0 || point.participants > 0);
   const width = 720;
   const height = 220;
   const inset = 18;
-  const maximum = Math.max(
-    1,
-    ...summary.trend.flatMap((point) => [point.conversations, point.participants])
-  );
+  const maximum = Math.max(1, ...summary.trend.flatMap((point) => [point.conversations, point.participants]));
   const conversationPoints = chartPoints(
     summary.trend.map((point) => point.conversations),
     width,
@@ -322,8 +317,14 @@ function ActivityTrend({ summary }: { summary: ApiCreatorDashboardSummary }) {
           </h2>
         </div>
         <div className={styles.legend} aria-label="Series del gráfico">
-          <span><i className={styles.conversationDot} />Conversaciones</span>
-          <span><i className={styles.participantDot} />Participantes</span>
+          <span>
+            <i className={styles.conversationDot} />
+            Conversaciones
+          </span>
+          <span>
+            <i className={styles.participantDot} />
+            Participantes
+          </span>
         </div>
       </div>
 
@@ -364,7 +365,13 @@ function ActivityTrend({ summary }: { summary: ApiCreatorDashboardSummary }) {
           <summary>Ver datos exactos</summary>
           <div className={styles.chartTableWrapper}>
             <table>
-              <thead><tr><th>Fecha</th><th>Conversaciones</th><th>Participantes</th></tr></thead>
+              <thead>
+                <tr>
+                  <th>Fecha</th>
+                  <th>Conversaciones</th>
+                  <th>Participantes</th>
+                </tr>
+              </thead>
               <tbody>
                 {summary.trend.map((point) => (
                   <tr key={point.date}>
@@ -387,7 +394,9 @@ function InteractionQuality({ summary }: { summary: ApiCreatorDashboardSummary }
     <Card className={styles.qualityCard} padding="md" aria-labelledby="quality-title">
       <div>
         <p className="yuni-eyebrow">Cómo interactúan</p>
-        <h2 id="quality-title" className={styles.sectionTitle}>Profundidad típica</h2>
+        <h2 id="quality-title" className={styles.sectionTitle}>
+          Profundidad típica
+        </h2>
         <p className={styles.sectionDescription}>Medianas que evitan distorsiones por casos extremos.</p>
       </div>
 
@@ -419,10 +428,14 @@ function AvatarPerformance({
       <div className={styles.sectionHeader}>
         <div>
           <p className="yuni-eyebrow">Comparación</p>
-          <h2 id="avatars-title" className={styles.sectionTitle}>Actividad por avatar</h2>
+          <h2 id="avatars-title" className={styles.sectionTitle}>
+            Actividad por avatar
+          </h2>
           <p className={styles.sectionDescription}>Ordenados por cantidad de conversaciones.</p>
         </div>
-        <Button variant="secondary" onClick={() => onNavigate("/avatars")}>Ver todos</Button>
+        <Button variant="secondary" onClick={() => onNavigate("/avatars")}>
+          Ver todos
+        </Button>
       </div>
 
       <Card padding="md">
@@ -445,11 +458,35 @@ function AvatarPerformance({
                 </button>
               ),
             },
-            { key: "participants", header: "Participantes", align: "center", render: (avatar) => avatar.activeParticipants },
-            { key: "conversations", header: "Conversaciones", align: "center", render: (avatar) => avatar.conversations },
-            { key: "recurrence", header: "Recurrencia", align: "center", render: (avatar) => formatDashboardRate(avatar.recurringRate) },
-            { key: "duration", header: "Duración típica", render: (avatar) => formatDashboardDuration(avatar.medianVoiceDurationSeconds) },
-            { key: "last", header: "Última actividad", minWidth: "170px", render: (avatar) => formatDashboardDate(avatar.lastActivityAt) },
+            {
+              key: "participants",
+              header: "Participantes",
+              align: "center",
+              render: (avatar) => avatar.activeParticipants,
+            },
+            {
+              key: "conversations",
+              header: "Conversaciones",
+              align: "center",
+              render: (avatar) => avatar.conversations,
+            },
+            {
+              key: "recurrence",
+              header: "Recurrencia",
+              align: "center",
+              render: (avatar) => formatDashboardRate(avatar.recurringRate),
+            },
+            {
+              key: "duration",
+              header: "Duración típica",
+              render: (avatar) => formatDashboardDuration(avatar.medianVoiceDurationSeconds),
+            },
+            {
+              key: "last",
+              header: "Última actividad",
+              minWidth: "170px",
+              render: (avatar) => formatDashboardDate(avatar.lastActivityAt),
+            },
             {
               key: "attention",
               header: "Atención",
@@ -478,7 +515,9 @@ function RecentActivity({
     <section className={styles.section} aria-labelledby="recent-title">
       <div>
         <p className="yuni-eyebrow">Últimos movimientos</p>
-        <h2 id="recent-title" className={styles.sectionTitle}>Actividad reciente</h2>
+        <h2 id="recent-title" className={styles.sectionTitle}>
+          Actividad reciente
+        </h2>
       </div>
 
       <Card padding="md">
@@ -493,10 +532,29 @@ function RecentActivity({
             items={summary.recentActivity}
             getRowKey={(activity) => activity.conversationId}
             columns={[
-              { key: "participant", header: "Participante", minWidth: "220px", render: (activity) => <strong>{activity.participantEmail}</strong> },
-              { key: "avatar", header: "Avatar", minWidth: "160px", render: (activity) => activity.avatarName },
-              { key: "mode", header: "Tipo", render: (activity) => activity.mode === "voice" ? "Llamada" : "Chat" },
-              { key: "date", header: "Fecha", minWidth: "180px", render: (activity) => formatDashboardDate(activity.occurredAt) },
+              {
+                key: "participant",
+                header: "Participante",
+                minWidth: "220px",
+                render: (activity) => <strong>{activity.participantEmail}</strong>,
+              },
+              {
+                key: "avatar",
+                header: "Avatar",
+                minWidth: "160px",
+                render: (activity) => activity.avatarName,
+              },
+              {
+                key: "mode",
+                header: "Tipo",
+                render: (activity) => (activity.mode === "voice" ? "Llamada" : "Chat"),
+              },
+              {
+                key: "date",
+                header: "Fecha",
+                minWidth: "180px",
+                render: (activity) => formatDashboardDate(activity.occurredAt),
+              },
               {
                 key: "action",
                 header: "Acción",
@@ -506,7 +564,15 @@ function RecentActivity({
                     size="sm"
                     variant="ghost"
                     icon={<YuniIcon name="view" />}
-                    onClick={() => onNavigate(getDashboardTranscriptPath(activity.avatarId, activity.participantKey, activity.conversationId))}
+                    onClick={() =>
+                      onNavigate(
+                        getDashboardTranscriptPath(
+                          activity.avatarId,
+                          activity.participantKey,
+                          activity.conversationId
+                        )
+                      )
+                    }
                   >
                     Ver transcript
                   </Button>
@@ -528,7 +594,8 @@ function attentionItemTitle(item: ApiDashboardAttentionItem) {
 function attentionItemDetail(item: ApiDashboardAttentionItem) {
   if (item.type === "failed_avatar") return "Revisar configuración";
   if (item.type === "errored_session") return `${item.avatarName} · ${formatDashboardDate(item.occurredAt)}`;
-  if (item.type === "never_used_access") return `${item.avatarName} · compartido ${formatDashboardDate(item.occurredAt)}`;
+  if (item.type === "never_used_access")
+    return `${item.avatarName} · compartido ${formatDashboardDate(item.occurredAt)}`;
   return `${item.avatarName} · última vez ${formatDashboardDate(item.occurredAt)}`;
 }
 

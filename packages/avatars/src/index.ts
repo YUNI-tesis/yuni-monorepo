@@ -32,7 +32,7 @@ export interface AvatarProvider {
   readonly name: AvatarProviderName;
   listAvatars(): Promise<AvatarOption[]>;
   createLiteSessionToken(input: LiveAvatarLiteSessionTokenInput): Promise<LiveAvatarLiteSessionToken>;
-  stopSession?(sessionToken: string): Promise<void>;
+  stopSession(sessionToken: string): Promise<void>;
 }
 
 export class AvatarProviderError extends Error {
@@ -111,14 +111,22 @@ export class LiveAvatarProvider implements AvatarProvider {
 
   async stopSession(sessionToken: string): Promise<void> {
     const config = this.requireConfig();
-    await this.fetchJson(config, "/v1/sessions/stop", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${sessionToken}`,
-        Accept: "application/json",
-        "Content-Type": "application/json",
+    await this.fetchJson(
+      config,
+      "/v1/sessions/stop",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${sessionToken}`,
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
       },
-    });
+      {
+        acceptedStatuses: [404, 410],
+        allowEmptyBody: true,
+      }
+    );
   }
 
   private requireConfig(): LiveAvatarConfig {
@@ -151,7 +159,12 @@ export class LiveAvatarProvider implements AvatarProvider {
       .filter((option): option is AvatarOption => option !== null);
   }
 
-  private async fetchJson(config: LiveAvatarConfig, path: string, init: RequestInit): Promise<unknown> {
+  private async fetchJson(
+    config: LiveAvatarConfig,
+    path: string,
+    init: RequestInit,
+    options: { acceptedStatuses?: readonly number[]; allowEmptyBody?: boolean } = {}
+  ): Promise<unknown> {
     const url = new URL(path, withTrailingSlash(config.baseUrl));
     const abortController = new AbortController();
     const timeout = setTimeout(() => abortController.abort(), config.requestTimeoutMs);
@@ -171,12 +184,16 @@ export class LiveAvatarProvider implements AvatarProvider {
         throw new AvatarProviderError("Live Avatar request failed", error);
       }
 
-      if (response.ok && response.status === 204) return {};
+      const acceptedStatus = options.acceptedStatuses?.includes(response.status) ?? false;
+      if (response.status === 204 && (response.ok || acceptedStatus)) return null;
 
       let body: unknown;
       try {
         body = await response.json();
       } catch (error) {
+        if (options.allowEmptyBody && (response.ok || acceptedStatus)) {
+          return null;
+        }
         if (isAbortError(error)) {
           throw new AvatarProviderTimeoutError("Live Avatar request timed out", error);
         }
@@ -186,13 +203,15 @@ export class LiveAvatarProvider implements AvatarProvider {
         throw new AvatarProviderError("Live Avatar returned invalid JSON", error);
       }
 
-      if (!response.ok) {
+      if (!response.ok && !acceptedStatus) {
         throw new AvatarProviderError(
           formatLiveAvatarError(response.status, body),
           undefined,
           response.status
         );
       }
+
+      if (acceptedStatus) return body;
 
       const bodyError = readLiveAvatarBodyError(body);
       if (bodyError) {

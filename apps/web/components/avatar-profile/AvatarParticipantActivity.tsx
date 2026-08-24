@@ -124,8 +124,12 @@ export function AvatarParticipantActivity({
           label="Origen"
           value={
             <span className={styles.summaryBadges}>
-              {participant.origins.includes("access_grant") ? <Badge tone="neutral">Cuenta compartida</Badge> : null}
-              {participant.origins.includes("public_link") ? <Badge tone="warning">Link público</Badge> : null}
+              {participant.origins.includes("access_grant") ? (
+                <Badge tone="neutral">Cuenta compartida</Badge>
+              ) : null}
+              {participant.origins.includes("public_link") ? (
+                <Badge tone="warning">Link público</Badge>
+              ) : null}
               {presentation ? <Badge tone={presentation.tone}>{presentation.label}</Badge> : null}
             </span>
           }

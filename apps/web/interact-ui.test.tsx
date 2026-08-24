@@ -3,7 +3,9 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import {
   formatContextStatusLabel,
+  formatInteractionCountdown,
   formatConversationTitle,
+  formatSharedCallPrivacyDescription,
   getSharedCallConsentStorageKey,
   InteractCallControls,
   InteractConversationHistoryPanel,
@@ -13,7 +15,19 @@ import {
   shouldShowInteractDiagnostics,
 } from "./components/interact/InteractCall";
 import { CallParticipantStage } from "./components/interact/CallExperience";
-import { interruptActiveLiveAvatarSession, type LiveAvatarDiagnostics } from "./hooks/useLiveAvatarSession";
+import {
+  dismissLiveAvatarSessionError,
+  formatVoiceSessionEndError,
+  formatVoiceSessionStartError,
+  hasLiveAvatarSessionExpired,
+  hasPendingLiveAvatarEnd,
+  interruptActiveLiveAvatarSession,
+  isLiveAvatarLifecycleCurrent,
+  recoverLiveAvatarStateAfterPageRestore,
+  type LiveAvatarDiagnostics,
+  type LiveAvatarSessionState,
+} from "./hooks/useLiveAvatarSession";
+import { ApiClientError } from "./lib/api/http-client";
 import type { ApiConversationDetail, ApiConversationSummary } from "./lib/api/avatar-api";
 
 const diagnostics: LiveAvatarDiagnostics = {
@@ -63,6 +77,34 @@ describe("Interact contextual UI", () => {
     expect(formatContextStatusLabel("ready")).toBe("Listo");
     expect(formatContextStatusLabel("processing")).toBe("Procesando");
     expect(formatContextStatusLabel("failed")).toBe("No se pudo actualizar");
+  });
+
+  it("formats shared countdown and concrete session-limit errors", () => {
+    expect(formatInteractionCountdown(60)).toBe("1:00");
+    expect(
+      formatVoiceSessionStartError(
+        new ApiClientError("limited", 429, "RATE_LIMITED", "SHARE_SESSION_COUNT_LIMIT", 120)
+      )
+    ).toBe("Ya alcanzaste la cantidad de llamadas permitidas.");
+    expect(
+      formatVoiceSessionStartError(new ApiClientError("active", 409, "CONFLICT", "ACTIVE_SESSION_EXISTS"))
+    ).toContain("llamada activa");
+    expect(formatVoiceSessionStartError(new TypeError("Failed to fetch"))).toBe(
+      "No pudimos conectar la llamada. Intentá nuevamente."
+    );
+    expect(formatVoiceSessionEndError(new Error("provider token leaked"))).toBe(
+      "No pudimos guardar la llamada. Reintentá el guardado."
+    );
+  });
+
+  it("mentions usage limits in consent only when the participant has configured limits", () => {
+    expect(formatSharedCallPrivacyDescription(null)).not.toContain("Límites");
+    expect(
+      formatSharedCallPrivacyDescription({
+        maxSessionDurationSeconds: 30,
+        maxSessionsPer24Hours: null,
+      })
+    ).toContain("Límites: 30 s por llamada.");
   });
 
   it("scopes remembered privacy choices by user and avatar", () => {
@@ -226,6 +268,95 @@ describe("Interact contextual UI", () => {
     expect(interruptActiveLiveAvatarSession(session, "ending")).toBe(false);
     expect(interruptActiveLiveAvatarSession(null, "active")).toBe(false);
     expect(interrupt).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps a failed session pending after its toast is dismissed", () => {
+    const state: LiveAvatarSessionState = {
+      status: "error",
+      error: "No pudimos guardar la llamada.",
+      isMuted: false,
+      isUserSpeaking: false,
+      isAvatarSpeaking: false,
+      conversationState: "idle",
+      voiceSession: {
+        conversationId: "conversation-1",
+        realtimeSessionId: "realtime-1",
+        sessionToken: "temporary-token",
+        expiresAt: null,
+      },
+      remainingSeconds: null,
+      endedByLimit: false,
+      transcript: [],
+      diagnostics,
+    };
+
+    expect(hasPendingLiveAvatarEnd(state)).toBe(true);
+    expect(dismissLiveAvatarSessionError(state)).toMatchObject({
+      status: "error",
+      error: null,
+      voiceSession: state.voiceSession,
+    });
+    expect(dismissLiveAvatarSessionError({ ...state, voiceSession: null })).toMatchObject({
+      status: "idle",
+      error: null,
+      voiceSession: null,
+    });
+  });
+
+  it("recognizes a provider stop that arrives at the exact session deadline", () => {
+    expect(
+      hasLiveAvatarSessionExpired("2026-08-19T12:00:00.000Z", Date.parse("2026-08-19T12:00:00.000Z"))
+    ).toBe(true);
+    expect(
+      hasLiveAvatarSessionExpired("2026-08-19T12:00:01.000Z", Date.parse("2026-08-19T12:00:00.000Z"))
+    ).toBe(false);
+    expect(hasLiveAvatarSessionExpired(null)).toBe(false);
+  });
+
+  it("does not restore a phantom active call after returning from page cache", () => {
+    const state: LiveAvatarSessionState = {
+      status: "active",
+      error: null,
+      isMuted: false,
+      isUserSpeaking: true,
+      isAvatarSpeaking: false,
+      conversationState: "listening",
+      voiceSession: {
+        conversationId: "conversation-1",
+        realtimeSessionId: "realtime-1",
+        sessionToken: "temporary-token",
+        expiresAt: "2026-08-21T12:30:00.000Z",
+      },
+      remainingSeconds: 30,
+      endedByLimit: false,
+      transcript: [],
+      diagnostics,
+    };
+
+    expect(recoverLiveAvatarStateAfterPageRestore(state)).toMatchObject({
+      status: "ended",
+      voiceSession: null,
+      remainingSeconds: null,
+      isUserSpeaking: false,
+      conversationState: "idle",
+    });
+    expect(
+      recoverLiveAvatarStateAfterPageRestore({
+        ...state,
+        status: "error",
+        error: "No pudimos guardar la conversación.",
+      })
+    ).toMatchObject({
+      status: "ended",
+      error: null,
+      voiceSession: null,
+    });
+  });
+
+  it("invalidates asynchronous starts across a page lifecycle transition", () => {
+    expect(isLiveAvatarLifecycleCurrent(true, 3, 3)).toBe(true);
+    expect(isLiveAvatarLifecycleCurrent(false, 3, 3)).toBe(false);
+    expect(isLiveAvatarLifecycleCurrent(true, 4, 3)).toBe(false);
   });
 
   it("renders history side panel content with literal chat details", () => {

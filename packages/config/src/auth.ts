@@ -12,7 +12,7 @@ export function createAuthConfig(env: RawEnv): AuthConfig {
   return {
     secret: env.AUTH_SECRET ?? "dev-change-me",
     sessionMaxAgeSeconds: env.AUTH_SESSION_MAX_AGE_SECONDS,
-    cookieSecure: env.AUTH_COOKIE_SECURE ?? env.APP_ENV === "production",
+    cookieSecure: env.APP_ENV === "production" ? true : (env.AUTH_COOKIE_SECURE ?? false),
   };
 }
 

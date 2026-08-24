@@ -174,15 +174,13 @@ describe("@yuni/avatars", () => {
     );
   });
 
-  it("preserves the provider status when stopping an already-ended session returns an empty body", async () => {
+  it("treats an already absent provider session with an empty body as successfully stopped", async () => {
     const provider = new LiveAvatarProvider({
       config,
       fetch: vi.fn<typeof fetch>().mockResolvedValueOnce(new Response(null, { status: 404 })),
     });
 
-    await expect(provider.stopSession("already-ended-token")).rejects.toMatchObject({
-      status: 404,
-    });
+    await expect(provider.stopSession("already-ended-token")).resolves.toBeUndefined();
   });
 
   it("accepts an empty successful stop response", async () => {
@@ -192,6 +190,15 @@ describe("@yuni/avatars", () => {
     });
 
     await expect(provider.stopSession("session-token")).resolves.toBeUndefined();
+  });
+
+  it("treats an already absent provider session as successfully stopped", async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({ message: "Session not found" }, { status: 404 }));
+    const provider = new LiveAvatarProvider({ config, fetch: fetcher });
+
+    await expect(provider.stopSession("expired-session-token")).resolves.toBeUndefined();
   });
 
   it("requires the Live Avatar ElevenLabs connector secret before creating a session token", async () => {

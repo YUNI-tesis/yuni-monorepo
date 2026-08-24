@@ -1,6 +1,12 @@
 "use client";
 
 import { apiRequest } from "./http-client";
+import { KEEPALIVE_MAX_BODY_BYTES, normalizeVoiceTranscript, type ClientTranscriptEntry } from "./transcript";
+
+export type ApiInteractionLimits = {
+  maxSessionDurationSeconds: number | null;
+  maxSessionsPer24Hours: number | null;
+};
 
 export type ApiShareLink = {
   id: string;
@@ -12,6 +18,7 @@ export type ApiShareLink = {
   createdAt: string;
   updatedAt: string;
   lastUsedAt: string | null;
+  limits: ApiInteractionLimits;
 };
 
 export type ApiAccessGrantState = "pending" | "linked" | "revoked";
@@ -25,12 +32,14 @@ export type ApiAccessGrant = {
   createdAt: string;
   updatedAt: string;
   revokedAt: string | null;
+  limits: ApiInteractionLimits;
 };
 
 export type ApiPublicSharedAvatar = {
   shareLink: {
     slug: string;
     name: string;
+    limits: ApiInteractionLimits;
   };
   avatar: {
     name: string;
@@ -59,7 +68,7 @@ export type ApiPublicSessionStart = {
     conversationId: string;
     realtimeSessionId: string;
     sessionToken: string;
-    sessionId: string | null;
+    expiresAt: string;
   };
 };
 
@@ -67,6 +76,7 @@ export type CreateShareLinkRequest = {
   slug: string;
   name: string;
   isEnabled?: boolean;
+  limits?: ApiInteractionLimits;
 };
 
 export function listShareLinks(avatarId: string) {
@@ -83,7 +93,7 @@ export function createShareLink(avatarId: string, input: CreateShareLinkRequest)
 export function updateShareLink(
   avatarId: string,
   shareLinkId: string,
-  input: { name?: string; isEnabled?: boolean }
+  input: { name?: string; isEnabled?: boolean; limits?: ApiInteractionLimits }
 ) {
   return apiRequest<{ shareLink: ApiShareLink }>(`/avatars/${avatarId}/share-links/${shareLinkId}`, {
     method: "PATCH",
@@ -101,17 +111,21 @@ export function listAccessGrants(avatarId: string) {
   return apiRequest<{ accessGrants: ApiAccessGrant[] }>(`/avatars/${avatarId}/access-grants`);
 }
 
-export function createAccessGrant(avatarId: string, email: string) {
+export function createAccessGrant(avatarId: string, email: string, limits?: ApiInteractionLimits) {
   return apiRequest<{ accessGrant: ApiAccessGrant }>(`/avatars/${avatarId}/access-grants`, {
     method: "POST",
-    body: JSON.stringify({ email }),
+    body: JSON.stringify({ email, ...(limits ? { limits } : {}) }),
   });
 }
 
-export function updateAccessGrant(avatarId: string, accessGrantId: string, status: "active" | "revoked") {
+export function updateAccessGrant(
+  avatarId: string,
+  accessGrantId: string,
+  input: { status?: "active" | "revoked"; limits?: ApiInteractionLimits }
+) {
   return apiRequest<{ accessGrant: ApiAccessGrant }>(`/avatars/${avatarId}/access-grants/${accessGrantId}`, {
     method: "PATCH",
-    body: JSON.stringify({ status }),
+    body: JSON.stringify(input),
   });
 }
 
@@ -156,15 +170,19 @@ export function endPublicSession(
   publicSessionId: string,
   publicSessionToken: string,
   transcript: Array<{ role: "user" | "assistant"; content: string; metadata?: Record<string, unknown> }>,
-  options: { keepalive?: boolean; maxMessages?: number } = {}
+  options: { keepalive?: boolean; maxMessages?: number; maxBodyBytes?: number } = {}
 ) {
+  const maxBodyBytes = options.keepalive
+    ? Math.min(options.maxBodyBytes ?? KEEPALIVE_MAX_BODY_BYTES, KEEPALIVE_MAX_BODY_BYTES)
+    : options.maxBodyBytes;
+
   return apiRequest<{ publicSession: { id: string; status: string; endedAt: string | null } }>(
     `/public/sessions/${encodeURIComponent(publicSessionId)}/end`,
     {
       method: "POST",
       headers: { Authorization: `Bearer ${publicSessionToken}` },
       body: JSON.stringify({
-        transcript: normalizePublicTranscript(transcript, options.maxMessages),
+        transcript: normalizePublicTranscript(transcript, options.maxMessages, maxBodyBytes),
       }),
       ...(options.keepalive !== undefined ? { keepalive: options.keepalive } : {}),
     }
@@ -172,11 +190,9 @@ export function endPublicSession(
 }
 
 export function normalizePublicTranscript(
-  transcript: Array<{ role: "user" | "assistant"; content: string; metadata?: Record<string, unknown> }>,
-  maxMessages = 20
+  transcript: ClientTranscriptEntry[],
+  maxMessages = 200,
+  maxBodyBytes?: number
 ) {
-  return transcript.slice(0, maxMessages).flatMap(({ role, content }) => {
-    const normalized = content.trim().slice(0, 500);
-    return normalized ? [{ role, content: normalized }] : [];
-  });
+  return normalizeVoiceTranscript(transcript, maxMessages, maxBodyBytes);
 }

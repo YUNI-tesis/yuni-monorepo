@@ -11,15 +11,24 @@ describe("YUNI icon system", () => {
     expect(html).toContain("currentColor");
   });
 
-  it.each(["activity", "aiBrain", "chart", "document", "edit", "link", "mail", "pause", "play", "share"] as const)(
-    "renders the %s icon",
-    (name) => {
-      const html = renderToStaticMarkup(createElement(YuniIcon, { name }));
+  it.each([
+    "activity",
+    "aiBrain",
+    "chart",
+    "document",
+    "edit",
+    "link",
+    "mail",
+    "pause",
+    "play",
+    "share",
+    "warning",
+  ] as const)("renders the %s icon", (name) => {
+    const html = renderToStaticMarkup(createElement(YuniIcon, { name }));
 
-      expect(html).toContain("<svg");
-      expect(html).toContain("currentColor");
-    }
-  );
+    expect(html).toContain("<svg");
+    expect(html).toContain("currentColor");
+  });
 
   it("renders IconButton icons as nodes instead of pseudo-icon text", () => {
     const html = renderToStaticMarkup(

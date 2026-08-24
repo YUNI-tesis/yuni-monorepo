@@ -17,15 +17,17 @@ export function createLiveAvatarConfig({
   fallbackThumbnailUrl = null,
 }: LiveAvatarConfigInput): ApiAvatarLiveAvatarConfig {
   const isCurrentOption = selectedAvatar?.displayName === currentLiveAvatarOptionName;
-  const displayName =
-    isCurrentOption ? fallbackDisplayName : selectedAvatar?.displayName ?? fallbackDisplayName;
-  const thumbnailUrl =
-    isCurrentOption ? fallbackThumbnailUrl : selectedAvatar?.thumbnailUrl ?? fallbackThumbnailUrl;
+  const displayName = isCurrentOption
+    ? fallbackDisplayName
+    : (selectedAvatar?.displayName ?? fallbackDisplayName);
+  const thumbnailUrl = isCurrentOption
+    ? fallbackThumbnailUrl
+    : (selectedAvatar?.thumbnailUrl ?? fallbackThumbnailUrl);
   const config: ApiAvatarLiveAvatarConfig = {
     provider: "liveavatar",
     avatarId,
-    mode: isCurrentOption ? "lite" : selectedAvatar?.mode ?? "lite",
-    sandbox: isCurrentOption ? true : selectedAvatar?.sandbox ?? true,
+    mode: isCurrentOption ? "lite" : (selectedAvatar?.mode ?? "lite"),
+    sandbox: isCurrentOption ? true : (selectedAvatar?.sandbox ?? true),
   };
 
   if (displayName) {

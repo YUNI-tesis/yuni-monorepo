@@ -117,7 +117,7 @@ function getPrimaryAction(
 }
 
 function getUnavailableMessage(avatar: ApiAvatarSummary) {
-  if (avatar.access.type === "shared" && avatar.interactionAvailability === "preparing") {
+  if (avatar.interactionAvailability === "preparing") {
     return "Lo estamos preparando. Vas a poder interactuar pronto.";
   }
   if (avatar.access.type === "shared") {

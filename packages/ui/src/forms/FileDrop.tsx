@@ -76,7 +76,10 @@ export function FileDrop({
       {selectedFiles.length > 0 ? (
         <ul className="yuni-file-drop__files" aria-label="Archivos seleccionados">
           {selectedFiles.map((file, index) => (
-            <li className="yuni-file-drop__file" key={`${file.name}-${file.size}-${file.lastModified}-${index}`}>
+            <li
+              className="yuni-file-drop__file"
+              key={`${file.name}-${file.size}-${file.lastModified}-${index}`}
+            >
               <span className="yuni-file-drop__file-icon" aria-hidden="true">
                 <YuniIcon name="file" size={20} />
               </span>

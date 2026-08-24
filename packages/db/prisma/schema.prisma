@@ -86,15 +86,17 @@ model AvatarAgent {
 }
 
 model ShareLink {
-  id            String    @id @default(cuid())
-  avatarAgentId String
-  ownerId       String
-  slug          String    @unique
-  name          String
-  isEnabled     Boolean   @default(true)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  lastUsedAt    DateTime?
+  id                        String    @id @default(cuid())
+  avatarAgentId             String
+  ownerId                   String
+  slug                      String    @unique
+  name                      String
+  isEnabled                 Boolean   @default(true)
+  createdAt                 DateTime  @default(now())
+  updatedAt                 DateTime  @updatedAt
+  lastUsedAt                DateTime?
+  maxSessionDurationSeconds Int?
+  maxSessionsPer24Hours     Int?
 
   avatarAgent    AvatarAgent     @relation(fields: [avatarAgentId], references: [id], onDelete: Cascade)
   owner          User            @relation(fields: [ownerId], references: [id], onDelete: Cascade)
@@ -110,20 +112,23 @@ model ShareLink {
 }
 
 model AccessGrant {
-  id                String            @id @default(cuid())
-  avatarAgentId     String
-  ownerId           String
-  participantEmail  String
-  participantUserId String?
-  status            AccessGrantStatus @default(active)
-  revokedAt         DateTime?
-  createdAt         DateTime          @default(now())
-  updatedAt         DateTime          @updatedAt
+  id                        String            @id @default(cuid())
+  avatarAgentId             String
+  ownerId                   String
+  participantEmail          String
+  participantUserId         String?
+  status                    AccessGrantStatus @default(active)
+  revokedAt                 DateTime?
+  createdAt                 DateTime          @default(now())
+  updatedAt                 DateTime          @updatedAt
+  maxSessionDurationSeconds Int?
+  maxSessionsPer24Hours     Int?
 
-  avatarAgent         AvatarAgent          @relation(fields: [avatarAgentId], references: [id], onDelete: Cascade)
-  owner               User                 @relation("AccessGrantOwner", fields: [ownerId], references: [id], onDelete: Cascade)
-  participantUser     User?                @relation("AccessGrantParticipant", fields: [participantUserId], references: [id], onDelete: SetNull)
+  avatarAgent         AvatarAgent       @relation(fields: [avatarAgentId], references: [id], onDelete: Cascade)
+  owner               User              @relation("AccessGrantOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  participantUser     User?             @relation("AccessGrantParticipant", fields: [participantUserId], references: [id], onDelete: SetNull)
   conversations       Conversation[]
+  realtimeSessions    RealtimeSession[] @relation("RealtimeSessionAccessGrant")
   avatarGroupMembers  AvatarGroupMember[]
   conversationAvatars ConversationAvatar[]
 
@@ -392,7 +397,7 @@ model PublicSession {
   usageEvents      UsageEvent[]
 
   @@index([shareLinkId])
-  @@index([shareLinkId, participantEmail])
+  @@index([shareLinkId, participantEmail, startedAt])
   @@index([avatarAgentId])
   @@index([avatarAgentId, participantEmail])
   @@index([anonymousId])
@@ -405,6 +410,7 @@ model RealtimeSession {
   id                             String                @id @default(cuid())
   conversationId                 String?
   publicSessionId                String?
+  accessGrantId                  String?
   avatarAgentId                  String
   status                         RealtimeSessionStatus @default(connecting)
   providerSessionId              String?
@@ -412,17 +418,21 @@ model RealtimeSession {
   providerStoppedAt              DateTime?
   startedAt                      DateTime              @default(now())
   endedAt                        DateTime?
+  expiresAt                      DateTime?
   errorMessage                   String?
 
   conversation          Conversation?          @relation(fields: [conversationId], references: [id], onDelete: SetNull)
   publicSession         PublicSession?         @relation(fields: [publicSessionId], references: [id], onDelete: SetNull)
+  accessGrant           AccessGrant?           @relation("RealtimeSessionAccessGrant", fields: [accessGrantId], references: [id], onDelete: SetNull)
   avatarAgent           AvatarAgent            @relation(fields: [avatarAgentId], references: [id], onDelete: Cascade)
   groupVoiceParticipant GroupVoiceParticipant?
 
   @@index([conversationId])
   @@index([publicSessionId])
+  @@index([accessGrantId, status, startedAt])
   @@index([avatarAgentId])
   @@index([status])
+  @@index([avatarAgentId, status, startedAt])
 }
 
 model Document {

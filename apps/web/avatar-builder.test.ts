@@ -122,12 +122,16 @@ describe("avatar builder", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     await createAvatar(
-      buildCreateAvatarRequest({
-        ...createInitialAvatarBuilderState(),
-        name: "YUNI Demo",
-        voiceId: "voice-1",
-        instructions: "Responde claro.",
-      }, undefined, voiceOption)
+      buildCreateAvatarRequest(
+        {
+          ...createInitialAvatarBuilderState(),
+          name: "YUNI Demo",
+          voiceId: "voice-1",
+          instructions: "Responde claro.",
+        },
+        undefined,
+        voiceOption
+      )
     );
 
     expect(fetchMock).toHaveBeenCalledWith(
@@ -176,5 +180,4 @@ describe("avatar builder", () => {
       })
     );
   });
-
 });

@@ -17,6 +17,7 @@ export function createShareLinkRepository(db: Db) {
           slug: input.slug,
           name: input.name,
           isEnabled: input.isEnabled,
+          ...(input.limits ?? {}),
         },
       });
     },
@@ -45,6 +46,10 @@ export function createShareLinkRepository(db: Db) {
       const data: Prisma.ShareLinkUncheckedUpdateInput = {};
       if (input.name !== undefined) data.name = input.name;
       if (input.isEnabled !== undefined) data.isEnabled = input.isEnabled;
+      if (input.limits !== undefined) {
+        data.maxSessionDurationSeconds = input.limits.maxSessionDurationSeconds;
+        data.maxSessionsPer24Hours = input.limits.maxSessionsPer24Hours;
+      }
 
       return db.shareLink.update({
         where: { id: shareLinkId },

@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import {
   createAccessGrant,
   createShareLink,
@@ -17,18 +19,63 @@ import {
 } from "./lib/api/sharing-api";
 import {
   canOpenPublicLink,
+  emptyInteractionLimitsDraft,
+  formatInteractionLimitsSummary,
+  hasConfiguredInteractionLimits,
   getAccessGrantCreateError,
   getAccessGrantPresentation,
   normalizeGrantEmail,
+  parseInteractionLimitsDraft,
   requiresRenewedPublicConsent,
   toPublicSlug,
   validateGrantEmail,
   validateShareLinkDraft,
 } from "./lib/avatar-sharing";
-import { ApiClientError } from "./lib/api/http-client";
+import { ApiClientError, queueApiJsonBeacon } from "./lib/api/http-client";
+import {
+  KEEPALIVE_MAX_BODY_BYTES,
+  normalizeVoiceTranscript,
+  transcriptRequestBodyByteLength,
+} from "./lib/api/transcript";
+import { endVoiceSession } from "./lib/api/avatar-api";
 import { getAvatarCardActionMode } from "./lib/avatar-dashboard";
+import { readSessionValue, removeSessionValue, storeSessionValue } from "./lib/browser-storage";
+import { InteractionLimitsFields } from "./components/avatar-profile/InteractionLimitsFields";
+import { formatPublicCountdown, formatPublicSessionStartError } from "./app/a/[slug]/PublicAvatarView";
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe("sharing UI helpers", () => {
+  it("treats unavailable session storage as a non-blocking browser preference", () => {
+    vi.stubGlobal("window", {
+      get sessionStorage() {
+        throw new Error("blocked");
+      },
+    });
+
+    expect(readSessionValue("identity")).toBeNull();
+    expect(storeSessionValue("identity", "value")).toBe(false);
+    expect(removeSessionValue("identity")).toBe(false);
+  });
+
+  it("queues teardown JSON through a CORS-safe beacon payload", () => {
+    const sendBeacon = vi.fn(() => true);
+
+    expect(
+      queueApiJsonBeacon(
+        "/voice-sessions/realtime-1/end",
+        { transcript: [{ role: "user", content: "Hola" }] },
+        sendBeacon
+      )
+    ).toBe(true);
+    expect(sendBeacon).toHaveBeenCalledWith(
+      expect.stringContaining("/voice-sessions/realtime-1/end"),
+      JSON.stringify({ transcript: [{ role: "user", content: "Hola" }] })
+    );
+  });
+
   it.each([
     ["Asistente de Álgebra", "asistente-de-algebra"],
     ["  Demo & Prueba  ", "demo-prueba"],
@@ -101,13 +148,85 @@ describe("sharing UI helpers", () => {
     expect(requiresRenewedPublicConsent(true, false, true)).toBe(false);
     expect(requiresRenewedPublicConsent(false, false, false)).toBe(false);
   });
+
+  it("parses, validates and summarizes optional interaction limits", () => {
+    expect(parseInteractionLimitsDraft(emptyInteractionLimitsDraft)).toMatchObject({
+      isValid: true,
+      limits: {
+        maxSessionDurationSeconds: null,
+        maxSessionsPer24Hours: null,
+      },
+    });
+    expect(formatInteractionLimitsSummary(null)).toBe("Ilimitado");
+    expect(
+      hasConfiguredInteractionLimits({
+        maxSessionDurationSeconds: null,
+        maxSessionsPer24Hours: null,
+      })
+    ).toBe(false);
+    expect(
+      hasConfiguredInteractionLimits({
+        maxSessionDurationSeconds: 45,
+        maxSessionsPer24Hours: null,
+      })
+    ).toBe(true);
+    expect(
+      formatInteractionLimitsSummary({
+        maxSessionDurationSeconds: 600,
+        maxSessionsPer24Hours: 3,
+      })
+    ).toBe("10 min por llamada · 3 llamadas cada 24 h");
+    expect(
+      formatInteractionLimitsSummary({ maxSessionDurationSeconds: 45, maxSessionsPer24Hours: null })
+    ).toBe("45 s por llamada");
+    expect(
+      parseInteractionLimitsDraft({
+        sessionDuration: "30",
+        sessionDurationUnit: "seconds",
+        maxSessionsPer24Hours: "101",
+      })
+    ).toMatchObject({ isValid: false });
+  });
+
+  it("renders all optional limit inputs with unlimited placeholders", () => {
+    const html = renderToStaticMarkup(
+      createElement(InteractionLimitsFields, {
+        draft: emptyInteractionLimitsDraft,
+        errors: {
+          sessionDuration: null,
+          sessionDurationUnit: null,
+          maxSessionsPer24Hours: null,
+        },
+        onChange: vi.fn(),
+      })
+    );
+    expect(html).toContain("Límites de uso (opcional)");
+    expect(html.match(/placeholder="Ilimitado"/g)).toHaveLength(2);
+    expect(html.match(/type="text"/g)).toHaveLength(2);
+    expect(html.match(/inputMode="numeric"/g)).toHaveLength(2);
+    expect(html).not.toContain('type="number"');
+    expect(html).toContain("Duración por llamada");
+    expect(html).toContain("Minutos");
+    expect(html).toContain('aria-label="Unidad de duración"');
+    expect(html).toContain("Llamadas cada 24 h");
+    expect(html).not.toContain("Minutos cada 24 h");
+  });
+
+  it("formats public countdown and quota errors with retry time", () => {
+    expect(formatPublicCountdown(61)).toBe("1:01");
+    expect(
+      formatPublicSessionStartError(
+        new ApiClientError("limited", 429, "RATE_LIMITED", "SHARE_SESSION_COUNT_LIMIT", 3600),
+        () => "fallback"
+      )
+    ).toBe("Ya alcanzaste la cantidad de llamadas permitidas.");
+    expect(
+      formatPublicSessionStartError(new ApiClientError("Unauthorized", 401, "UNAUTHORIZED"), () => "fallback")
+    ).toBe("Tu identificación venció. Volvé a aceptar el aviso de privacidad para continuar.");
+  });
 });
 
 describe("sharing API client", () => {
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
-
   it("calls every private sharing endpoint with the expected method and payload", async () => {
     const fetchMock = vi.fn().mockImplementation(() =>
       Promise.resolve(
@@ -124,8 +243,17 @@ describe("sharing API client", () => {
     await updateShareLink("avatar-1", "link-1", { isEnabled: false });
     await deleteShareLink("avatar-1", "link-1");
     await listAccessGrants("avatar-1");
-    await createAccessGrant("avatar-1", "user@example.com");
-    await updateAccessGrant("avatar-1", "grant-1", "revoked");
+    await createAccessGrant("avatar-1", "user@example.com", {
+      maxSessionDurationSeconds: 45,
+      maxSessionsPer24Hours: 2,
+    });
+    await updateAccessGrant("avatar-1", "grant-1", { status: "revoked" });
+    await updateAccessGrant("avatar-1", "grant-1", {
+      limits: {
+        maxSessionDurationSeconds: null,
+        maxSessionsPer24Hours: 5,
+      },
+    });
     await deleteAccessGrant("avatar-1", "grant-1");
 
     expect(fetchMock.mock.calls.map(([url, init]) => [url, init.method ?? "GET"])).toEqual([
@@ -136,13 +264,22 @@ describe("sharing API client", () => {
       ["http://localhost:4000/avatars/avatar-1/access-grants", "GET"],
       ["http://localhost:4000/avatars/avatar-1/access-grants", "POST"],
       ["http://localhost:4000/avatars/avatar-1/access-grants/grant-1", "PATCH"],
+      ["http://localhost:4000/avatars/avatar-1/access-grants/grant-1", "PATCH"],
       ["http://localhost:4000/avatars/avatar-1/access-grants/grant-1", "DELETE"],
     ]);
     expect(fetchMock.mock.calls[1]?.[1].body).toBe(
       JSON.stringify({ slug: "demo-link", name: "Demo", isEnabled: true })
     );
-    expect(fetchMock.mock.calls[5]?.[1].body).toBe(JSON.stringify({ email: "user@example.com" }));
+    expect(fetchMock.mock.calls[5]?.[1].body).toBe(
+      JSON.stringify({
+        email: "user@example.com",
+        limits: { maxSessionDurationSeconds: 45, maxSessionsPer24Hours: 2 },
+      })
+    );
     expect(fetchMock.mock.calls[6]?.[1].body).toBe(JSON.stringify({ status: "revoked" }));
+    expect(fetchMock.mock.calls[7]?.[1].body).toBe(
+      JSON.stringify({ limits: { maxSessionDurationSeconds: null, maxSessionsPer24Hours: 5 } })
+    );
   });
 
   it("resolves encoded public slugs and exposes conflict errors to the form", async () => {
@@ -217,14 +354,108 @@ describe("sharing API client", () => {
 
   it("bounds public transcripts and removes technical metadata before sending", () => {
     const transcript = normalizePublicTranscript([
-      { role: "user", content: `  ${"x".repeat(600)}  `, metadata: { providerId: "secret" } },
-      ...Array.from({ length: 25 }, () => ({ role: "assistant" as const, content: "Respuesta" })),
+      { role: "user", content: `  ${"x".repeat(1200)}  `, metadata: { providerId: "secret" } },
+      ...Array.from({ length: 205 }, () => ({ role: "assistant" as const, content: "Respuesta" })),
     ]);
 
-    expect(transcript).toHaveLength(20);
-    expect(transcript[0]?.content).toHaveLength(500);
+    expect(transcript).toHaveLength(200);
+    expect(transcript[0]?.content).toHaveLength(1000);
     expect(JSON.stringify(transcript)).not.toContain("metadata");
     expect(JSON.stringify(transcript)).not.toContain("providerId");
     expect(normalizePublicTranscript(transcript, 3)).toHaveLength(3);
+  });
+
+  it("keeps multibyte transcripts inside the shared 256 KiB request budget", () => {
+    const transcript = normalizeVoiceTranscript(
+      Array.from({ length: 205 }, () => ({
+        role: "assistant" as const,
+        content: "🙂".repeat(600),
+        metadata: { providerId: "secret" },
+      }))
+    );
+
+    expect(transcript.length).toBeLessThanOrEqual(200);
+    expect(transcript.every((entry) => entry.content.length <= 1000)).toBe(true);
+    expect(transcriptRequestBodyByteLength(transcript)).toBeLessThanOrEqual(256 * 1024);
+    expect(JSON.stringify(transcript)).not.toContain("metadata");
+  });
+
+  it("keeps unload transcripts below the browser keepalive budget", () => {
+    const transcript = normalizePublicTranscript(
+      Array.from({ length: 200 }, () => ({
+        role: "assistant" as const,
+        content: "🙂".repeat(600),
+      })),
+      200,
+      KEEPALIVE_MAX_BODY_BYTES
+    );
+
+    expect(transcriptRequestBodyByteLength(transcript)).toBeLessThanOrEqual(KEEPALIVE_MAX_BODY_BYTES);
+  });
+
+  it("applies the keepalive budget automatically to public session closes", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ publicSession: {} }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await endPublicSession(
+      "session-1",
+      "session-token",
+      Array.from({ length: 200 }, () => ({
+        role: "assistant" as const,
+        content: "🙂".repeat(600),
+      })),
+      { keepalive: true }
+    );
+
+    const body = String(fetchMock.mock.calls[0]?.[1].body);
+    expect(new TextEncoder().encode(body).byteLength).toBeLessThanOrEqual(KEEPALIVE_MAX_BODY_BYTES);
+  });
+
+  it("uses the common transcript normalizer for private and shared session closes", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ voiceSession: {} }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await endVoiceSession("realtime-1", [
+      { role: "user", content: `  ${"x".repeat(1200)}  `, metadata: { providerId: "secret" } },
+      { role: "assistant", content: "   " },
+    ]);
+
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1].body));
+    expect(body).toEqual({ transcript: [{ role: "user", content: "x".repeat(1000) }] });
+  });
+
+  it("uses keepalive and its browser-safe budget for authenticated session closes", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ voiceSession: {} }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await endVoiceSession(
+      "realtime-1",
+      Array.from({ length: 200 }, () => ({
+        role: "assistant" as const,
+        content: "🙂".repeat(600),
+      })),
+      { keepalive: true }
+    );
+
+    const request = fetchMock.mock.calls[0]?.[1];
+    expect(request.keepalive).toBe(true);
+    expect(new TextEncoder().encode(String(request.body)).byteLength).toBeLessThanOrEqual(
+      KEEPALIVE_MAX_BODY_BYTES
+    );
   });
 });

@@ -62,6 +62,7 @@ function createTestDependencies(providerError?: Error): AppDependencies {
         sessionId: "liveavatar-session",
       };
     },
+    async stopSession() {},
   };
   const avatarRepository = {
     async create(): Promise<AvatarAgentRecord> {
@@ -156,10 +157,20 @@ function createTestDependencies(providerError?: Error): AppDependencies {
             endedAt: new Date("2026-05-16T00:00:00.000Z"),
           };
         },
+        async finalizePrivate(input) {
+          return {
+            session: {
+              id: input.realtimeSessionId,
+              conversationId: input.conversationId,
+              status: "ended",
+              endedAt: new Date("2026-05-16T00:00:00.000Z"),
+            },
+            finalized: true,
+          };
+        },
         async markErrored() {},
-      },
-      messagesRepository: {
-        async append() {},
+        async markProviderStopped() {},
+        async expireSharedIfActive() {},
       },
       liveAvatarProvider,
       elevenLabsAgentProvider: {

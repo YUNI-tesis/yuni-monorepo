@@ -15,6 +15,7 @@ import {
   type VoiceSessionTranscriptEntry,
 } from "../lib/api/avatar-api";
 import { ApiClientError } from "../lib/api/http-client";
+import { formatRetryAfter } from "../lib/avatar-sharing";
 
 export type LiveAvatarSessionStatus = "idle" | "starting" | "active" | "ending" | "ended" | "error";
 
@@ -26,7 +27,7 @@ export type LiveAvatarTranscriptEntry = VoiceSessionTranscriptEntry & {
 
 export type LiveAvatarVoiceSession = Pick<
   ApiVoiceSession,
-  "conversationId" | "realtimeSessionId" | "sessionToken" | "sessionId"
+  "conversationId" | "realtimeSessionId" | "sessionToken" | "expiresAt"
 >;
 
 export type LiveAvatarDiagnostics = {
@@ -48,6 +49,8 @@ export type LiveAvatarSessionState = {
   isAvatarSpeaking: boolean;
   conversationState: LiveAvatarConversationState;
   voiceSession: LiveAvatarVoiceSession | null;
+  remainingSeconds: number | null;
+  endedByLimit: boolean;
   transcript: LiveAvatarTranscriptEntry[];
   diagnostics: LiveAvatarDiagnostics;
 };
@@ -80,6 +83,8 @@ const initialState: LiveAvatarSessionState = {
   isAvatarSpeaking: false,
   conversationState: "idle",
   voiceSession: null,
+  remainingSeconds: null,
+  endedByLimit: false,
   transcript: [],
   diagnostics: initialDiagnostics,
 };
@@ -92,7 +97,11 @@ export function useLiveAvatarSession(avatarId: string, options: UseLiveAvatarSes
   const optionsRef = useRef(options);
   const transcriptRef = useRef<LiveAvatarTranscriptEntry[]>([]);
   const eventIdsRef = useRef(new Set<string>());
+  const startingRef = useRef(false);
   const endingRef = useRef(false);
+  const lifecycleActiveRef = useRef(true);
+  const lifecycleEpochRef = useRef(0);
+  const preservePendingEndOnTeardownRef = useRef(false);
   const diagnosticsCleanupRef = useRef<(() => void) | null>(null);
   const interruptionResetTimeoutRef = useRef<number | null>(null);
 
@@ -108,43 +117,54 @@ export function useLiveAvatarSession(avatarId: string, options: UseLiveAvatarSes
     clearInterruptionReset(interruptionResetTimeoutRef);
     sessionRef.current = null;
 
+    const endRequest = currentVoiceSession
+      ? (optionsRef.current.endSession ?? endVoiceSession)(
+          currentVoiceSession.realtimeSessionId,
+          options.includeTranscript
+            ? transcriptRef.current.map(({ role, content, metadata }) => ({
+                role,
+                content,
+                ...(metadata ? { metadata } : {}),
+              }))
+            : []
+        )
+      : null;
     if (currentSession) {
-      await currentSession.stop().catch(() => undefined);
+      void stopLiveAvatarSessionSafely(currentSession);
     }
 
-    if (currentVoiceSession) {
-      await (optionsRef.current.endSession ?? endVoiceSession)(
-        currentVoiceSession.realtimeSessionId,
-        options.includeTranscript
-          ? transcriptRef.current.map(({ role, content, metadata }) => ({
-              role,
-              content,
-              ...(metadata ? { metadata } : {}),
-            }))
-          : []
-      );
+    if (endRequest) {
+      await endRequest;
       voiceSessionRef.current = null;
     }
   }, []);
 
-  const closeCurrentSessionOnUnload = useCallback(() => {
+  const closeCurrentSessionOnUnload = useCallback((preservePendingEnd?: boolean) => {
     const currentSession = sessionRef.current;
     const currentVoiceSession = voiceSessionRef.current;
     const endSessionOnUnload = optionsRef.current.endSessionOnUnload;
+    const shouldPreservePendingEnd = preservePendingEnd ?? preservePendingEndOnTeardownRef.current;
 
     cleanupDiagnostics(diagnosticsCleanupRef);
     clearInterruptionReset(interruptionResetTimeoutRef);
     sessionRef.current = null;
-    voiceSessionRef.current = null;
+    if (!shouldPreservePendingEnd) {
+      voiceSessionRef.current = null;
+    }
 
     if (currentVoiceSession && endSessionOnUnload) {
-      endSessionOnUnload(
-        currentVoiceSession.realtimeSessionId,
-        transcriptRef.current.map(({ role, content }) => ({ role, content }))
-      );
+      try {
+        endSessionOnUnload(
+          currentVoiceSession.realtimeSessionId,
+          transcriptRef.current.map(({ role, content }) => ({ role, content }))
+        );
+      } catch {
+        // Page teardown cannot surface a recoverable error. A bfcache restore
+        // keeps the pending YUNI session so the normal retry path can finish it.
+      }
     }
     if (currentSession) {
-      void currentSession.stop().catch(() => undefined);
+      void stopLiveAvatarSessionSafely(currentSession);
     }
   }, []);
 
@@ -203,22 +223,30 @@ export function useLiveAvatarSession(avatarId: string, options: UseLiveAvatarSes
         conversationState: "idle",
         voiceSession: null,
       }));
-      void optionsRef.current.onEnded?.();
+      void Promise.resolve(optionsRef.current.onEnded?.()).catch(() => undefined);
     } catch (error) {
       endingRef.current = false;
       setState((current) => ({
         ...current,
         status: "error",
-        error: error instanceof Error ? error.message : "No pudimos cerrar la llamada.",
+        voiceSession: currentVoiceSession,
+        error: formatVoiceSessionEndError(error),
       }));
     }
   }, [closeCurrentSession]);
 
   const start = useCallback(async () => {
-    if (state.status === "starting" || state.status === "active") {
+    if (
+      startingRef.current ||
+      state.status === "starting" ||
+      state.status === "active" ||
+      voiceSessionRef.current
+    ) {
       return;
     }
 
+    startingRef.current = true;
+    const lifecycleEpoch = lifecycleEpochRef.current;
     transcriptRef.current = [];
     eventIdsRef.current = new Set<string>();
     endingRef.current = false;
@@ -228,12 +256,27 @@ export function useLiveAvatarSession(avatarId: string, options: UseLiveAvatarSes
 
     try {
       const { voiceSession } = await (optionsRef.current.startSession ?? startVoiceSession)(avatarId);
+      // Keep the YUNI reservation before constructing the provider SDK so every
+      // post-reservation failure can still close the server-side session.
+      voiceSessionRef.current = voiceSession;
+      if (
+        !isLiveAvatarLifecycleCurrent(lifecycleActiveRef.current, lifecycleEpochRef.current, lifecycleEpoch)
+      ) {
+        endingRef.current = true;
+        if (!lifecycleActiveRef.current && optionsRef.current.endSessionOnUnload) {
+          closeCurrentSessionOnUnload();
+        } else {
+          endingRef.current = false;
+          await end();
+        }
+        endingRef.current = false;
+        return;
+      }
       liveAvatarSession = new LiveAvatarSession(voiceSession.sessionToken, {
         voiceChat: { defaultMuted: false },
       });
       const session = liveAvatarSession;
 
-      voiceSessionRef.current = voiceSession;
       sessionRef.current = session;
       registerSessionEvents(session, {
         appendTranscript,
@@ -243,13 +286,45 @@ export function useLiveAvatarSession(avatarId: string, options: UseLiveAvatarSes
           }
         },
         end,
+        hasReachedExpiry: () => hasLiveAvatarSessionExpired(voiceSessionRef.current?.expiresAt),
+        isCurrentSession: () => sessionRef.current === session,
         markInterrupted,
         setState,
       });
 
       await session.start();
+      if (
+        !isLiveAvatarLifecycleCurrent(
+          lifecycleActiveRef.current,
+          lifecycleEpochRef.current,
+          lifecycleEpoch
+        ) ||
+        sessionRef.current !== session ||
+        voiceSessionRef.current !== voiceSession
+      )
+        return;
       await ensureVoiceChatStarted(session);
+      if (
+        !isLiveAvatarLifecycleCurrent(
+          lifecycleActiveRef.current,
+          lifecycleEpochRef.current,
+          lifecycleEpoch
+        ) ||
+        sessionRef.current !== session ||
+        voiceSessionRef.current !== voiceSession
+      )
+        return;
       await optionsRef.current.onStarted?.(voiceSession.realtimeSessionId);
+      if (
+        !isLiveAvatarLifecycleCurrent(
+          lifecycleActiveRef.current,
+          lifecycleEpochRef.current,
+          lifecycleEpoch
+        ) ||
+        sessionRef.current !== session ||
+        voiceSessionRef.current !== voiceSession
+      )
+        return;
       diagnosticsCleanupRef.current = startMicrophoneLevelProbe(session, setState);
 
       setState((current) => ({
@@ -266,52 +341,147 @@ export function useLiveAvatarSession(avatarId: string, options: UseLiveAvatarSes
       }));
     } catch (error) {
       if (liveAvatarSession && !sessionRef.current) {
-        await liveAvatarSession.stop().catch(() => undefined);
+        await stopLiveAvatarSessionSafely(liveAvatarSession);
       }
 
+      let closeError: unknown = null;
       if (voiceSessionRef.current || sessionRef.current) {
         endingRef.current = true;
-        await closeCurrentSession({ includeTranscript: false }).catch(() => undefined);
+        try {
+          await closeCurrentSession({ includeTranscript: false });
+        } catch (error) {
+          closeError = error;
+        }
         endingRef.current = false;
       } else {
         cleanupDiagnostics(diagnosticsCleanupRef);
         clearInterruptionReset(interruptionResetTimeoutRef);
       }
 
+      // A page can leave and return while provider startup is still settling.
+      // If closing the already-reserved YUNI session then fails, keep the
+      // recoverable pending-close state visible instead of swallowing it as a
+      // stale startup result.
+      if (closeError && lifecycleActiveRef.current && voiceSessionRef.current) {
+        setState((current) => ({
+          ...current,
+          status: "error",
+          conversationState: "idle",
+          voiceSession: voiceSessionRef.current,
+          error: formatVoiceSessionEndError(closeError),
+        }));
+        return;
+      }
+
+      if (
+        !isLiveAvatarLifecycleCurrent(lifecycleActiveRef.current, lifecycleEpochRef.current, lifecycleEpoch)
+      ) {
+        return;
+      }
+
       setState((current) => ({
         ...current,
         status: "error",
         conversationState: "idle",
+        voiceSession: voiceSessionRef.current,
         error: optionsRef.current.formatStartError
           ? optionsRef.current.formatStartError(error, formatVoiceSessionStartError)
           : formatVoiceSessionStartError(error),
       }));
+    } finally {
+      startingRef.current = false;
     }
-  }, [appendTranscript, avatarId, end, markInterrupted, state.status]);
+  }, [
+    appendTranscript,
+    avatarId,
+    closeCurrentSession,
+    closeCurrentSessionOnUnload,
+    end,
+    markInterrupted,
+    state.status,
+  ]);
 
   useEffect(() => {
-    const cleanup = () => {
-      if (endingRef.current || (!sessionRef.current && !voiceSessionRef.current)) {
+    const expiresAt = state.voiceSession?.expiresAt;
+    if (state.status !== "active" || !expiresAt) {
+      if (state.status !== "ending") {
+        setState((current) =>
+          current.remainingSeconds === null ? current : { ...current, remainingSeconds: null }
+        );
+      }
+      return;
+    }
+
+    const tick = () => {
+      const remainingSeconds = Math.max(0, Math.ceil((new Date(expiresAt).getTime() - Date.now()) / 1000));
+      setState((current) => ({ ...current, remainingSeconds }));
+
+      if (remainingSeconds === 0 && !endingRef.current) {
+        setState((current) => ({ ...current, endedByLimit: true }));
+        void end();
+      }
+    };
+
+    tick();
+    const intervalId = window.setInterval(tick, 1000);
+    return () => window.clearInterval(intervalId);
+  }, [end, state.status, state.voiceSession?.expiresAt]);
+
+  useEffect(() => {
+    lifecycleActiveRef.current = true;
+
+    const cleanup = (event?: PageTransitionEvent) => {
+      const preservePendingEnd = event?.persisted === true;
+      preservePendingEndOnTeardownRef.current = preservePendingEnd;
+      lifecycleActiveRef.current = false;
+      lifecycleEpochRef.current += 1;
+      if (!sessionRef.current && !voiceSessionRef.current) {
+        return;
+      }
+
+      if (endingRef.current) {
+        if (voiceSessionRef.current && optionsRef.current.endSessionOnUnload) {
+          closeCurrentSessionOnUnload(preservePendingEnd);
+        }
         return;
       }
 
       endingRef.current = true;
       if (optionsRef.current.endSessionOnUnload) {
-        closeCurrentSessionOnUnload();
+        closeCurrentSessionOnUnload(preservePendingEnd);
         return;
       }
-      void closeCurrentSession({ includeTranscript: true }).finally(() => {
+      void closeCurrentSession({ includeTranscript: true })
+        .catch(() => undefined)
+        .finally(() => {
+          endingRef.current = false;
+        });
+    };
+
+    const restore = () => {
+      lifecycleActiveRef.current = true;
+      preservePendingEndOnTeardownRef.current = false;
+      if (voiceSessionRef.current) {
         endingRef.current = false;
-      });
+        void end();
+        return;
+      }
+      endingRef.current = false;
+      if (!sessionRef.current && !voiceSessionRef.current) {
+        setState(recoverLiveAvatarStateAfterPageRestore);
+      }
     };
 
     window.addEventListener("pagehide", cleanup);
+    window.addEventListener("pageshow", restore);
 
     return () => {
+      lifecycleActiveRef.current = false;
       window.removeEventListener("pagehide", cleanup);
+      window.removeEventListener("pageshow", restore);
       cleanup();
     };
-  }, [closeCurrentSession, closeCurrentSessionOnUnload]);
+  }, [closeCurrentSession, closeCurrentSessionOnUnload, end]);
 
   const toggleMute = useCallback(async () => {
     const session = sessionRef.current;
@@ -320,15 +490,22 @@ export function useLiveAvatarSession(avatarId: string, options: UseLiveAvatarSes
       return;
     }
 
-    await ensureVoiceChatStarted(session);
+    try {
+      await ensureVoiceChatStarted(session);
 
-    if (session.voiceChat.isMuted) {
-      await session.voiceChat.unmute();
-    } else {
-      await session.voiceChat.mute();
+      if (session.voiceChat.isMuted) {
+        await session.voiceChat.unmute();
+      } else {
+        await session.voiceChat.mute();
+      }
+
+      setState((current) => ({ ...current, isMuted: session.voiceChat.isMuted }));
+    } catch {
+      setState((current) => ({
+        ...current,
+        error: "No pudimos cambiar el estado del micrófono. Intentá nuevamente.",
+      }));
     }
-
-    setState((current) => ({ ...current, isMuted: session.voiceChat.isMuted }));
   }, []);
 
   const interrupt = useCallback(() => {
@@ -345,6 +522,10 @@ export function useLiveAvatarSession(avatarId: string, options: UseLiveAvatarSes
       }));
     }
   }, [markInterrupted, state.status]);
+
+  const dismissError = useCallback(() => {
+    setState(dismissLiveAvatarSessionError);
+  }, []);
 
   const sendTextProbe = useCallback(async () => {
     const session = sessionRef.current;
@@ -372,13 +553,13 @@ export function useLiveAvatarSession(avatarId: string, options: UseLiveAvatarSes
           textProbeError: null,
         },
       }));
-    } catch (error) {
+    } catch {
       setState((current) => ({
         ...current,
         diagnostics: {
           ...current.diagnostics,
           textProbeStatus: "error",
-          textProbeError: error instanceof Error ? error.message : "No pudimos enviar el mensaje de prueba.",
+          textProbeError: "No pudimos enviar el mensaje de prueba.",
         },
       }));
     }
@@ -386,12 +567,47 @@ export function useLiveAvatarSession(avatarId: string, options: UseLiveAvatarSes
 
   return {
     ...state,
+    hasPendingEnd: hasPendingLiveAvatarEnd(state),
     attachMediaElement,
     start,
     end,
     toggleMute,
     interrupt,
+    dismissError,
     sendTextProbe,
+  };
+}
+
+export function hasPendingLiveAvatarEnd(state: Pick<LiveAvatarSessionState, "status" | "voiceSession">) {
+  return state.status === "error" && state.voiceSession !== null;
+}
+
+export function dismissLiveAvatarSessionError(state: LiveAvatarSessionState): LiveAvatarSessionState {
+  return {
+    ...state,
+    status: state.status === "error" && !hasPendingLiveAvatarEnd(state) ? "idle" : state.status,
+    error: null,
+  };
+}
+
+export function recoverLiveAvatarStateAfterPageRestore(
+  state: LiveAvatarSessionState
+): LiveAvatarSessionState {
+  const wasInFlight = (["starting", "active", "ending"] as LiveAvatarSessionStatus[]).includes(state.status);
+  if (!wasInFlight && !(state.status === "error" && state.voiceSession)) {
+    return state;
+  }
+
+  return {
+    ...state,
+    status: "ended",
+    error: null,
+    voiceSession: null,
+    remainingSeconds: null,
+    isMuted: false,
+    isUserSpeaking: false,
+    isAvatarSpeaking: false,
+    conversationState: "idle",
   };
 }
 
@@ -407,16 +623,27 @@ export function interruptActiveLiveAvatarSession(
   return true;
 }
 
+async function stopLiveAvatarSessionSafely(session: Pick<LiveAvatarSession, "stop">) {
+  try {
+    await session.stop();
+  } catch {
+    // The server owns the durable/idempotent provider cleanup path.
+  }
+}
+
 type RegisterSessionEventsOptions = {
   appendTranscript: (entry: LiveAvatarTranscriptEntry) => void;
   attachCurrentMediaElement: () => void;
   end: () => Promise<void>;
+  hasReachedExpiry: () => boolean;
+  isCurrentSession: () => boolean;
   markInterrupted: () => void;
   setState: Dispatch<SetStateAction<LiveAvatarSessionState>>;
 };
 
 function registerSessionEvents(session: LiveAvatarSession, options: RegisterSessionEventsOptions) {
   session.voiceChat.on(VoiceChatEvent.STATE_CHANGED, (voiceChatState) => {
+    if (!options.isCurrentSession()) return;
     options.setState((current) => ({
       ...current,
       isMuted: voiceChatState !== VoiceChatState.ACTIVE || session.voiceChat.isMuted,
@@ -428,39 +655,47 @@ function registerSessionEvents(session: LiveAvatarSession, options: RegisterSess
   });
 
   session.voiceChat.on(VoiceChatEvent.MUTED, () => {
+    if (!options.isCurrentSession()) return;
     options.setState((current) => ({ ...current, isMuted: true }));
   });
 
   session.voiceChat.on(VoiceChatEvent.UNMUTED, () => {
+    if (!options.isCurrentSession()) return;
     options.setState((current) => ({ ...current, isMuted: false }));
   });
 
   session.on(SessionEvent.SESSION_STREAM_READY, () => {
+    if (!options.isCurrentSession()) return;
     markEvent(options, SessionEvent.SESSION_STREAM_READY);
     options.attachCurrentMediaElement();
   });
 
   session.on(AgentEventsEnum.USER_SPEAK_STARTED, () => {
+    if (!options.isCurrentSession()) return;
     markEvent(options, AgentEventsEnum.USER_SPEAK_STARTED);
     options.setState((current) => ({ ...current, isUserSpeaking: true, conversationState: "listening" }));
   });
 
   session.on(AgentEventsEnum.USER_SPEAK_ENDED, () => {
+    if (!options.isCurrentSession()) return;
     markEvent(options, AgentEventsEnum.USER_SPEAK_ENDED);
     options.setState((current) => ({ ...current, isUserSpeaking: false, conversationState: "thinking" }));
   });
 
   session.on(AgentEventsEnum.AVATAR_SPEAK_STARTED, () => {
+    if (!options.isCurrentSession()) return;
     markEvent(options, AgentEventsEnum.AVATAR_SPEAK_STARTED);
     options.setState((current) => ({ ...current, isAvatarSpeaking: true, conversationState: "speaking" }));
   });
 
   session.on(AgentEventsEnum.AVATAR_SPEAK_ENDED, () => {
+    if (!options.isCurrentSession()) return;
     markEvent(options, AgentEventsEnum.AVATAR_SPEAK_ENDED);
     options.setState((current) => ({ ...current, isAvatarSpeaking: false, conversationState: "listening" }));
   });
 
   session.on(AgentEventsEnum.USER_TRANSCRIPTION, (event) => {
+    if (!options.isCurrentSession()) return;
     markEvent(options, event.event_type);
     options.appendTranscript({
       id: event.event_id,
@@ -471,6 +706,7 @@ function registerSessionEvents(session: LiveAvatarSession, options: RegisterSess
   });
 
   session.on(AgentEventsEnum.AVATAR_TRANSCRIPTION, (event) => {
+    if (!options.isCurrentSession()) return;
     markEvent(options, event.event_type);
     options.appendTranscript({
       id: event.event_id,
@@ -481,6 +717,7 @@ function registerSessionEvents(session: LiveAvatarSession, options: RegisterSess
   });
 
   session.on(AgentEventsEnum.ELEVENLABS_AGENT_EVENT, (event) => {
+    if (!options.isCurrentSession()) return;
     markEvent(options, event.event_type, {
       lastElevenLabsEventType: event.elevenlabs_event_type,
       elevenLabsConversationId: readElevenLabsConversationId(event.data),
@@ -496,9 +733,23 @@ function registerSessionEvents(session: LiveAvatarSession, options: RegisterSess
   });
 
   session.on(AgentEventsEnum.SESSION_STOPPED, (event) => {
+    if (!options.isCurrentSession()) return;
     markEvent(options, event.event_type);
+    if (options.hasReachedExpiry()) {
+      options.setState((current) => ({ ...current, endedByLimit: true }));
+    }
     void options.end();
   });
+}
+
+export function hasLiveAvatarSessionExpired(expiresAt: string | null | undefined, now = Date.now()) {
+  if (!expiresAt) return false;
+  const deadline = new Date(expiresAt).getTime();
+  return Number.isFinite(deadline) && deadline <= now;
+}
+
+export function isLiveAvatarLifecycleCurrent(active: boolean, currentEpoch: number, capturedEpoch: number) {
+  return active && currentEpoch === capturedEpoch;
 }
 
 function markEvent(
@@ -530,11 +781,11 @@ async function ensureVoiceChatStarted(session: LiveAvatarSession) {
   try {
     await session.voiceChat.start({ defaultMuted: false });
   } catch (error) {
-    throw new Error(formatVoiceSessionStartError(error));
+    throw new VoiceChatStartError(formatVoiceSessionStartError(error));
   }
 
   if (!isVoiceChatActive(session)) {
-    throw new Error(
+    throw new VoiceChatStartError(
       "El avatar esta conectado, pero el microfono no quedo activo. Revisa permisos del navegador y vuelve a iniciar la llamada."
     );
   }
@@ -545,6 +796,18 @@ function isVoiceChatActive(session: LiveAvatarSession) {
 }
 
 function startMicrophoneLevelProbe(
+  session: LiveAvatarSession,
+  setState: Dispatch<SetStateAction<LiveAvatarSessionState>>
+) {
+  try {
+    return createMicrophoneLevelProbe(session, setState);
+  } catch {
+    // Diagnostics are best-effort and must never tear down a healthy call.
+    return () => undefined;
+  }
+}
+
+function createMicrophoneLevelProbe(
   session: LiveAvatarSession,
   setState: Dispatch<SetStateAction<LiveAvatarSessionState>>
 ) {
@@ -567,23 +830,27 @@ function startMicrophoneLevelProbe(
   void audioContext.resume().catch(() => undefined);
 
   const intervalId = window.setInterval(() => {
-    analyser.getByteTimeDomainData(samples);
-    let total = 0;
+    try {
+      analyser.getByteTimeDomainData(samples);
+      let total = 0;
 
-    for (const sample of samples) {
-      const normalized = (sample - 128) / 128;
-      total += normalized * normalized;
+      for (const sample of samples) {
+        const normalized = (sample - 128) / 128;
+        total += normalized * normalized;
+      }
+
+      const microphoneLevel = Math.sqrt(total / samples.length);
+      setState((current) => ({
+        ...current,
+        diagnostics: {
+          ...current.diagnostics,
+          microphoneLevel,
+          voiceChatState: String(session.voiceChat.state),
+        },
+      }));
+    } catch {
+      window.clearInterval(intervalId);
     }
-
-    const microphoneLevel = Math.sqrt(total / samples.length);
-    setState((current) => ({
-      ...current,
-      diagnostics: {
-        ...current.diagnostics,
-        microphoneLevel,
-        voiceChatState: String(session.voiceChat.state),
-      },
-    }));
   }, 250);
 
   return () => {
@@ -681,7 +948,11 @@ function readString(value: unknown): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
 }
 
-function formatVoiceSessionStartError(error: unknown): string {
+export function formatVoiceSessionStartError(error: unknown): string {
+  if (error instanceof VoiceChatStartError) {
+    return error.message;
+  }
+
   if (error instanceof DOMException && error.name === "NotAllowedError") {
     return "El navegador bloqueo el microfono. Habilita permisos de microfono para localhost y vuelve a iniciar la llamada.";
   }
@@ -694,9 +965,31 @@ function formatVoiceSessionStartError(error: unknown): string {
     return "Este avatar todavía no está disponible para interactuar. Avisale al creador.";
   }
 
+  if (error instanceof ApiClientError) {
+    const retry = formatRetryAfter(error.retryAfterSeconds);
+    if (error.reason === "SHARE_SESSION_COUNT_LIMIT") {
+      return "Ya alcanzaste la cantidad de llamadas permitidas.";
+    }
+    if (error.reason === "PLATFORM_RATE_LIMIT") {
+      return `Se hicieron demasiados intentos. Volvé a intentar en ${retry}.`;
+    }
+    if (error.reason === "EXTERNAL_SESSION_CAPACITY") {
+      return `El avatar alcanzó su capacidad de llamadas. Volvé a intentar en ${retry}.`;
+    }
+    if (error.reason === "ACTIVE_SESSION_EXISTS") {
+      return "Ya hay una llamada activa para este acceso. Finalizala antes de iniciar otra.";
+    }
+  }
+
   if (error instanceof ApiClientError && error.status === 404) {
     return "Ya no tenés acceso a este avatar. Volvé a Mis avatares para actualizar la lista.";
   }
 
-  return error instanceof Error ? error.message : "No pudimos iniciar la llamada.";
+  return "No pudimos conectar la llamada. Intentá nuevamente.";
 }
+
+export function formatVoiceSessionEndError(_error: unknown): string {
+  return "No pudimos guardar la llamada. Reintentá el guardado.";
+}
+
+class VoiceChatStartError extends Error {}

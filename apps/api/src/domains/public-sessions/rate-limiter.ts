@@ -1,53 +1,64 @@
-export type PublicSessionRateLimiter = {
-  consume(input: { avatarId: string; shareLinkId: string; ip: string }):
-    | { allowed: true }
-    | { allowed: false; retryAfterSeconds: number };
+import { createHmac } from "node:crypto";
+
+export type RateLimitRule = {
+  namespace: string;
+  identifiers: string[];
+  limit: number;
+  windowMs: number;
 };
 
-export function createInMemoryPublicSessionRateLimiter(options: {
-  maxPerAvatar: number;
-  maxPerIpAndLink: number;
-  windowMs?: number;
-  now?: () => number;
-}): PublicSessionRateLimiter {
-  const attempts = new Map<string, number[]>();
-  const windowMs = options.windowMs ?? 60 * 60 * 1000;
+export type RateLimiter = {
+  consume(rules: RateLimitRule[]): { allowed: true } | { allowed: false; retryAfterSeconds: number };
+};
+
+export function createInMemoryRateLimiter(options: { secret: string; now?: () => number }): RateLimiter {
+  const attempts = new Map<string, { values: number[]; windowMs: number }>();
   const now = options.now ?? Date.now;
-  const sweepIntervalMs = Math.min(windowMs, 60_000);
   let lastSweepAt = Number.NEGATIVE_INFINITY;
 
-  const sweepExpiredKeys = (timestamp: number) => {
-    if (timestamp - lastSweepAt < sweepIntervalMs) return;
-    for (const [key, values] of attempts) {
-      const current = values.filter((value) => timestamp - value < windowMs);
-      if (current.length === 0) attempts.delete(key);
-      else attempts.set(key, current);
-    }
-    lastSweepAt = timestamp;
-  };
-
   return {
-    consume(input) {
+    consume(rules) {
       const timestamp = now();
-      sweepExpiredKeys(timestamp);
-      const checks = [
-        { key: `avatar:${input.avatarId}`, limit: options.maxPerAvatar },
-        { key: `ip-link:${input.ip}:${input.shareLinkId}`, limit: options.maxPerIpAndLink },
-      ];
-
-      for (const check of checks) {
-        const current = (attempts.get(check.key) ?? []).filter((value) => timestamp - value < windowMs);
-        attempts.set(check.key, current);
-        if (current.length >= check.limit) {
-          const retryAfterSeconds = Math.max(1, Math.ceil((windowMs - (timestamp - current[0]!)) / 1000));
-          return { allowed: false, retryAfterSeconds };
+      if (timestamp - lastSweepAt >= 60_000) {
+        for (const [key, bucket] of attempts) {
+          const current = bucket.values.filter((value) => timestamp - value < bucket.windowMs);
+          if (current.length === 0) attempts.delete(key);
+          else attempts.set(key, { ...bucket, values: current });
         }
+        lastSweepAt = timestamp;
       }
 
-      for (const check of checks) {
-        attempts.set(check.key, [...(attempts.get(check.key) ?? []), timestamp]);
+      const evaluated = rules.map((rule) => {
+        const key = hashRule(options.secret, rule);
+        const current = (attempts.get(key)?.values ?? []).filter(
+          (value) => timestamp - value < rule.windowMs
+        );
+        return { rule, key, current };
+      });
+
+      const blockedRetrySeconds = evaluated.flatMap(({ rule, current }) =>
+        current.length >= rule.limit
+          ? [Math.max(1, Math.ceil((rule.windowMs - (timestamp - current[0]!)) / 1000))]
+          : []
+      );
+      if (blockedRetrySeconds.length > 0) {
+        return {
+          allowed: false as const,
+          retryAfterSeconds: Math.max(...blockedRetrySeconds),
+        };
       }
-      return { allowed: true };
+
+      for (const { key, current, rule } of evaluated) {
+        attempts.set(key, { values: [...current, timestamp], windowMs: rule.windowMs });
+      }
+      return { allowed: true as const };
     },
   };
+}
+
+function hashRule(secret: string, rule: RateLimitRule) {
+  const digest = createHmac("sha256", secret)
+    .update([rule.namespace, String(rule.windowMs), ...rule.identifiers].join("\u0000"))
+    .digest("base64url");
+  return `${rule.namespace}:${digest}`;
 }

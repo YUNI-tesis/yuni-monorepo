@@ -6,8 +6,7 @@
   border-radius: var(--yuni-radius-md);
   background:
     radial-gradient(circle at 24% 18%, rgba(190, 106, 220, 0.16), transparent 34%),
-    radial-gradient(circle at 78% 20%, rgba(100, 195, 215, 0.14), transparent 30%),
-    rgba(255, 255, 255, 0.045);
+    radial-gradient(circle at 78% 20%, rgba(100, 195, 215, 0.14), transparent 30%), rgba(255, 255, 255, 0.045);
 }
 
 .preview {

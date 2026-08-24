@@ -6,7 +6,10 @@ export type LiveAvatarStageProps = {
   emptyLabel?: string;
 };
 
-export function LiveAvatarStage({ avatar, emptyLabel = "Selecciona un avatar visual" }: LiveAvatarStageProps) {
+export function LiveAvatarStage({
+  avatar,
+  emptyLabel = "Selecciona un avatar visual",
+}: LiveAvatarStageProps) {
   if (!avatar) {
     return <div className={styles.placeholder}>{emptyLabel}</div>;
   }
@@ -30,10 +33,7 @@ export function LiveAvatarStage({ avatar, emptyLabel = "Selecciona un avatar vis
 }
 
 export function getInitials(value: string): string {
-  const words = value
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
+  const words = value.trim().split(/\s+/).filter(Boolean);
 
   if (words.length === 0) {
     return "A";

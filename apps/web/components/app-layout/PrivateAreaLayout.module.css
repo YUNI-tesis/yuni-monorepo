@@ -10,15 +10,12 @@
   background:
     linear-gradient(180deg, rgba(16, 8, 27, 0.9), rgba(8, 3, 15, 0.98) 280px),
     radial-gradient(circle at 12% 0%, rgba(100, 195, 215, 0.11), transparent 30%),
-    radial-gradient(circle at 88% 0%, rgba(190, 106, 220, 0.12), transparent 28%),
-    var(--yuni-color-bg);
+    radial-gradient(circle at 88% 0%, rgba(190, 106, 220, 0.12), transparent 28%), var(--yuni-color-bg);
   color: var(--yuni-color-text);
 }
 
 .layoutFocus {
-  background:
-    linear-gradient(180deg, rgba(8, 3, 15, 0.92), rgba(8, 3, 15, 0.99)),
-    var(--yuni-color-bg);
+  background: linear-gradient(180deg, rgba(8, 3, 15, 0.92), rgba(8, 3, 15, 0.99)), var(--yuni-color-bg);
 }
 
 .skipLink {
@@ -57,7 +54,9 @@
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   background: rgba(8, 3, 15, 0.76);
   backdrop-filter: blur(18px) saturate(1.2);
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.035), 0 16px 54px rgba(0, 0, 0, 0.18);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.035),
+    0 16px 54px rgba(0, 0, 0, 0.18);
 }
 
 .headerInner {
@@ -158,14 +157,15 @@
   border-color: rgba(255, 255, 255, 0.14);
   background: rgba(255, 255, 255, 0.065);
   color: var(--yuni-color-text);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.055), 0 0 0 1px rgba(100, 195, 215, 0.08);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.055),
+    0 0 0 1px rgba(100, 195, 215, 0.08);
 }
 
 .navLinkActive {
   border-color: rgba(100, 195, 215, 0.34);
   background:
-    linear-gradient(135deg, rgba(100, 195, 215, 0.18), rgba(190, 106, 220, 0.09)),
-    rgba(255, 255, 255, 0.06);
+    linear-gradient(135deg, rgba(100, 195, 215, 0.18), rgba(190, 106, 220, 0.09)), rgba(255, 255, 255, 0.06);
   color: var(--yuni-color-text);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.045);
 }

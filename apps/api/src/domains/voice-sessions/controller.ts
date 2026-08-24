@@ -1,8 +1,11 @@
 import { Hono, type Context } from "hono";
-import { EndVoiceSessionInputSchema, NotFoundError } from "@yuni/domain";
+import { bodyLimit } from "hono/body-limit";
+import { EndVoiceSessionInputSchema, NotFoundError, VOICE_SESSION_END_BODY_MAX_BYTES } from "@yuni/domain";
 import {
   badGatewayError,
+  conflictErrorWithReason,
   notFoundError,
+  rateLimitedError,
   serviceUnavailableError,
   unauthorizedError,
   validationError,
@@ -10,6 +13,7 @@ import {
 import { getSessionToken, verifySessionToken } from "../auth/session";
 import {
   createVoiceSessionsService,
+  ExternalSessionLifecycleConfigurationError,
   LiveAvatarSessionServiceError,
   LiveAvatarSessionTimeoutServiceError,
   SharedAvatarNotReadyError,
@@ -18,8 +22,15 @@ import {
   VoiceSessionConfigurationError,
   type VoiceSessionsServiceDependencies,
 } from "./service";
+import {
+  ActiveSessionExistsError,
+  ExternalSessionCapacityError,
+  ShareSessionCountLimitError,
+} from "../external-sessions/policy";
 
-export type VoiceSessionsControllerDependencies = VoiceSessionsServiceDependencies;
+export type VoiceSessionsControllerDependencies = VoiceSessionsServiceDependencies & {
+  resolveClientIp?: (context: Context) => string;
+};
 
 async function getCurrentSession(context: Context) {
   const token = getSessionToken(context);
@@ -59,7 +70,11 @@ export function createVoiceSessionsController(dependencies: VoiceSessionsControl
     }
 
     try {
-      const voiceSession = await service.startVoiceSession(session.userId, context.req.param("avatarId"));
+      const voiceSession = await service.startVoiceSession(
+        session.userId,
+        context.req.param("avatarId"),
+        dependencies.resolveClientIp?.(context) ?? "unknown"
+      );
 
       return context.json({ voiceSession }, 201);
     } catch (error) {
@@ -67,32 +82,40 @@ export function createVoiceSessionsController(dependencies: VoiceSessionsControl
     }
   });
 
-  controller.post("/voice-sessions/:realtimeSessionId/end", async (context) => {
-    const session = await getCurrentSession(context);
+  controller.post(
+    "/voice-sessions/:realtimeSessionId/end",
+    bodyLimit({
+      maxSize: VOICE_SESSION_END_BODY_MAX_BYTES,
+      onError: (context) =>
+        context.json(validationError([], "El transcript supera el tamaño permitido."), 413),
+    }),
+    async (context) => {
+      const session = await getCurrentSession(context);
 
-    if (!session) {
-      return context.json(unauthorizedError(), 401);
+      if (!session) {
+        return context.json(unauthorizedError(), 401);
+      }
+
+      const body: unknown = await context.req.json().catch(() => ({}));
+      const parsed = EndVoiceSessionInputSchema.safeParse(body);
+
+      if (!parsed.success) {
+        return context.json(validationError(parsed.error.issues), 400);
+      }
+
+      try {
+        const voiceSession = await service.endVoiceSession(
+          session.userId,
+          context.req.param("realtimeSessionId"),
+          parsed.data
+        );
+
+        return context.json({ voiceSession });
+      } catch (error) {
+        return toVoiceSessionError(context, error);
+      }
     }
-
-    const body: unknown = await context.req.json().catch(() => ({}));
-    const parsed = EndVoiceSessionInputSchema.safeParse(body);
-
-    if (!parsed.success) {
-      return context.json(validationError(parsed.error.issues), 400);
-    }
-
-    try {
-      const voiceSession = await service.endVoiceSession(
-        session.userId,
-        context.req.param("realtimeSessionId"),
-        parsed.data
-      );
-
-      return context.json({ voiceSession });
-    } catch (error) {
-      return toVoiceSessionError(context, error);
-    }
-  });
+  );
 
   return controller;
 }
@@ -103,22 +126,75 @@ function toVoiceSessionError(context: Context, error: unknown) {
   }
 
   if (error instanceof VoiceSessionConfigurationError) {
-    return context.json(serviceUnavailableError(error.message), 503);
+    return context.json(serviceUnavailableError("La llamada no está disponible temporalmente."), 503);
   }
 
   if (error instanceof SharedAvatarNotReadyError) {
     return context.json(serviceUnavailableError(error.message, "AVATAR_NOT_READY"), 503);
   }
 
+  if (error instanceof ExternalSessionLifecycleConfigurationError) {
+    return context.json(serviceUnavailableError("La llamada no está disponible temporalmente."), 503);
+  }
+
+  if (error instanceof ShareSessionCountLimitError) {
+    context.header("Retry-After", String(error.retryAfterSeconds));
+    return context.json(
+      rateLimitedError(
+        "Este acceso alcanzó su límite de uso.",
+        "SHARE_SESSION_COUNT_LIMIT",
+        error.retryAfterSeconds
+      ),
+      429
+    );
+  }
+
+  if (error instanceof ExternalSessionCapacityError) {
+    context.header("Retry-After", String(error.retryAfterSeconds));
+    return context.json(
+      rateLimitedError(
+        "El avatar alcanzó su capacidad temporal.",
+        "EXTERNAL_SESSION_CAPACITY",
+        error.retryAfterSeconds
+      ),
+      429
+    );
+  }
+
+  if (error instanceof ActiveSessionExistsError) {
+    return context.json(
+      conflictErrorWithReason("Ya hay una llamada activa para este acceso.", "ACTIVE_SESSION_EXISTS"),
+      409
+    );
+  }
+
+  if (
+    error instanceof Error &&
+    "code" in error &&
+    error.code === "PLATFORM_RATE_LIMIT" &&
+    "retryAfterSeconds" in error &&
+    typeof error.retryAfterSeconds === "number"
+  ) {
+    context.header("Retry-After", String(error.retryAfterSeconds));
+    return context.json(
+      rateLimitedError(
+        "Alcanzaste el límite temporal de llamadas.",
+        "PLATFORM_RATE_LIMIT",
+        error.retryAfterSeconds
+      ),
+      429
+    );
+  }
+
   if (
     error instanceof VoiceProviderTimeoutServiceError ||
     error instanceof LiveAvatarSessionTimeoutServiceError
   ) {
-    return context.json(badGatewayError(error.message), 502);
+    return context.json(badGatewayError("No pudimos iniciar la llamada."), 502);
   }
 
   if (error instanceof VoiceProviderServiceError || error instanceof LiveAvatarSessionServiceError) {
-    return context.json(badGatewayError(error.message), 502);
+    return context.json(badGatewayError("No pudimos iniciar la llamada."), 502);
   }
 
   throw error;

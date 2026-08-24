@@ -5,6 +5,7 @@ export * from "./schemas/avatar-agent";
 export * from "./schemas/auth";
 export * from "./schemas/share-link";
 export * from "./schemas/access-grant";
+export * from "./schemas/interaction-limits";
 export * from "./schemas/conversation";
 export * from "./schemas/message";
 export * from "./schemas/public-session";

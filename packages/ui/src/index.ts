@@ -22,6 +22,7 @@ export { SidebarLayout, type SidebarLayoutProps } from "./layout/SidebarLayout";
 export { EmptyState, type EmptyStateProps } from "./feedback/EmptyState";
 export { ErrorState, type ErrorStateProps } from "./feedback/ErrorState";
 export { LoadingState, type LoadingStateProps } from "./feedback/LoadingState";
+export { Toast, type ToastProps, type ToastTone } from "./feedback/Toast";
 export {
   DataList,
   type DataListColumn,

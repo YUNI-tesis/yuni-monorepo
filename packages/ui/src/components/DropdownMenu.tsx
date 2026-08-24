@@ -42,8 +42,8 @@ export function DropdownMenu({
   const itemRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
   const focusItem = useCallback((index: number) => {
-    const enabledItems = itemRefs.current.filter(
-      (item): item is HTMLButtonElement => Boolean(item && !item.disabled)
+    const enabledItems = itemRefs.current.filter((item): item is HTMLButtonElement =>
+      Boolean(item && !item.disabled)
     );
 
     if (enabledItems.length === 0) return;
@@ -118,8 +118,8 @@ export function DropdownMenu({
   }, [focusItem, isOpen]);
 
   function onMenuKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
-    const enabledItems = itemRefs.current.filter(
-      (item): item is HTMLButtonElement => Boolean(item && !item.disabled)
+    const enabledItems = itemRefs.current.filter((item): item is HTMLButtonElement =>
+      Boolean(item && !item.disabled)
     );
     const currentIndex = enabledItems.findIndex((item) => item === document.activeElement);
 

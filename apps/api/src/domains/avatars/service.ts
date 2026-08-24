@@ -25,6 +25,9 @@ import type {
   AvatarsRepository,
 } from "./repository";
 import { toAvatarAgentDto } from "./repository";
+import { hasTerminalAvatarProviderFailure, hasUsableAvatarProviderVersion } from "./provider-availability";
+import { toInteractionLimits } from "../external-sessions/limits";
+import { readSafeHttpUrl } from "../../utils/safe-url";
 
 export class AvatarVoiceNotFoundError extends Error {
   constructor(message = "Voice not found in ElevenLabs My Voices") {
@@ -103,17 +106,7 @@ export function createAvatarsService(dependencies: AvatarsServiceDependencies) {
       const hasValidConfiguration =
         VoiceConfigSchema.safeParse(access.avatar.voiceConfig).success &&
         LiveAvatarConfigSchema.safeParse(access.avatar.liveAvatarConfig).success;
-      const voiceAvailability =
-        access.type === "owner"
-          ? hasValidConfiguration
-            ? "ready"
-            : "unavailable"
-          : !hasValidConfiguration || access.avatar.providerSyncStatus === "failed"
-            ? "unavailable"
-            : access.avatar.providerAgentId &&
-                (access.avatar.providerSyncStatus === "synced" || access.avatar.providerLastUsableAt)
-              ? "ready"
-              : "processing";
+      const voiceAvailability = getVoiceAvailability(access.avatar, hasValidConfiguration);
 
       return {
         avatar: {
@@ -125,6 +118,7 @@ export function createAvatarsService(dependencies: AvatarsServiceDependencies) {
         access: {
           type: access.type,
           canInteract: true,
+          limits: access.type === "shared" ? toInteractionLimits(access.accessGrant) : null,
         },
         contextStatus,
         voiceAvailability,
@@ -201,7 +195,7 @@ export function toAvatarListItemDto(
     status: avatar.status,
     providerSyncStatus: avatar.providerSyncStatus,
     thumbnailUrl: parsedLiveAvatarConfig.success
-      ? readSafeThumbnailUrl(parsedLiveAvatarConfig.data.thumbnailUrl)
+      ? readSafeHttpUrl(parsedLiveAvatarConfig.data.thumbnailUrl)
       : null,
     interactionAvailability: getInteractionAvailability(avatar, accessType, hasValidConfiguration),
     createdAt: avatar.createdAt.toISOString(),
@@ -221,30 +215,35 @@ function getInteractionAvailability(
   hasValidConfiguration: boolean
 ): AvatarInteractionAvailability {
   if (accessType === "owner") {
-    return !hasValidConfiguration || avatar.providerSyncStatus === "failed" ? "needs_attention" : "ready";
+    if (!hasValidConfiguration) {
+      return "needs_attention";
+    }
+
+    if (hasUsableAvatarProviderVersion(avatar)) {
+      return "ready";
+    }
+
+    return hasTerminalAvatarProviderFailure(avatar) ? "needs_attention" : "preparing";
   }
 
-  if (!hasValidConfiguration || avatar.providerSyncStatus === "failed") {
+  if (!hasValidConfiguration) {
     return "unavailable";
   }
 
-  return avatar.providerAgentId && (avatar.providerSyncStatus === "synced" || avatar.providerLastUsableAt)
-    ? "ready"
-    : "preparing";
+  if (hasUsableAvatarProviderVersion(avatar)) {
+    return "ready";
+  }
+
+  return hasTerminalAvatarProviderFailure(avatar) ? "unavailable" : "preparing";
 }
 
-function readSafeThumbnailUrl(value: string | null | undefined): string | null {
-  if (!value) {
-    return null;
-  }
-
-  try {
-    const url = new URL(value);
-
-    return url.protocol === "https:" || url.protocol === "http:" ? url.toString() : null;
-  } catch {
-    return null;
-  }
+function getVoiceAvailability(
+  avatar: AvatarAgentRecord,
+  hasValidConfiguration: boolean
+): "ready" | "processing" | "unavailable" {
+  if (!hasValidConfiguration) return "unavailable";
+  if (hasUsableAvatarProviderVersion(avatar)) return "ready";
+  return hasTerminalAvatarProviderFailure(avatar) ? "unavailable" : "processing";
 }
 
 export type AvatarsService = ReturnType<typeof createAvatarsService>;

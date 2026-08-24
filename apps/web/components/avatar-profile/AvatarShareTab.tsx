@@ -13,20 +13,27 @@ import {
   FormField,
   Input,
   LoadingState,
+  YuniIcon,
 } from "@yuni/ui";
 import type { ApiAvatar } from "../../lib/api/avatar-api";
-import type { ApiAccessGrant, ApiShareLink } from "../../lib/api/sharing-api";
+import type { ApiAccessGrant, ApiInteractionLimits, ApiShareLink } from "../../lib/api/sharing-api";
 import { ApiClientError } from "../../lib/api/http-client";
 import {
   canOpenPublicLink,
   getAccessGrantCreateError,
   getAccessGrantPresentation,
+  emptyInteractionLimitsDraft,
+  formatInteractionLimitsSummary,
+  interactionLimitsToDraft,
   normalizeGrantEmail,
+  parseInteractionLimitsDraft,
   toPublicSlug,
+  type InteractionLimitsDraft,
   validateGrantEmail,
   validateShareLinkDraft,
 } from "../../lib/avatar-sharing";
 import { useAvatarSharing } from "../../hooks/useAvatarSharing";
+import { InteractionLimitsFields, type InteractionLimitErrors } from "./InteractionLimitsFields";
 import styles from "./AvatarShareTab.module.css";
 
 type Confirmation =
@@ -34,12 +41,29 @@ type Confirmation =
   | { kind: "revoke-grant"; id: string; label: string }
   | { kind: "delete-grant"; id: string; label: string };
 
+type LimitsEditor = {
+  kind: "link" | "grant";
+  id: string;
+  label: string;
+  limits: ApiInteractionLimits;
+};
+
+const emptyLimitErrors: InteractionLimitErrors = {
+  sessionDuration: null,
+  sessionDurationUnit: null,
+  maxSessionsPer24Hours: null,
+};
+
 export function AvatarShareTab({ avatar }: { avatar: ApiAvatar }) {
   const sharing = useAvatarSharing(avatar.id);
   const confirmationDialog = useRef<HTMLDialogElement>(null);
+  const limitsDialog = useRef<HTMLDialogElement>(null);
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
   const [dialogError, setDialogError] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [limitsEditor, setLimitsEditor] = useState<LimitsEditor | null>(null);
+  const [limitsDraft, setLimitsDraft] = useState<InteractionLimitsDraft>(emptyInteractionLimitsDraft);
+  const [limitErrors, setLimitErrors] = useState<InteractionLimitErrors>(emptyLimitErrors);
 
   function requestConfirmation(nextConfirmation: Confirmation) {
     setConfirmation(nextConfirmation);
@@ -75,6 +99,35 @@ export function AvatarShareTab({ avatar }: { avatar: ApiAvatar }) {
     }
   }
 
+  function openLimitsEditor(editor: LimitsEditor) {
+    setLimitsEditor(editor);
+    setLimitsDraft(interactionLimitsToDraft(editor.limits));
+    setLimitErrors(emptyLimitErrors);
+    setDialogError(null);
+    limitsDialog.current?.showModal();
+  }
+
+  async function saveLimits() {
+    if (!limitsEditor) return;
+    const parsed = parseInteractionLimitsDraft(limitsDraft);
+    setLimitErrors(parsed.errors);
+    setDialogError(null);
+    if (!parsed.isValid) return;
+
+    try {
+      if (limitsEditor.kind === "link") {
+        await sharing.updateLinkLimits(limitsEditor.id, parsed.limits);
+      } else {
+        await sharing.updateGrantLimits(limitsEditor.id, parsed.limits);
+      }
+      limitsDialog.current?.close();
+      setFeedback(`Se actualizaron los límites de ${limitsEditor.label}.`);
+      setLimitsEditor(null);
+    } catch (error) {
+      setDialogError(getActionError(error));
+    }
+  }
+
   return (
     <div className={styles.layout}>
       <aside className={styles.privacyNotice}>
@@ -89,12 +142,23 @@ export function AvatarShareTab({ avatar }: { avatar: ApiAvatar }) {
         avatar={avatar}
         sharing={sharing}
         onFeedback={setFeedback}
+        onEditLimits={(link) =>
+          openLimitsEditor({ kind: "link", id: link.id, label: link.name, limits: link.limits })
+        }
         onDelete={(link) => requestConfirmation({ kind: "delete-link", id: link.id, label: link.name })}
       />
 
       <AccessGrantsSection
         sharing={sharing}
         onFeedback={setFeedback}
+        onEditLimits={(grant) =>
+          openLimitsEditor({
+            kind: "grant",
+            id: grant.id,
+            label: grant.participantEmail,
+            limits: grant.limits,
+          })
+        }
         onRevoke={(grant) =>
           requestConfirmation({
             kind: "revoke-grant",
@@ -145,6 +209,43 @@ export function AvatarShareTab({ avatar }: { avatar: ApiAvatar }) {
           </p>
         ) : null}
       </Dialog>
+
+      <Dialog
+        ref={limitsDialog}
+        className={styles.limitsDialog}
+        title="Editar límites de uso"
+        description={
+          limitsEditor
+            ? `Definí cuánto puede usar ${limitsEditor.label}. Los cambios se aplican a la próxima llamada.`
+            : ""
+        }
+        closeLabel="Cancelar"
+        footer={
+          <Button
+            loading={Boolean(limitsEditor && sharing.isMutating(`${limitsEditor.kind}:${limitsEditor.id}`))}
+            onClick={() => void saveLimits()}
+          >
+            Guardar límites
+          </Button>
+        }
+        onClose={() => {
+          setLimitsEditor(null);
+          setDialogError(null);
+          setLimitErrors(emptyLimitErrors);
+        }}
+      >
+        <InteractionLimitsFields
+          idPrefix="edit-limits"
+          draft={limitsDraft}
+          errors={limitErrors}
+          onChange={(field, value) => setLimitsDraft((current) => ({ ...current, [field]: value }))}
+        />
+        {dialogError ? (
+          <p className={styles.formError} role="alert">
+            {dialogError}
+          </p>
+        ) : null}
+      </Dialog>
     </div>
   );
 }
@@ -153,11 +254,13 @@ function ShareLinksSection({
   avatar,
   sharing,
   onFeedback,
+  onEditLimits,
   onDelete,
 }: {
   avatar: ApiAvatar;
   sharing: ReturnType<typeof useAvatarSharing>;
   onFeedback: (message: string) => void;
+  onEditLimits: (link: ApiShareLink) => void;
   onDelete: (link: ApiShareLink) => void;
 }) {
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -170,6 +273,8 @@ function ShareLinksSection({
     slug: null as string | null,
   });
   const [copyStatus, setCopyStatus] = useState<string | null>(null);
+  const [limitsDraft, setLimitsDraft] = useState<InteractionLimitsDraft>(emptyInteractionLimitsDraft);
+  const [limitErrors, setLimitErrors] = useState<InteractionLimitErrors>(emptyLimitErrors);
 
   function openForm() {
     setName(avatar.name);
@@ -177,22 +282,27 @@ function ShareLinksSection({
     setSlugWasEdited(false);
     setFieldErrors({ name: null, slug: null });
     setFormError(null);
+    setLimitsDraft(emptyInteractionLimitsDraft);
+    setLimitErrors(emptyLimitErrors);
     setIsFormOpen(true);
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const errors = validateShareLinkDraft(name, slug);
+    const parsedLimits = parseInteractionLimitsDraft(limitsDraft);
     setFieldErrors(errors);
+    setLimitErrors(parsedLimits.errors);
     setFormError(null);
 
-    if (errors.name || errors.slug) return;
+    if (errors.name || errors.slug || !parsedLimits.isValid) return;
 
     try {
       await sharing.createLink({
         name: name.trim(),
         slug: slug.trim(),
         isEnabled: true,
+        limits: parsedLimits.limits,
       });
       setIsFormOpen(false);
       onFeedback("El link público fue creado.");
@@ -226,7 +336,7 @@ function ShareLinksSection({
   return (
     <Card padding="md" className={styles.section}>
       <div className={styles.sectionHeader}>
-        <div>
+        <div className={styles.sectionHeading}>
           <p className="yuni-eyebrow">Links públicos</p>
           <h2 className={styles.sectionTitle}>Compartir mediante una URL</h2>
           <p className={styles.sectionDescription}>
@@ -271,6 +381,12 @@ function ShareLinksSection({
               />
             </div>
           </FormField>
+          <InteractionLimitsFields
+            idPrefix="create-link-limits"
+            draft={limitsDraft}
+            errors={limitErrors}
+            onChange={(field, value) => setLimitsDraft((current) => ({ ...current, [field]: value }))}
+          />
           <div className={styles.formActions}>
             <Button type="submit" loading={sharing.isMutating("link:create")}>
               Crear link
@@ -323,7 +439,12 @@ function ShareLinksSection({
               header: "Nombre",
               width: "28%",
               minWidth: "180px",
-              render: (link) => <strong>{link.name}</strong>,
+              render: (link) => (
+                <div className={styles.itemSummary}>
+                  <strong>{link.name}</strong>
+                  <small>{formatInteractionLimitsSummary(link.limits)}</small>
+                </div>
+              ),
             },
             {
               key: "link",
@@ -370,6 +491,11 @@ function ShareLinksSection({
                         onSelect: () => window.open(link.publicUrl, "_blank", "noopener,noreferrer"),
                       },
                       {
+                        label: "Editar límites",
+                        icon: <YuniIcon name="clock" />,
+                        onSelect: () => onEditLimits(link),
+                      },
+                      {
                         label: link.isEnabled ? "Desactivar" : "Activar",
                         icon: link.isEnabled ? <DisableIcon /> : <EnableIcon />,
                         onSelect: () => void toggleLink(link, !link.isEnabled),
@@ -399,32 +525,51 @@ function ShareLinksSection({
 function AccessGrantsSection({
   sharing,
   onFeedback,
+  onEditLimits,
   onRevoke,
   onDelete,
 }: {
   sharing: ReturnType<typeof useAvatarSharing>;
   onFeedback: (message: string) => void;
+  onEditLimits: (grant: ApiAccessGrant) => void;
   onRevoke: (grant: ApiAccessGrant) => void;
   onDelete: (grant: ApiAccessGrant) => void;
 }) {
+  const createGrantDialog = useRef<HTMLDialogElement>(null);
   const [email, setEmail] = useState("");
   const [emailError, setEmailError] = useState<string | null>(null);
-  const [formError, setFormError] = useState<string | null>(null);
+  const [createLimitsDraft, setCreateLimitsDraft] =
+    useState<InteractionLimitsDraft>(emptyInteractionLimitsDraft);
+  const [createLimitErrors, setCreateLimitErrors] = useState<InteractionLimitErrors>(emptyLimitErrors);
+  const [createDialogError, setCreateDialogError] = useState<string | null>(null);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const validationError = validateGrantEmail(email);
     setEmailError(validationError);
-    setFormError(null);
 
     if (validationError) return;
 
+    setEmail(normalizeGrantEmail(email));
+    setCreateLimitsDraft(emptyInteractionLimitsDraft);
+    setCreateLimitErrors(emptyLimitErrors);
+    setCreateDialogError(null);
+    createGrantDialog.current?.showModal();
+  }
+
+  async function confirmCreateGrant() {
+    const parsedLimits = parseInteractionLimitsDraft(createLimitsDraft);
+    setCreateLimitErrors(parsedLimits.errors);
+    setCreateDialogError(null);
+    if (!parsedLimits.isValid) return;
+
     try {
-      await sharing.createGrant(normalizeGrantEmail(email));
+      await sharing.createGrant(normalizeGrantEmail(email), parsedLimits.limits);
+      createGrantDialog.current?.close();
       setEmail("");
       onFeedback("El acceso fue agregado.");
     } catch (error) {
-      setFormError(getAccessGrantCreateError(error));
+      setCreateDialogError(getAccessGrantCreateError(error));
     }
   }
 
@@ -440,7 +585,7 @@ function AccessGrantsSection({
   return (
     <Card padding="md" className={styles.section}>
       <div className={styles.sectionHeader}>
-        <div>
+        <div className={styles.sectionHeading}>
           <p className="yuni-eyebrow">Personas con acceso</p>
           <h2 className={styles.sectionTitle}>Compartir con una cuenta</h2>
           <p className={styles.sectionDescription}>
@@ -464,15 +609,37 @@ function AccessGrantsSection({
             }}
           />
         </FormField>
-        <Button type="submit" loading={sharing.isMutating("grant:create")}>
-          Dar acceso
-        </Button>
+        <Button type="submit">Continuar</Button>
       </form>
-      {formError ? (
-        <p className={styles.formError} role="alert">
-          {formError}
-        </p>
-      ) : null}
+
+      <Dialog
+        ref={createGrantDialog}
+        className={styles.limitsDialog}
+        title="Configurar acceso"
+        description={`Definí cuánto puede usar ${normalizeGrantEmail(email)}. Los campos vacíos quedan ilimitados.`}
+        closeLabel="Cancelar"
+        footer={
+          <Button loading={sharing.isMutating("grant:create")} onClick={() => void confirmCreateGrant()}>
+            Dar acceso
+          </Button>
+        }
+        onClose={() => {
+          setCreateDialogError(null);
+          setCreateLimitErrors(emptyLimitErrors);
+        }}
+      >
+        <InteractionLimitsFields
+          idPrefix="create-grant-limits"
+          draft={createLimitsDraft}
+          errors={createLimitErrors}
+          onChange={(field, value) => setCreateLimitsDraft((current) => ({ ...current, [field]: value }))}
+        />
+        {createDialogError ? (
+          <p className={styles.formError} role="alert">
+            {createDialogError}
+          </p>
+        ) : null}
+      </Dialog>
 
       {sharing.grants.status === "loading" && sharing.grants.data.length === 0 ? (
         <LoadingState title="Cargando accesos" description="Buscando personas con acceso." />
@@ -502,7 +669,12 @@ function AccessGrantsSection({
               header: "Participante",
               width: "auto",
               minWidth: "280px",
-              render: (grant) => <strong>{grant.participantEmail}</strong>,
+              render: (grant) => (
+                <div className={styles.itemSummary}>
+                  <strong>{grant.participantEmail}</strong>
+                  <small>{formatInteractionLimitsSummary(grant.limits)}</small>
+                </div>
+              ),
             },
             {
               key: "status",
@@ -529,6 +701,11 @@ function AccessGrantsSection({
                     disabled={sharing.isMutating(`grant:${grant.id}`)}
                     triggerContent={<MoreIcon />}
                     items={[
+                      {
+                        label: "Editar límites",
+                        icon: <YuniIcon name="clock" />,
+                        onSelect: () => onEditLimits(grant),
+                      },
                       grant.state === "revoked"
                         ? {
                             label: "Reactivar acceso",

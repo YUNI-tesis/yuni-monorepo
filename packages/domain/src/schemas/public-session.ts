@@ -8,9 +8,9 @@ export const IdentifyPublicLinkInputSchema = z.strictObject({
 
 export type IdentifyPublicLinkInput = z.infer<typeof IdentifyPublicLinkInputSchema>;
 
-export const PUBLIC_SESSION_TRANSCRIPT_MAX_MESSAGES = 20;
-export const PUBLIC_SESSION_TRANSCRIPT_MAX_CONTENT_LENGTH = 500;
-export const PUBLIC_SESSION_END_BODY_MAX_BYTES = 60 * 1024;
+export const PUBLIC_SESSION_TRANSCRIPT_MAX_MESSAGES = 200;
+export const PUBLIC_SESSION_TRANSCRIPT_MAX_CONTENT_LENGTH = 1000;
+export const PUBLIC_SESSION_END_BODY_MAX_BYTES = 256 * 1024;
 
 export const PublicSessionTranscriptEntrySchema = z.strictObject({
   role: z.enum(["user", "assistant"]),

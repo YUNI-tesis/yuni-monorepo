@@ -88,6 +88,8 @@ export type AvatarAccessRecord =
         participantEmail: string;
         participantUserId: string | null;
         status: "active" | "revoked";
+        maxSessionDurationSeconds?: number | null;
+        maxSessionsPer24Hours?: number | null;
       };
     };
 

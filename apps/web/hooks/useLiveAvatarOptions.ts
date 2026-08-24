@@ -2,10 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import {
-  getLiveAvatarOptions,
-  type ApiLiveAvatarOption,
-} from "../lib/api/live-avatar-api";
+import { getLiveAvatarOptions, type ApiLiveAvatarOption } from "../lib/api/live-avatar-api";
 import { ApiClientError } from "../lib/api/http-client";
 import { currentLiveAvatarOptionName } from "../lib/avatar-config";
 
@@ -92,7 +89,9 @@ export function useLiveAvatarOptions(options: UseLiveAvatarOptionsOptions = {}):
       return { status: "empty", options: [], error: null };
     }
 
-    const resolvedOptions = includeCurrentFallback ? withCurrentOption(state.options, currentAvatarId) : state.options;
+    const resolvedOptions = includeCurrentFallback
+      ? withCurrentOption(state.options, currentAvatarId)
+      : state.options;
 
     if (state.status === "loading") {
       return state;

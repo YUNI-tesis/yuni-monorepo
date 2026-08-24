@@ -1,8 +1,104 @@
-import type { ApiAccessGrantState, ApiShareLink } from "./api/sharing-api";
+import type { ApiAccessGrantState, ApiInteractionLimits, ApiShareLink } from "./api/sharing-api";
 import { ApiClientError } from "./api/http-client";
 
 const publicSlugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+export type InteractionLimitsDraft = {
+  sessionDuration: string;
+  sessionDurationUnit: "seconds" | "minutes";
+  maxSessionsPer24Hours: string;
+};
+
+export const emptyInteractionLimitsDraft: InteractionLimitsDraft = {
+  sessionDuration: "",
+  sessionDurationUnit: "minutes",
+  maxSessionsPer24Hours: "",
+};
+
+export function interactionLimitsToDraft(limits: ApiInteractionLimits): InteractionLimitsDraft {
+  const duration = limits.maxSessionDurationSeconds;
+  const useMinutes = duration !== null && duration % 60 === 0;
+  return {
+    sessionDuration: duration === null ? "" : String(useMinutes ? duration / 60 : duration),
+    sessionDurationUnit: useMinutes || duration === null ? "minutes" : "seconds",
+    maxSessionsPer24Hours: limits.maxSessionsPer24Hours?.toString() ?? "",
+  };
+}
+
+export function parseInteractionLimitsDraft(draft: InteractionLimitsDraft) {
+  const parsedDuration = parseOptionalInteger(draft.sessionDuration);
+  const durationSeconds =
+    parsedDuration === null
+      ? null
+      : draft.sessionDurationUnit === "minutes"
+        ? parsedDuration * 60
+        : parsedDuration;
+  const limits: ApiInteractionLimits = {
+    maxSessionDurationSeconds: durationSeconds,
+    maxSessionsPer24Hours: parseOptionalInteger(draft.maxSessionsPer24Hours),
+  };
+  const errors = {
+    sessionDuration: validateOptionalLimit(
+      draft.sessionDuration,
+      parsedDuration,
+      draft.sessionDurationUnit === "seconds" ? 3600 : 60,
+      draft.sessionDurationUnit === "seconds" ? 10 : 1
+    ),
+    sessionDurationUnit: null,
+    maxSessionsPer24Hours: validateOptionalLimit(
+      draft.maxSessionsPer24Hours,
+      limits.maxSessionsPer24Hours,
+      100
+    ),
+  };
+
+  return { limits, errors, isValid: Object.values(errors).every((error) => error === null) };
+}
+
+export function formatInteractionLimitsSummary(limits: ApiInteractionLimits | null) {
+  if (!limits) return "Ilimitado";
+  const parts = [
+    limits.maxSessionDurationSeconds === null
+      ? null
+      : `${formatDuration(limits.maxSessionDurationSeconds)} por llamada`,
+    limits.maxSessionsPer24Hours === null ? null : `${limits.maxSessionsPer24Hours} llamadas cada 24 h`,
+  ].filter((part): part is string => Boolean(part));
+
+  return parts.length > 0 ? parts.join(" · ") : "Ilimitado";
+}
+
+export function hasConfiguredInteractionLimits(limits: ApiInteractionLimits | null) {
+  return Boolean(
+    limits && (limits.maxSessionDurationSeconds !== null || limits.maxSessionsPer24Hours !== null)
+  );
+}
+
+export function formatRetryAfter(seconds?: number) {
+  if (!seconds || seconds <= 0) return "unos minutos";
+  if (seconds < 60) return `${seconds} ${seconds === 1 ? "segundo" : "segundos"}`;
+  if (seconds < 3600) {
+    const minutes = Math.ceil(seconds / 60);
+    return `${minutes} ${minutes === 1 ? "minuto" : "minutos"}`;
+  }
+  const hours = Math.ceil(seconds / 3600);
+  return `${hours} ${hours === 1 ? "hora" : "horas"}`;
+}
+
+function parseOptionalInteger(value: string) {
+  return value.trim() === "" ? null : Number(value);
+}
+
+function validateOptionalLimit(value: string, parsed: number | null, max: number, min = 1) {
+  if (value.trim() === "") return null;
+  return parsed !== null && Number.isInteger(parsed) && parsed >= min && parsed <= max
+    ? null
+    : `Ingresá un número entero entre ${min} y ${max}.`;
+}
+
+function formatDuration(seconds: number) {
+  return seconds % 60 === 0 ? `${seconds / 60} ${seconds === 60 ? "minuto" : "min"}` : `${seconds} s`;
+}
 
 export function toPublicSlug(value: string): string {
   const normalized = value

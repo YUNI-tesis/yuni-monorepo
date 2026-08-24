@@ -6,7 +6,7 @@ const [
   { serve },
   { serverConfig },
   { createLogger },
-  { app, startPublicSessionMaintenance, startGroupVoiceSessionMaintenance },
+  { app, startExternalSessionMaintenance, startGroupVoiceSessionMaintenance },
 ] = await Promise.all([
   import("@hono/node-server"),
   import("@yuni/config"),
@@ -14,7 +14,7 @@ const [
   import("./app.js"),
 ]);
 const logger = createLogger("@yuni/api");
-startPublicSessionMaintenance();
+startExternalSessionMaintenance();
 startGroupVoiceSessionMaintenance();
 
 serve(

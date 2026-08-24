@@ -16,6 +16,7 @@ import {
   PageHeader,
   PageShell,
   Tabs,
+  Toast,
   YuniIcon,
   yuniIcons,
   yuniTokens,
@@ -35,6 +36,7 @@ describe("@yuni/ui", () => {
     expect(PageShell).toBeTypeOf("function");
     expect(PageHeader).toBeTypeOf("function");
     expect(Tabs).toBeTypeOf("function");
+    expect(Toast).toBeTypeOf("function");
     expect(FileDrop).toBeTypeOf("function");
     expect(EmptyState).toBeTypeOf("function");
     expect(LoadingState).toBeTypeOf("function");

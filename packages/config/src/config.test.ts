@@ -169,9 +169,26 @@ describe("@yuni/config", () => {
     const env = parseRawEnv({});
     const config = createRateLimitConfig(env);
 
-    expect(config.publicSessionMaxMinutes).toBe(5);
-    expect(config.publicSessionMaxMessages).toBe(20);
-    expect(config.maxPublicSessionsPerIpPerHour).toBe(10);
+    expect(config.maxExternalSessionMinutes).toBe(60);
+    expect(config.publicSessionMaxMessages).toBe(200);
+    expect(config.maxExternalConcurrentPerAvatar).toBe(20);
+    expect(config.maxExternalConcurrentPerParticipant).toBe(1);
+    expect(config.maxPublicIdentificationsPerIpLink15Minutes).toBe(60);
+    expect(config.maxPublicIdentificationsPerEmailLink15Minutes).toBe(10);
+    expect(config.maxExternalSessionStartsPerIpTargetHour).toBe(60);
+    expect(config.maxExternalSessionStartsPerParticipantTargetHour).toBe(20);
+    expect(config.maxPublicSessionStartsPerLinkHour).toBe(120);
+    expect(config.maxExternalSessionStartsPerAvatarHour).toBe(200);
+  });
+
+  it("uses a dedicated external session ceiling and ignores the retired public ceiling", () => {
+    const env = parseRawEnv({
+      PUBLIC_SESSION_MAX_MINUTES: "5",
+      MAX_EXTERNAL_SESSION_MINUTES: "45",
+    });
+
+    expect(createRateLimitConfig(env).maxExternalSessionMinutes).toBe(45);
+    expect("PUBLIC_SESSION_MAX_MINUTES" in env).toBe(false);
   });
 
   it("applies pricing defaults", () => {
@@ -209,6 +226,11 @@ describe("@yuni/config", () => {
     expect(auth.secret).toBe("dev-change-me");
     expect(auth.cookieSecure).toBe(false);
     expect(liveAvatar.mode).toBe("lite");
+  });
+
+  it("always uses Secure cookies in production", () => {
+    const env = parseRawEnv({ ...productionEnv, AUTH_COOKIE_SECURE: "false" });
+    expect(createAuthConfig(env).cookieSecure).toBe(true);
   });
 
   it("requires a non-default auth secret when explicitly requested", () => {

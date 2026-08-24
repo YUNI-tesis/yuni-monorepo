@@ -192,7 +192,10 @@ function translateTrait(value: string | undefined): string | null {
     return null;
   }
 
-  const normalized = value.trim().toLocaleLowerCase("es").replace(/[\s-]+/g, "_");
+  const normalized = value
+    .trim()
+    .toLocaleLowerCase("es")
+    .replace(/[\s-]+/g, "_");
   return traitTranslations[normalized] ?? (isSpanishCopy(value) ? capitalize(value.trim()) : null);
 }
 
@@ -221,7 +224,9 @@ function joinNaturalLanguage(values: string[]): string {
 }
 
 function isSpanishCopy(value: string): boolean {
-  return /[áéíóúñ¿¡]|\b(voz|para|conversaciones|natural|ritmo|guías|respuestas|actual|guardada)\b/i.test(value);
+  return /[áéíóúñ¿¡]|\b(voz|para|conversaciones|natural|ritmo|guías|respuestas|actual|guardada)\b/i.test(
+    value
+  );
 }
 
 function shortenSentence(value: string): string {

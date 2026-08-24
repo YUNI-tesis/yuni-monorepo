@@ -1938,7 +1938,12 @@
   width: min(44vw, 620px);
   aspect-ratio: 1.7;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(113, 208, 222, 0.13), rgba(199, 118, 228, 0.055) 38%, transparent 70%);
+  background: radial-gradient(
+    circle,
+    rgba(113, 208, 222, 0.13),
+    rgba(199, 118, 228, 0.055) 38%,
+    transparent 70%
+  );
   content: "";
   filter: blur(18px);
   opacity: 0.88;
@@ -2033,7 +2038,13 @@
   right: 0;
   left: 0;
   height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(248, 243, 239, 0.16) 10%, rgba(248, 243, 239, 0.16) 90%, transparent);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(248, 243, 239, 0.16) 10%,
+    rgba(248, 243, 239, 0.16) 90%,
+    transparent
+  );
 }
 
 .finalSignalWave {
@@ -2051,7 +2062,12 @@
   height: var(--final-bar-height);
   flex: 1 1 auto;
   border-radius: 99px;
-  background: linear-gradient(180deg, var(--landing-accent), var(--landing-primary-bright) 52%, var(--landing-coral));
+  background: linear-gradient(
+    180deg,
+    var(--landing-accent),
+    var(--landing-primary-bright) 52%,
+    var(--landing-coral)
+  );
   opacity: 0.28;
   animation: finalSignalWave 2.4s var(--final-bar-delay) infinite cubic-bezier(0.83, 0, 0.17, 1);
   transform-origin: center;
@@ -2073,7 +2089,6 @@
   transform: translate(-50%, -50%);
   transition: left 520ms var(--landing-ease);
 }
-
 
 .footer {
   position: absolute;
