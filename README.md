@@ -1,10 +1,13 @@
 # YUNI
 
+[![CI](https://github.com/YUNI-tesis/yuni-monorepo/actions/workflows/ci.yml/badge.svg?branch=staging)](https://github.com/YUNI-tesis/yuni-monorepo/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/YUNI-tesis/yuni-monorepo/actions/workflows/codeql.yml/badge.svg?branch=staging)](https://github.com/YUNI-tesis/yuni-monorepo/actions/workflows/codeql.yml)
+
 Base limpia del monorepo de YUNI.
 
 ## Requisitos
 
-- Node.js 20+
+- Node.js 20.20.2 (definido en `.node-version`)
 - pnpm 10.8.1+
 - Docker + Docker Compose para PostgreSQL local
 
@@ -143,6 +146,24 @@ El primer deploy se cargó desde el workspace local mediante Railway CLI. Los tr
 aplicación quedaron conectados después a `YUNI-tesis/yuni-monorepo`: cada push a `main` actualiza
 producción automáticamente mediante la Railway GitHub App, cuyo acceso está limitado a este
 repositorio; `staging` no dispara deployments de este entorno.
+
+## CI/CD Y Seguridad
+
+GitHub Actions valida cada PR y push de `staging`/`main` mediante formato, lint, tipos, build,
+migraciones y tests unitarios/de integración sobre PostgreSQL 16 efímero. CodeQL y Dependency Review
+agregan las compuertas de seguridad; Dependabot mantiene dependencias y Actions.
+
+El flujo normal es `feature → staging → main`. Sólo `staging` y los PRs de seguridad creados por
+Dependabot pueden apuntar a `main`. Railway debe tener **Wait for CI** habilitado para Web, API y
+Worker, por lo que un push fallido no se despliega. Web y API usan `/health` como healthcheck de
+deployment.
+
+Operación, configuración administrativa, migraciones y rollback:
+[docs/operations/ci-cd-devsecops.md](docs/operations/ci-cd-devsecops.md).
+
+Node 20.20.2 se conserva temporalmente por decisión del equipo aunque está fuera de soporte. El mismo
+pin se usa localmente, en CI y en Railpack/Railway; migrar a una línea LTS vigente queda como
+hardening prioritario.
 
 ## Estructura
 

@@ -73,6 +73,8 @@ Decisiones de producto vigentes:
   ciclo de vida externo endurecido.
 - `36-hardening-observability.md`: pendiente; refactorizado con sync queue/retries.
 - `37-group-call-floor-hardening.md`: implementado; router semántico, audio gate, attempts por conexión, `user_activity`, eventos idempotentes y cleanup durable grupal.
+- `38-ci-cd-devsecops.md`: implementado en repositorio; workflows, seguridad y runbook listos. La
+  activación administrativa de rulesets y Railway Wait for CI se verifica durante el rollout.
 
 ## Uso
 

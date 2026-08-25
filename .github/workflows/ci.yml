@@ -1,0 +1,189 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+      - staging
+  push:
+    branches:
+      - main
+      - staging
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+env:
+  CI: "true"
+  PNPM_VERSION: "10.8.1"
+  DATABASE_URL: postgresql://yuni:yuni-ci@localhost:5432/yuni_ci?schema=public
+
+jobs:
+  release-policy:
+    name: release policy
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Accept regular validation
+        if: github.event_name != 'pull_request' || github.base_ref != 'main'
+        run: echo "This event does not promote a pull request to main."
+
+      - name: Accept staging promotion
+        if: github.event_name == 'pull_request' && github.base_ref == 'main' && github.head_ref == 'staging'
+        run: echo "The staging branch is allowed to promote to main."
+
+      - name: Accept Dependabot security update
+        if: github.event_name == 'pull_request' && github.base_ref == 'main' && github.event.pull_request.user.login == 'dependabot[bot]'
+        run: echo "Dependabot is allowed to target the default branch for security updates."
+
+      - name: Reject an unsupported main pull request source
+        if: github.event_name == 'pull_request' && github.base_ref == 'main' && github.head_ref != 'staging' && github.event.pull_request.user.login != 'dependabot[bot]'
+        run: |
+          echo "Pull requests to main must come from staging or dependabot[bot]."
+          exit 1
+
+  quality:
+    name: quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma Client
+        run: pnpm db:generate
+
+      - name: Check formatting
+        run: pnpm format:check
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: yuni
+          POSTGRES_PASSWORD: yuni-ci
+          POSTGRES_DB: yuni_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U yuni -d yuni_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      APP_ENV: test
+      DATABASE_URL: postgresql://yuni:yuni-ci@localhost:5432/yuni_test?schema=public
+      TEST_DATABASE_URL: postgresql://yuni:yuni-ci@localhost:5432/yuni_test?schema=public
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma Client
+        run: pnpm db:generate
+
+      - name: Apply migrations to the test database
+        run: pnpm db:migrate:deploy
+
+      - name: Run unit and integration tests
+        run: pnpm test
+
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      APP_ENV: test
+      API_INTERNAL_URL: http://localhost:4000
+      NEXT_PUBLIC_WEB_URL: http://localhost:3000
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build all workspaces
+        run: pnpm build
+
+  gate:
+    name: gate
+    if: always()
+    needs:
+      - release-policy
+      - quality
+      - test
+      - build
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Fail when a required job did not succeed
+        if: needs.release-policy.result != 'success' || needs.quality.result != 'success' || needs.test.result != 'success' || needs.build.result != 'success'
+        run: |
+          echo "One or more required CI jobs did not succeed."
+          exit 1
+
+      - name: Confirm the CI gate
+        run: echo "All required CI jobs succeeded."
