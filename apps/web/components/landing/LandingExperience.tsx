@@ -1,14 +1,7 @@
 "use client";
 
 import Lenis from "lenis";
-import {
-  motion,
-  useReducedMotion,
-  useScroll,
-  useSpring,
-  useTransform,
-  type MotionValue,
-} from "motion/react";
+import { motion, useReducedMotion, useScroll, useSpring, useTransform, type MotionValue } from "motion/react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import React, {
@@ -19,6 +12,7 @@ import React, {
   type ReactNode,
 } from "react";
 import { YuniLogo } from "../brand/YuniLogo";
+import { ArchitectureSystem } from "./ArchitectureSystem";
 import { architectureLayers, capabilities, presenceStages, productMoments } from "./content";
 import { CapabilityIcon } from "./CapabilityIcon";
 import styles from "./Landing.module.css";
@@ -308,8 +302,14 @@ function ThesisConvergence({ reducedMotion }: { reducedMotion: boolean }) {
           </filter>
         </defs>
 
-        <path className={styles.convergenceGuide} d="M150 135 C340 135 350 220 536 230 C586 233 616 230 660 230" />
-        <path className={styles.convergenceGuide} d="M150 330 C340 330 350 244 536 230 C586 226 616 230 660 230" />
+        <path
+          className={styles.convergenceGuide}
+          d="M150 135 C340 135 350 220 536 230 C586 233 616 230 660 230"
+        />
+        <path
+          className={styles.convergenceGuide}
+          d="M150 330 C340 330 350 244 536 230 C586 226 616 230 660 230"
+        />
         <path
           className={`${styles.convergenceGlow} ${styles.convergenceGlowLucas}`}
           d="M150 135 C340 135 350 220 536 230 C586 233 616 230 660 230"
@@ -343,35 +343,9 @@ function ThesisConvergence({ reducedMotion }: { reducedMotion: boolean }) {
   );
 }
 
-function FinalSignal({ reducedMotion }: { reducedMotion: boolean }) {
-  const signalRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const signal = signalRef.current;
-    const section = signal?.parentElement;
-    const finePointer = window.matchMedia("(pointer: fine)").matches;
-
-    if (!signal || !section || reducedMotion || !finePointer) return;
-
-    const updateSignal = (event: PointerEvent) => {
-      const bounds = section.getBoundingClientRect();
-      const normalizedX = Math.min(Math.max((event.clientX - bounds.left) / bounds.width, 0.08), 0.92);
-      signal.style.setProperty("--final-signal-x", `${normalizedX * 100}%`);
-    };
-
-    const resetSignal = () => signal.style.setProperty("--final-signal-x", "50%");
-
-    section.addEventListener("pointermove", updateSignal);
-    section.addEventListener("pointerleave", resetSignal);
-
-    return () => {
-      section.removeEventListener("pointermove", updateSignal);
-      section.removeEventListener("pointerleave", resetSignal);
-    };
-  }, [reducedMotion]);
-
+function FinalSignal() {
   return (
-    <div ref={signalRef} className={styles.finalSignal} aria-hidden="true">
+    <div className={styles.finalSignal} aria-hidden="true">
       <div className={styles.finalSignalFrame}>
         <span className={`${styles.finalSignalCorner} ${styles.finalSignalCornerTopLeft}`} />
         <span className={`${styles.finalSignalCorner} ${styles.finalSignalCornerTopRight}`} />
@@ -391,14 +365,13 @@ function FinalSignal({ reducedMotion }: { reducedMotion: boolean }) {
                 style={
                   {
                     "--final-bar-height": `${height}%`,
-                    "--final-bar-delay": `${index * -0.037}s`,
+                    "--final-bar-delay": `${index * -0.071}s`,
                   } as CSSProperties
                 }
               />
             );
           })}
         </div>
-        <span className={styles.finalSignalTracker} />
       </div>
     </div>
   );
@@ -617,11 +590,11 @@ export function LandingExperience() {
         >
           <div className={styles.architectureHeading}>
             <Reveal className={styles.architectureTitle} delay={0.08} reducedMotion={reducedMotion}>
-              <p className={styles.eyebrow}>Complejidad que no se ve</p>
+              <p className={styles.eyebrow}>Arquitectura del producto</p>
               <h2 id="architecture-title">
-                Una experiencia humana,
+                Detrás de cada conversación,
                 <br />
-                muchas capas trabajando juntas.
+                YUNI coordina un sistema completo.
               </h2>
             </Reveal>
           </div>
@@ -648,6 +621,8 @@ export function LandingExperience() {
             ))}
           </div>
         </section>
+
+        <ArchitectureSystem reducedMotion={reducedMotion} />
 
         <section className={styles.capabilitySection} aria-labelledby="capability-title">
           <div className={styles.capabilityHeading}>
@@ -697,7 +672,8 @@ export function LandingExperience() {
                 </h2>
                 <p className={styles.thesisQuestion}>¿Qué hace que una IA se sienta viva?</p>
                 <p className={styles.thesisAnswer}>
-                  YUNI fue nuestra forma de responderla: identidad, contexto y voz reunidos en una experiencia real.
+                  YUNI fue nuestra forma de responderla: identidad, contexto y voz reunidos en una experiencia
+                  real.
                 </p>
               </Reveal>
               <Reveal className={styles.thesisVisual} delay={0.12} reducedMotion={reducedMotion}>
@@ -708,7 +684,7 @@ export function LandingExperience() {
         </section>
 
         <section className={styles.finalCta} aria-labelledby="cta-title">
-          <FinalSignal reducedMotion={reducedMotion} />
+          <FinalSignal />
           <Reveal className={styles.finalContent} reducedMotion={reducedMotion}>
             <p className={styles.eyebrow}>El próximo capítulo es en vivo</p>
             <h2 id="cta-title">
