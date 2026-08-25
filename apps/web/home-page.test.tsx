@@ -2,6 +2,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import HomePage from "./app/page";
+import { ArchitectureSystem } from "./components/landing/ArchitectureSystem";
 
 describe("public home page", () => {
   it("renders the thesis narrative and links visitors to the demo", () => {
@@ -11,7 +12,24 @@ describe("public home page", () => {
     expect(html).toContain("Se convierte en presencia");
     expect(html).toContain("Conversar no alcanza");
     expect(html).toContain("De una idea");
-    expect(html).toContain("Una experiencia humana");
+    expect(html).toContain("Arquitectura del producto");
+    expect(html).toContain("Detrás de cada conversación");
+    expect(html).toContain("Aplicación web");
+    expect(html).toContain("Núcleo YUNI");
+    expect(html).toContain("Datos y procesos");
+    expect(html).toContain("Conversación en vivo");
+    expect(html).toContain("S3 / MinIO");
+    expect(html).toContain("OpenAI + LangGraph");
+    expect(html).toContain("El sistema en movimiento");
+    expect(html).toContain("De una intención");
+    expect(html).toContain("Usuario");
+    expect(html).toContain("Historia y estado");
+    expect(html).toContain("Orquestador grupal");
+    expect(html).toContain("Conversación en vivo");
+    expect(html).toContain("ElevenLabs Agent + LiveAvatar");
+    expect(html).toContain("LiveAvatar suma rostro, gestos y video en tiempo real");
+    expect(html).toContain("indica el orden de intervención; cada agente genera su propia respuesta");
+    expect(html).not.toContain("El worker recibe directamente los uploads");
     expect(html).toContain("Dos autores.");
     expect(html).toContain("Una pregunta.");
     expect(html).toContain("¿Qué hace que una IA se sienta viva?");
@@ -41,5 +59,17 @@ describe("public home page", () => {
     expect(html).toContain('href="#experiencia"');
     expect(html).toContain('href="/dashboard"');
     expect(html).toContain('data-draggable="true"');
+  });
+
+  it("keeps the architecture readable without animated route pulses", () => {
+    const html = renderToStaticMarkup(createElement(ArchitectureSystem, { reducedMotion: true }));
+
+    expect(html).toContain("De una intención");
+    expect(html).toContain("Núcleo YUNI");
+    expect(html).not.toContain("API + Hono");
+    expect(html).toContain("ElevenLabs Agent + LiveAvatar");
+    expect(html).not.toContain("Knowledge Base");
+    expect(html).not.toMatch(/presencia/i);
+    expect(html).not.toContain('pathLength="1"');
   });
 });
