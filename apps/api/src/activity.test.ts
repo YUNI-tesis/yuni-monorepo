@@ -4,6 +4,7 @@ import { OwnershipError } from "@yuni/domain";
 import { createAvatarActivityController } from "./domains/activity/controller";
 import type { AvatarActivityRepository } from "./domains/activity/repository";
 import { createParticipantKey } from "./domains/activity/service";
+import { createCreatorSessionMiddleware, type CreatorSessionEnv } from "./domains/auth/middleware";
 import { createSessionToken, SESSION_COOKIE_NAME } from "./domains/auth/session";
 
 const now = new Date("2026-08-10T15:00:00.000Z");
@@ -98,7 +99,23 @@ function createRepository(): AvatarActivityRepository {
 }
 
 async function createTestApp(repository = createRepository()) {
-  const app = new Hono();
+  const app = new Hono<CreatorSessionEnv>();
+  app.use(
+    "*",
+    createCreatorSessionMiddleware({
+      async findPublicById(userId) {
+        if (userId !== "owner-1" && userId !== "other-1") return null;
+        return {
+          id: userId,
+          email: userId === "owner-1" ? "owner@example.com" : "other@example.com",
+          name: userId === "owner-1" ? "Owner" : "Other",
+          imageUrl: null,
+          createdAt: now,
+          updatedAt: now,
+        };
+      },
+    })
+  );
   app.route("/", createAvatarActivityController({ repository }));
   const ownerToken = await createSessionToken({
     id: "owner-1",

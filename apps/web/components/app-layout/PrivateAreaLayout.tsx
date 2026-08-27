@@ -1,13 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import type { CSSProperties, ReactNode } from "react";
-import { useEffect, useId, useRef, useState } from "react";
+import { usePathname } from "next/navigation";
+import React, { type CSSProperties, type ReactNode, useEffect, useId, useRef, useState } from "react";
+import { Button, ErrorState, LoadingState, useToast } from "@yuni/ui";
 import { YuniLogo } from "../brand/YuniLogo";
-import { useToast } from "@yuni/ui";
 import { getMe, logout, type ApiUser } from "../../lib/api/auth-api";
-import { ApiClientError } from "../../lib/api/http-client";
+import { isSessionExpirationError, replaceBrowserLocation } from "../../lib/api/http-client";
 import { PrivateNavigation } from "./PrivateNavigation";
 import type { PrivatePageLayoutVariant } from "./navigation";
 import styles from "./PrivateAreaLayout.module.css";
@@ -23,31 +22,6 @@ type SessionState =
   | { status: "loading"; user: null; error: null }
   | { status: "ready"; user: ApiUser; error: null }
   | { status: "error"; user: null; error: string };
-
-let cachedSessionUser: ApiUser | null = null;
-let sessionUserRequest: Promise<ApiUser> | null = null;
-
-function loadSessionUser() {
-  if (cachedSessionUser) {
-    return Promise.resolve(cachedSessionUser);
-  }
-
-  sessionUserRequest ??= getMe()
-    .then(({ user }) => {
-      cachedSessionUser = user;
-      return user;
-    })
-    .finally(() => {
-      sessionUserRequest = null;
-    });
-
-  return sessionUserRequest;
-}
-
-function clearSessionUserCache() {
-  cachedSessionUser = null;
-  sessionUserRequest = null;
-}
 
 export function getUserInitials(user: Pick<ApiUser, "name" | "email">) {
   const nameParts = user.name?.trim().split(/\s+/).filter(Boolean) ?? [];
@@ -76,21 +50,17 @@ export function PrivateAreaLayout({
   variant = "standard",
 }: PrivateAreaLayoutProps) {
   const pathname = usePathname();
-  const router = useRouter();
   const toast = useToast();
   const contentStyle = {
     "--yuni-private-page-width": maxWidth ?? "1280px",
   } as CSSProperties;
-  const [session, setSession] = useState<SessionState>(() =>
-    cachedSessionUser
-      ? { status: "ready", user: cachedSessionUser, error: null }
-      : {
-          status: "loading",
-          user: null,
-          error: null,
-        }
-  );
+  const [session, setSession] = useState<SessionState>({
+    status: "loading",
+    user: null,
+    error: null,
+  });
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [sessionAttempt, setSessionAttempt] = useState(0);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const profileMenuId = useId();
   const sessionRef = useRef<HTMLDivElement>(null);
@@ -99,16 +69,14 @@ export function PrivateAreaLayout({
   useEffect(() => {
     let isMounted = true;
 
-    loadSessionUser()
-      .then((user) => {
+    getMe()
+      .then(({ user }) => {
         if (isMounted) {
           setSession({ status: "ready", user, error: null });
         }
       })
       .catch((error) => {
-        if (error instanceof ApiClientError && error.status === 401) {
-          clearSessionUserCache();
-          router.replace("/auth/login");
+        if (isSessionExpirationError(error)) {
           return;
         }
 
@@ -124,7 +92,7 @@ export function PrivateAreaLayout({
     return () => {
       isMounted = false;
     };
-  }, [router]);
+  }, [sessionAttempt]);
 
   useEffect(() => {
     setIsProfileMenuOpen(false);
@@ -167,22 +135,37 @@ export function PrivateAreaLayout({
 
     try {
       await logout();
-      clearSessionUserCache();
       toast.success("Cerraste tu sesión de forma segura.", {
         title: "Sesión cerrada",
         dedupeKey: "auth:logout:success",
       });
-      router.push("/auth/login");
-      router.refresh();
+      replaceBrowserLocation("/auth/login");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Intentá nuevamente.", {
         title: "No pudimos cerrar la sesión",
         dedupeKey: "auth:logout:error",
       });
-    } finally {
       setIsLoggingOut(false);
     }
   }
+
+  function retrySession() {
+    setSession({ status: "loading", user: null, error: null });
+    setSessionAttempt((current) => current + 1);
+  }
+
+  const privateContent =
+    session.status === "ready" ? (
+      children
+    ) : session.status === "error" ? (
+      <ErrorState
+        title="No pudimos validar tu sesión"
+        description={session.error}
+        action={<Button onClick={retrySession}>Reintentar</Button>}
+      />
+    ) : (
+      <LoadingState title="Validando sesión" description="Estamos verificando tu acceso." />
+    );
 
   return (
     <div className={`${styles.layout} ${variant === "focus" ? styles.layoutFocus : ""}`}>
@@ -262,7 +245,7 @@ export function PrivateAreaLayout({
         className={`${styles.content} ${variant === "focus" ? styles.contentFocus : ""} ${contentClassName ?? ""}`}
         style={contentStyle}
       >
-        {children}
+        {privateContent}
       </main>
     </div>
   );

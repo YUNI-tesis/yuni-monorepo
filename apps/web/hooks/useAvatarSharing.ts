@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   createAccessGrant,
   createShareLink,
@@ -16,7 +15,7 @@ import {
   type CreateShareLinkRequest,
   type ApiInteractionLimits,
 } from "../lib/api/sharing-api";
-import { ApiClientError, toUserFacingApiError } from "../lib/api/http-client";
+import { toUserFacingApiError } from "../lib/api/http-client";
 
 type ResourceState<T> =
   | { status: "loading"; data: T; error: null }
@@ -28,7 +27,6 @@ function errorMessage(error: unknown) {
 }
 
 export function useAvatarSharing(avatarId: string) {
-  const router = useRouter();
   const [links, setLinks] = useState<ResourceState<ApiShareLink[]>>({
     status: "loading",
     data: [],
@@ -44,18 +42,6 @@ export function useAvatarSharing(avatarId: string) {
   const grantsRequestRef = useRef(0);
   const activeAvatarIdRef = useRef(avatarId);
   activeAvatarIdRef.current = avatarId;
-
-  const handleUnauthorized = useCallback(
-    (error: unknown) => {
-      if (error instanceof ApiClientError && error.status === 401) {
-        router.push("/auth/login");
-        return true;
-      }
-
-      return false;
-    },
-    [router]
-  );
 
   const loadLinks = useCallback(
     async (clearCurrent = false) => {
@@ -73,7 +59,6 @@ export function useAvatarSharing(avatarId: string) {
         setLinks({ status: "ready", data: response.shareLinks, error: null });
       } catch (error) {
         if (linksRequestRef.current !== requestId) return;
-        handleUnauthorized(error);
         setLinks((current) => ({
           status: "error",
           data: current.data,
@@ -81,7 +66,7 @@ export function useAvatarSharing(avatarId: string) {
         }));
       }
     },
-    [avatarId, handleUnauthorized]
+    [avatarId]
   );
 
   const loadGrants = useCallback(
@@ -100,7 +85,6 @@ export function useAvatarSharing(avatarId: string) {
         setGrants({ status: "ready", data: response.accessGrants, error: null });
       } catch (error) {
         if (grantsRequestRef.current !== requestId) return;
-        handleUnauthorized(error);
         setGrants((current) => ({
           status: "error",
           data: current.data,
@@ -108,7 +92,7 @@ export function useAvatarSharing(avatarId: string) {
         }));
       }
     },
-    [avatarId, handleUnauthorized]
+    [avatarId]
   );
 
   useEffect(() => {
@@ -122,9 +106,6 @@ export function useAvatarSharing(avatarId: string) {
 
     try {
       return await action();
-    } catch (error) {
-      handleUnauthorized(error);
-      throw error;
     } finally {
       setMutations((current) => {
         const next = new Set(current);

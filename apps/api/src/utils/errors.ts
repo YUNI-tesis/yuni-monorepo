@@ -35,8 +35,8 @@ export function apiError(
   };
 }
 
-export function unauthorizedError(message = "Unauthorized") {
-  return apiError("UNAUTHORIZED", message);
+export function unauthorizedError(message = "Unauthorized", reason?: string) {
+  return apiError("UNAUTHORIZED", message, undefined, reason);
 }
 
 export function validationError(issues: unknown, message = "Invalid request body", reason?: string) {

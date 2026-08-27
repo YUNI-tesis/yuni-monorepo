@@ -46,6 +46,16 @@ type ApiErrorBody = {
   };
 };
 
+export type ApiRequestAuth = "session" | "none" | "public-token";
+
+export type ApiRequestInit = RequestInit & {
+  auth?: ApiRequestAuth;
+};
+
+const invalidSessionReasons = new Set(["SESSION_REQUIRED", "SESSION_INVALID"]);
+const sessionExpiredPath = "/auth/login?reason=session-expired";
+let sessionExpirationStarted = false;
+
 async function parseError(response: Response) {
   const body = (await response.json().catch(() => null)) as ApiErrorBody | null;
 
@@ -57,25 +67,57 @@ async function parseError(response: Response) {
   };
 }
 
-export async function apiRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
+export function isSessionExpirationError(error: unknown): error is ApiClientError {
+  return (
+    error instanceof ApiClientError &&
+    error.status === 401 &&
+    Boolean(error.reason && invalidSessionReasons.has(error.reason))
+  );
+}
+
+export function replaceBrowserLocation(path: string) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.location.replace(path);
+}
+
+function expireBrowserSession() {
+  if (typeof window === "undefined" || sessionExpirationStarted) {
+    return;
+  }
+
+  sessionExpirationStarted = true;
+  replaceBrowserLocation(sessionExpiredPath);
+}
+
+export async function apiRequest<T>(path: string, init: ApiRequestInit = {}): Promise<T> {
+  const { auth = "session", ...requestInit } = init;
   const response = await fetch(apiEndpoint(path), {
-    ...init,
+    ...requestInit,
     credentials: "include",
     headers: {
       "Content-Type": "application/json",
-      ...init.headers,
+      ...requestInit.headers,
     },
   });
 
   if (!response.ok) {
     const error = await parseError(response);
-    throw new ApiClientError(
+    const clientError = new ApiClientError(
       error.message,
       response.status,
       error.code,
       error.reason,
       error.retryAfterSeconds
     );
+
+    if (auth === "session" && isSessionExpirationError(clientError)) {
+      expireBrowserSession();
+    }
+
+    throw clientError;
   }
 
   return response.json() as Promise<T>;

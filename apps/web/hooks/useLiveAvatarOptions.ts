@@ -1,9 +1,7 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { getLiveAvatarOptions, type ApiLiveAvatarOption } from "../lib/api/live-avatar-api";
-import { ApiClientError } from "../lib/api/http-client";
 import { currentLiveAvatarOptionName } from "../lib/avatar-config";
 
 export type LiveAvatarOptionsState =
@@ -31,7 +29,6 @@ export type UseLiveAvatarOptionsOptions = {
 
 export function useLiveAvatarOptions(options: UseLiveAvatarOptionsOptions = {}): LiveAvatarOptionsState {
   const { currentAvatarId, includeCurrentFallback = false, enabled = true } = options;
-  const router = useRouter();
   const [state, setState] = useState<LiveAvatarOptionsState>({
     status: "loading",
     options: [],
@@ -63,11 +60,6 @@ export function useLiveAvatarOptions(options: UseLiveAvatarOptionsOptions = {}):
         });
       })
       .catch((caughtError) => {
-        if (caughtError instanceof ApiClientError && caughtError.status === 401) {
-          router.push("/auth/login");
-          return;
-        }
-
         if (!isMounted) {
           return;
         }
@@ -82,7 +74,7 @@ export function useLiveAvatarOptions(options: UseLiveAvatarOptionsOptions = {}):
     return () => {
       isMounted = false;
     };
-  }, [enabled, router]);
+  }, [enabled]);
 
   return useMemo(() => {
     if (!enabled) {
