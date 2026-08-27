@@ -567,7 +567,7 @@ describe("avatar group voice service", () => {
     expect(interruptRound).not.toHaveBeenCalled();
   });
 
-  it("reconstructs suppress and listen directives for duplicate provider deliveries", async () => {
+  it("reconstructs suppression without letting provider interruption release the floor", async () => {
     const queuedSession = {
       id: "session-1",
       conversationId: "conversation-1",
@@ -633,7 +633,7 @@ describe("avatar group voice service", () => {
       })
     ).resolves.toEqual({
       phase: "listening",
-      directive: { action: "listen", reason: "interrupted" },
+      directive: null,
       floor: null,
     });
   });
@@ -786,7 +786,7 @@ describe("avatar group voice service", () => {
       expiresAt: new Date("2030-01-01T00:10:00.000Z"),
       participants: [],
     };
-    const interruptRound = vi.fn().mockResolvedValue({
+    const interruptRoundByUser = vi.fn().mockResolvedValue({
       kind: "stale",
       session,
       avatarId: "avatar-new",
@@ -794,20 +794,69 @@ describe("avatar group voice service", () => {
     const dependencies = {
       repository: {
         findVoiceSessionForOwner: vi.fn().mockResolvedValue(session),
-        interruptRound,
+        interruptRoundByUser,
       },
     } as unknown as AvatarGroupsServiceDependencies;
 
     const result = await createAvatarGroupsService(dependencies).interrupt("user-1", "session-1", {
       reason: "user",
+      trigger: "voice",
+      sourceEventId: "scribe:barge-in:old",
       expectedAvatarId: "avatar-old",
       expectedTurnId: "turn-old",
     });
 
     expect(result).toEqual({ phase: "speaking", directive: null, floor: null });
-    expect(interruptRound).toHaveBeenCalledWith("user-1", "session-1", {
-      avatarId: "avatar-old",
-      turnId: "turn-old",
+    expect(interruptRoundByUser).toHaveBeenCalledWith("user-1", "session-1", {
+      trigger: "voice",
+      sourceEventId: "scribe:barge-in:old",
+      expectedAvatarId: "avatar-old",
+      expectedTurnId: "turn-old",
+    });
+  });
+
+  it("routes a durable human interruption to the owner that must be stopped", async () => {
+    const session = {
+      id: "session-1",
+      conversationId: "conversation-1",
+      status: "active",
+      orchestrationPhase: "queued",
+      floorOwnerAvatarId: "avatar-next",
+      floorTurnId: "turn-next",
+      expiresAt: new Date("2030-01-01T00:10:00.000Z"),
+      participants: [],
+    };
+    const interruptRoundByUser = vi.fn().mockResolvedValue({
+      kind: "interrupted",
+      outcome: "interrupted",
+      session,
+      avatarId: "avatar-next",
+    });
+    const dependencies = {
+      repository: {
+        findVoiceSessionForOwner: vi.fn().mockResolvedValue(session),
+        interruptRoundByUser,
+      },
+    } as unknown as AvatarGroupsServiceDependencies;
+
+    const result = await createAvatarGroupsService(dependencies).interrupt("user-1", "session-1", {
+      reason: "user",
+      trigger: "voice",
+      sourceEventId: "scribe:barge-in:1",
+      expectedAvatarId: "avatar-audible",
+      expectedTurnId: "turn-audible",
+    });
+
+    expect(result).toEqual({
+      phase: "listening",
+      directive: { action: "interrupt", avatarId: "avatar-next", reason: "user" },
+      floor: null,
+    });
+    expect(interruptRoundByUser).toHaveBeenCalledWith("user-1", "session-1", {
+      sourceEventId: "scribe:barge-in:1",
+      trigger: "voice",
+      expectedAvatarId: "avatar-audible",
+      expectedTurnId: "turn-audible",
     });
   });
 

@@ -514,6 +514,233 @@ integration("group floor repository integration", () => {
     expect(receiptCount).toBe(1);
   });
 
+  it("records provider interruption as telemetry without releasing the floor", async () => {
+    const fixture = await createFixture("provider-interruption-telemetry", 2);
+    const queued = await createQueuedRound(fixture, [fixture.avatarIds[0]!]);
+    await fixture.repository.recordProviderEvent(fixture.userId, fixture.sessionId, {
+      sourceEventId: "provider-interruption:start",
+      turnId: queued.turn.id,
+      avatarId: fixture.avatarIds[0]!,
+      type: "speak_started",
+    });
+
+    const result = await fixture.repository.recordProviderEvent(fixture.userId, fixture.sessionId, {
+      sourceEventId: "provider-interruption:event",
+      turnId: queued.turn.id,
+      avatarId: fixture.avatarIds[0]!,
+      type: "interruption",
+    });
+    const session = await db!.groupVoiceSession.findUniqueOrThrow({
+      where: { id: fixture.sessionId },
+    });
+
+    expect(result.kind).toBe("accepted");
+    expect(session).toMatchObject({
+      orchestrationPhase: "speaking",
+      floorOwnerAvatarId: fixture.avatarIds[0],
+      floorTurnId: queued.turn.id,
+    });
+  });
+
+  it("cancels the captured round after A advances to B and keeps retries away from a new round", async () => {
+    const fixture = await createFixture("human-interruption-race", 2);
+    const firstFloor = await createQueuedRound(fixture, fixture.avatarIds);
+    await fixture.repository.recordProviderEvent(fixture.userId, fixture.sessionId, {
+      sourceEventId: "human-interruption:start:a",
+      turnId: firstFloor.turn.id,
+      avatarId: fixture.avatarIds[0]!,
+      type: "speak_started",
+    });
+    const advanced = await fixture.repository.recordProviderEvent(fixture.userId, fixture.sessionId, {
+      sourceEventId: "human-interruption:end:a",
+      turnId: firstFloor.turn.id,
+      avatarId: fixture.avatarIds[0]!,
+      type: "speak_ended",
+      content: "Respuesta completa que el usuario no alcanzó a escuchar",
+    });
+    expect(advanced.kind).toBe("next");
+    await expect(
+      db!.message.findUnique({
+        where: {
+          conversationId_sourceEventId: {
+            conversationId: fixture.conversationId,
+            sourceEventId: `group-turn:${firstFloor.turn.id}`,
+          },
+        },
+      })
+    ).resolves.toMatchObject({
+      role: "assistant",
+      content: "Respuesta completa que el usuario no alcanzó a escuchar",
+    });
+
+    const input = {
+      sourceEventId: "scribe:barge-in:race",
+      trigger: "voice" as const,
+      expectedAvatarId: fixture.avatarIds[0]!,
+      expectedTurnId: firstFloor.turn.id,
+    };
+    const interrupted = await fixture.repository.interruptRoundByUser(
+      fixture.userId,
+      fixture.sessionId,
+      input
+    );
+    const [sessionAfterInterrupt, round, turns, receipt, messagesAfterInterrupt, conversation] =
+      await Promise.all([
+        db!.groupVoiceSession.findUniqueOrThrow({ where: { id: fixture.sessionId } }),
+        db!.groupVoiceRound.findUniqueOrThrow({ where: { id: firstFloor.turn.roundId } }),
+        db!.groupPlannedTurn.findMany({
+          where: { roundId: firstFloor.turn.roundId },
+          orderBy: { position: "asc" },
+        }),
+        db!.groupVoiceInterruptionEvent.findUniqueOrThrow({
+          where: {
+            groupVoiceSessionId_sourceEventId: {
+              groupVoiceSessionId: fixture.sessionId,
+              sourceEventId: input.sourceEventId,
+            },
+          },
+        }),
+        db!.message.findMany({
+          where: { conversationId: fixture.conversationId },
+          orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        }),
+        db!.conversation.findUniqueOrThrow({ where: { id: fixture.conversationId } }),
+      ]);
+
+    expect(interrupted).toMatchObject({
+      kind: "interrupted",
+      avatarId: fixture.avatarIds[1],
+    });
+    expect(sessionAfterInterrupt).toMatchObject({
+      orchestrationPhase: "listening",
+      floorOwnerAvatarId: null,
+      floorTurnId: null,
+    });
+    expect(round.status).toBe("cancelled");
+    expect(turns.map(({ status }) => status)).toEqual(["interrupted", "interrupted"]);
+    expect(turns[0]).toMatchObject({ responseText: null });
+    expect(messagesAfterInterrupt).toHaveLength(1);
+    expect(messagesAfterInterrupt[0]).toMatchObject({ role: "user", content: "Pregunta de integración" });
+    expect(conversation.lastMessageAt).toEqual(messagesAfterInterrupt[0]!.createdAt);
+    expect(receipt).toMatchObject({
+      roundId: firstFloor.turn.roundId,
+      turnId: firstFloor.turn.id,
+      trigger: "voice",
+      reason: "user",
+      outcome: "interrupted",
+      interruptedAvatarId: fixture.avatarIds[1],
+      spokenFragmentLength: 0,
+    });
+
+    const replayBeforeNextRound = await fixture.repository.interruptRoundByUser(
+      fixture.userId,
+      fixture.sessionId,
+      input
+    );
+    expect(replayBeforeNextRound).toMatchObject({
+      kind: "duplicate",
+      outcome: "interrupted",
+      replayable: true,
+      avatarId: fixture.avatarIds[1],
+    });
+
+    const newFloor = await createQueuedRound(fixture, [fixture.avatarIds[1]!]);
+    const messagesForNextContext = await db!.message.findMany({
+      where: { conversationId: fixture.conversationId },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    });
+    expect(messagesForNextContext.map(({ content }) => content)).toEqual([
+      "Pregunta de integración",
+      "Pregunta de integración",
+    ]);
+    expect(messagesForNextContext).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ content: "Respuesta completa que el usuario no alcanzó a escuchar" }),
+      ])
+    );
+    const duplicate = await fixture.repository.interruptRoundByUser(fixture.userId, fixture.sessionId, input);
+    const sessionAfterDuplicate = await db!.groupVoiceSession.findUniqueOrThrow({
+      where: { id: fixture.sessionId },
+    });
+    expect(duplicate).toMatchObject({
+      kind: "duplicate",
+      outcome: "interrupted",
+      replayable: false,
+      avatarId: null,
+    });
+    expect(sessionAfterDuplicate).toMatchObject({
+      orchestrationPhase: "queued",
+      floorOwnerAvatarId: fixture.avatarIds[1],
+      floorTurnId: newFloor.turn.id,
+    });
+    const staleCorrection = await fixture.repository.recordProviderEvent(fixture.userId, fixture.sessionId, {
+      sourceEventId: "human-interruption:stale-correction",
+      turnId: turns[1]!.id,
+      avatarId: fixture.avatarIds[1]!,
+      type: "agent_response_correction",
+      content: "Una corrección tardía del turno cancelado",
+    });
+    const [sessionAfterCorrection, interruptedTurn, interruptedMessage] = await Promise.all([
+      db!.groupVoiceSession.findUniqueOrThrow({ where: { id: fixture.sessionId } }),
+      db!.groupPlannedTurn.findUniqueOrThrow({ where: { id: turns[1]!.id } }),
+      db!.message.findUnique({
+        where: {
+          conversationId_sourceEventId: {
+            conversationId: fixture.conversationId,
+            sourceEventId: `group-turn:${turns[1]!.id}`,
+          },
+        },
+      }),
+    ]);
+    expect(staleCorrection).toMatchObject({ kind: "unauthorized", reason: "invalid_lease" });
+    expect(sessionAfterCorrection).toMatchObject({
+      orchestrationPhase: "queued",
+      floorOwnerAvatarId: fixture.avatarIds[1],
+      floorTurnId: newFloor.turn.id,
+    });
+    expect(interruptedTurn).toMatchObject({ status: "interrupted", responseText: null });
+    expect(interruptedMessage).toBeNull();
+    await expect(
+      db!.groupVoiceInterruptionEvent.count({
+        where: { groupVoiceSessionId: fixture.sessionId, sourceEventId: input.sourceEventId },
+      })
+    ).resolves.toBe(1);
+
+    await fixture.repository.recordProviderEvent(fixture.userId, fixture.sessionId, {
+      sourceEventId: "human-interruption:new-round-start",
+      turnId: newFloor.turn.id,
+      avatarId: fixture.avatarIds[1]!,
+      type: "speak_started",
+    });
+    await fixture.repository.recordProviderEvent(fixture.userId, fixture.sessionId, {
+      sourceEventId: "human-interruption:new-round-end",
+      turnId: newFloor.turn.id,
+      avatarId: fixture.avatarIds[1]!,
+      type: "speak_ended",
+      content: "Respuesta de la ronda posterior",
+    });
+    const [newRound, newTurn] = await Promise.all([
+      db!.groupVoiceRound.findUniqueOrThrow({ where: { id: newFloor.turn.roundId } }),
+      db!.groupPlannedTurn.findUniqueOrThrow({ where: { id: newFloor.turn.id } }),
+    ]);
+    expect(newRound.status).toBe("completed");
+    expect(newTurn).toMatchObject({
+      status: "completed",
+      responseText: "Respuesta de la ronda posterior",
+    });
+    const replayAfterNewRoundCompleted = await fixture.repository.interruptRoundByUser(
+      fixture.userId,
+      fixture.sessionId,
+      input
+    );
+    expect(replayAfterNewRoundCompleted).toMatchObject({
+      kind: "duplicate",
+      outcome: "interrupted",
+      replayable: false,
+      avatarId: null,
+    });
+  });
+
   it("does not let a stale interrupt cancel the next avatar's turn", async () => {
     const fixture = await createFixture("stale-interrupt", 2);
     const queued = await createQueuedRound(fixture, fixture.avatarIds);

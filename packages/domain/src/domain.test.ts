@@ -8,6 +8,7 @@ import {
   GroupVoiceParticipantFailureInputSchema,
   GroupVoiceTurnInputSchema,
   InteractionLimitsSchema,
+  InterruptGroupVoiceSessionInputSchema,
   CreateShareLinkInputSchema,
   LiveAvatarConfigSchema,
   LoginInputSchema,
@@ -263,6 +264,28 @@ describe("@yuni/domain", () => {
       GroupVoiceParticipantFailureInputSchema.parse({
         sourceEventId: "participant:error:2",
         reason: "arbitrary provider message",
+      })
+    ).toThrow();
+    expect(
+      InterruptGroupVoiceSessionInputSchema.parse({
+        reason: "user",
+        trigger: "voice",
+        sourceEventId: "scribe:barge-in:1",
+        expectedAvatarId: "avatar-1",
+        expectedTurnId: "turn-1",
+      })
+    ).toEqual({
+      reason: "user",
+      trigger: "voice",
+      sourceEventId: "scribe:barge-in:1",
+      expectedAvatarId: "avatar-1",
+      expectedTurnId: "turn-1",
+    });
+    expect(() =>
+      InterruptGroupVoiceSessionInputSchema.parse({
+        reason: "user",
+        expectedAvatarId: "avatar-1",
+        expectedTurnId: "turn-1",
       })
     ).toThrow();
   });

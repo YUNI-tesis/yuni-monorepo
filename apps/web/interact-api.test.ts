@@ -204,6 +204,12 @@ describe("interact API helpers", () => {
       avatarId: "avatar-1",
       turnId: "turn-1",
     });
+    await interruptGroupVoiceSession("session-1", "user", {
+      trigger: "voice",
+      sourceEventId: "scribe-barge-in-1",
+      avatarId: "avatar-1",
+      turnId: "turn-1",
+    });
     await reportGroupParticipantFailure("session-1", "avatar-2", {
       sourceEventId: "session-stopped:avatar-2:event-1",
       participantAttemptId: "attempt-2",
@@ -220,6 +226,7 @@ describe("interact API helpers", () => {
       ["/api/group-voice-sessions/session-1/turns", "POST"],
       ["/api/group-voice-sessions/session-1/provider-events", "POST"],
       ["/api/group-voice-sessions/session-1/interrupt", "POST"],
+      ["/api/group-voice-sessions/session-1/interrupt", "POST"],
       ["/api/group-voice-sessions/session-1/participants/avatar-2/failure", "POST"],
       ["/api/group-conversations", undefined],
       ["/api/group-conversations/conversation-1", undefined],
@@ -235,6 +242,13 @@ describe("interact API helpers", () => {
       expectedTurnId: "turn-1",
     });
     expect(JSON.parse(fetchMock.mock.calls[6]?.[1].body as string)).toEqual({
+      reason: "user",
+      trigger: "voice",
+      sourceEventId: "scribe-barge-in-1",
+      expectedAvatarId: "avatar-1",
+      expectedTurnId: "turn-1",
+    });
+    expect(JSON.parse(fetchMock.mock.calls[7]?.[1].body as string)).toEqual({
       sourceEventId: "session-stopped:avatar-2:event-1",
       participantAttemptId: "attempt-2",
       reason: "session_stopped",

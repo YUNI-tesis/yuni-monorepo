@@ -10,7 +10,11 @@ No reemplaza a [docs/plan-prompts/](../plan-prompts/). Los planes describen que 
 
 ## Arquitectura grupal vigente
 
-Las llamadas grupales usan sesiones LiveAvatar LITE independientes, ElevenLabs Agents atómicos y un floor persistente de YUNI. La decisión y sus límites están en [ADR 0019](decision-records/0019-strict-floor-independent-liveavatar-group-sessions.md); la guía operativa está en [llamadas grupales con ElevenLabs y LiveAvatar](../integrations/group-calls-elevenlabs-liveavatar.md).
+Las llamadas grupales usan sesiones LiveAvatar LITE independientes, ElevenLabs Agents atómicos y un floor persistente y asimétrico de YUNI. El floor es estricto entre avatares —como máximo uno puede ser audible—, pero la voz humana capturada por el Scribe único puede preemptar la ronda completa. El navegador corta al owner actual, el backend libera el floor y el transcript committed abre una única ronda nueva.
+
+Después de QA real se retiró la persistencia del fragmento audible y su coordinación con correcciones, timers e historial: ese diseño produjo casos de audio simultáneo y streams silenciosos. ADR 0023 conserva la decisión original y documenta la enmienda, en lugar de borrar esa evidencia.
+
+La decisión canónica, sus invariantes y sus límites están en [ADR 0023](decision-records/0023-user-preemptible-group-call-floor.md); la guía operativa está en [llamadas grupales con ElevenLabs y LiveAvatar](../integrations/group-calls-elevenlabs-liveavatar.md).
 
 ## Workflow Del Equipo
 

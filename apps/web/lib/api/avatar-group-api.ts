@@ -179,14 +179,47 @@ export function reportGroupProviderEvent(
 
 export function interruptGroupVoiceSession(
   sessionId: string,
-  reason: "user" | "unauthorized_audio" | "timeout" | "participant_error" = "user",
+  reason: "user",
+  expected: {
+    trigger: "voice";
+    sourceEventId: string;
+    avatarId: string;
+    turnId: string;
+  }
+): Promise<ApiGroupOrchestrationResult>;
+export function interruptGroupVoiceSession(
+  sessionId: string,
+  reason: "unauthorized_audio" | "timeout" | "participant_error",
   expected?: { avatarId: string; turnId: string }
+): Promise<ApiGroupOrchestrationResult>;
+export function interruptGroupVoiceSession(
+  sessionId: string,
+  reason: "user" | "unauthorized_audio" | "timeout" | "participant_error",
+  expected?:
+    | { avatarId: string; turnId: string }
+    | {
+        trigger: "voice";
+        sourceEventId: string;
+        avatarId: string;
+        turnId: string;
+      }
 ) {
   return apiRequest<ApiGroupOrchestrationResult>(`/group-voice-sessions/${sessionId}/interrupt`, {
     method: "POST",
     body: JSON.stringify({
       reason,
-      ...(expected ? { expectedAvatarId: expected.avatarId, expectedTurnId: expected.turnId } : {}),
+      ...(expected
+        ? {
+            expectedAvatarId: expected.avatarId,
+            expectedTurnId: expected.turnId,
+            ...(reason === "user" && "trigger" in expected
+              ? {
+                  trigger: expected.trigger,
+                  sourceEventId: expected.sourceEventId,
+                }
+              : {}),
+          }
+        : {}),
     }),
   });
 }

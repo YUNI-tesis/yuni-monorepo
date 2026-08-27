@@ -2,7 +2,9 @@
 
 ## Estado
 
-accepted
+superseded
+
+Reemplazado por [ADR 0023: Floor grupal preemptivo exclusivo del usuario](0023-user-preemptible-group-call-floor.md).
 
 ## Contexto
 

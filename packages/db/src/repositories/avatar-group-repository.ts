@@ -1252,29 +1252,7 @@ export function createAvatarGroupRepository(db: Db) {
           }
 
           if (input.type === "interruption") {
-            if (!ownsFloor || turn.status !== "speaking" || session.orchestrationPhase !== "speaking") {
-              return {
-                kind: "unauthorized" as const,
-                reason: "invalid_turn_state" as const,
-                session,
-                next: null,
-              };
-            }
-            const interrupted = await cancelRoundTransaction(tx, sessionId, turn.roundId, {
-              ownerId,
-              avatarId: input.avatarId,
-              turnId: turn.id,
-              phases: ["speaking"],
-              leaseAfter: now,
-            });
-            return interrupted
-              ? { kind: "interrupted" as const, session, next: null }
-              : {
-                  kind: "unauthorized" as const,
-                  reason: "invalid_turn_state" as const,
-                  session,
-                  next: null,
-                };
+            return { kind: "accepted" as const, session, next: null };
           }
 
           if (!ownsFloor || turn.status !== "speaking" || session.orchestrationPhase !== "speaking") {
@@ -1408,6 +1386,162 @@ export function createAvatarGroupRepository(db: Db) {
         if (!session) throw new NotFoundError("Llamada grupal no encontrada");
         if (!duplicate) throw error;
         return { kind: "duplicate" as const, session, next: null };
+      }
+    },
+
+    async interruptRoundByUser(
+      ownerId: string,
+      sessionId: string,
+      input: {
+        sourceEventId: string;
+        trigger: "voice";
+        expectedAvatarId: string;
+        expectedTurnId: string;
+      }
+    ) {
+      try {
+        return await db.$transaction(async (tx) => {
+          await lockGroupVoiceSessions(tx, [sessionId]);
+          const session = await tx.groupVoiceSession.findFirst({ where: { id: sessionId, ownerId } });
+          if (!session) throw new NotFoundError("Llamada grupal no encontrada");
+
+          const duplicate = await tx.groupVoiceInterruptionEvent.findFirst({
+            where: { groupVoiceSessionId: sessionId, sourceEventId: input.sourceEventId },
+          });
+          if (duplicate) {
+            const latestRound = await tx.groupVoiceRound.findFirst({
+              where: { groupVoiceSessionId: sessionId },
+              orderBy: [{ contextVersion: "desc" }, { createdAt: "desc" }, { id: "desc" }],
+              select: { id: true },
+            });
+            const replayable =
+              duplicate.outcome === "interrupted" &&
+              session.orchestrationPhase === "listening" &&
+              session.floorTurnId === null &&
+              latestRound?.id === duplicate.roundId;
+            return {
+              kind: "duplicate" as const,
+              outcome: duplicate.outcome,
+              replayable,
+              session,
+              avatarId: replayable ? duplicate.interruptedAvatarId : null,
+            };
+          }
+
+          const audibleTurn = await tx.groupPlannedTurn.findFirst({
+            where: {
+              id: input.expectedTurnId,
+              avatarAgentId: input.expectedAvatarId,
+              round: { groupVoiceSessionId: sessionId },
+            },
+            include: { round: true },
+          });
+          if (!audibleTurn) {
+            return { kind: "stale" as const, session, avatarId: session.floorOwnerAvatarId };
+          }
+
+          const currentTurn = session.floorTurnId
+            ? await tx.groupPlannedTurn.findFirst({
+                where: { id: session.floorTurnId, round: { groupVoiceSessionId: sessionId } },
+              })
+            : null;
+          const floorPhase = isFloorPhase(session.orchestrationPhase) ? session.orchestrationPhase : null;
+          const activeSameRound =
+            currentTurn !== null &&
+            currentTurn.roundId === audibleTurn.roundId &&
+            session.floorOwnerAvatarId === currentTurn.avatarAgentId &&
+            floorPhase !== null &&
+            ["queued", "speaking"].includes(audibleTurn.round.status);
+
+          if (!activeSameRound || !currentTurn || !session.floorOwnerAvatarId || !floorPhase) {
+            await tx.groupVoiceInterruptionEvent.create({
+              data: {
+                groupVoiceSessionId: sessionId,
+                sourceEventId: input.sourceEventId,
+                roundId: audibleTurn.roundId,
+                turnId: audibleTurn.id,
+                trigger: input.trigger,
+                reason: "user",
+                outcome: "stale",
+              },
+            });
+            return { kind: "stale" as const, session, avatarId: session.floorOwnerAvatarId };
+          }
+
+          // The provider can finish the captured turn after the browser has already muted it,
+          // then advance the floor before the authoritative interruption acquires this lock.
+          if (audibleTurn.status === "completed") {
+            const discardedAudibleTurn = await tx.groupPlannedTurn.updateMany({
+              where: {
+                id: audibleTurn.id,
+                roundId: audibleTurn.roundId,
+                status: "completed",
+              },
+              data: {
+                status: "interrupted",
+                responseText: null,
+                completedAt: new Date(),
+              },
+            });
+            if (discardedAudibleTurn.count !== 1) throw new ConditionalFloorClaimError();
+            await deleteAssistantTurnMessage(tx, session.conversationId, audibleTurn.id);
+          }
+
+          const interruptedAvatarId = session.floorOwnerAvatarId;
+          await tx.groupVoiceInterruptionEvent.create({
+            data: {
+              groupVoiceSessionId: sessionId,
+              sourceEventId: input.sourceEventId,
+              roundId: audibleTurn.roundId,
+              turnId: audibleTurn.id,
+              trigger: input.trigger,
+              reason: "user",
+              outcome: "interrupted",
+              interruptedAvatarId,
+            },
+          });
+          const interrupted = await cancelRoundTransaction(tx, sessionId, audibleTurn.roundId, {
+            ownerId,
+            avatarId: interruptedAvatarId,
+            turnId: currentTurn.id,
+            phases: [floorPhase],
+          });
+          if (!interrupted) throw new ConditionalFloorClaimError();
+
+          return {
+            kind: "interrupted" as const,
+            outcome: "interrupted" as const,
+            session,
+            avatarId: interruptedAvatarId,
+          };
+        });
+      } catch (error) {
+        if (!isUniqueConstraintError(error)) throw error;
+        const [session, duplicate, latestRound] = await Promise.all([
+          db.groupVoiceSession.findFirst({ where: { id: sessionId, ownerId } }),
+          db.groupVoiceInterruptionEvent.findFirst({
+            where: { groupVoiceSessionId: sessionId, sourceEventId: input.sourceEventId },
+          }),
+          db.groupVoiceRound.findFirst({
+            where: { groupVoiceSessionId: sessionId },
+            orderBy: [{ contextVersion: "desc" }, { createdAt: "desc" }, { id: "desc" }],
+            select: { id: true },
+          }),
+        ]);
+        if (!session) throw new NotFoundError("Llamada grupal no encontrada");
+        if (!duplicate) throw error;
+        const replayable =
+          duplicate.outcome === "interrupted" &&
+          session.orchestrationPhase === "listening" &&
+          session.floorTurnId === null &&
+          latestRound?.id === duplicate.roundId;
+        return {
+          kind: "duplicate" as const,
+          outcome: duplicate.outcome,
+          replayable,
+          session,
+          avatarId: replayable ? duplicate.interruptedAvatarId : null,
+        };
       }
     },
 
@@ -1779,6 +1913,31 @@ async function upsertAssistantTurnMessage(
     data: { lastMessageAt: message.createdAt },
   });
   return message;
+}
+
+async function deleteAssistantTurnMessage(
+  tx: Prisma.TransactionClient,
+  conversationId: string,
+  turnId: string
+) {
+  const deleted = await tx.message.deleteMany({
+    where: {
+      conversationId,
+      role: "assistant",
+      sourceEventId: `group-turn:${turnId}`,
+    },
+  });
+  if (deleted.count === 0) return;
+
+  const latestMessage = await tx.message.findFirst({
+    where: { conversationId },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    select: { createdAt: true },
+  });
+  await tx.conversation.updateMany({
+    where: { id: conversationId },
+    data: { lastMessageAt: latestMessage?.createdAt ?? null },
+  });
 }
 
 async function buildCanonicalRollingSummary(tx: Prisma.TransactionClient, sessionId: string) {

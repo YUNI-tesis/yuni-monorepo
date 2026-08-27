@@ -4,6 +4,7 @@ import {
   encodeElevenLabsAgentCommand,
   isAuthorizedSpeechEnd,
   isAuthorizedSpeechStart,
+  isSignificantGroupBargeInTranscript,
   providerEventSourceId,
   shouldSendGroupUserActivity,
   type GroupMediaElement,
@@ -72,6 +73,18 @@ describe("strict group call runtime", () => {
     });
   });
 
+  it("adds an event id when a turn needs provider callback correlation", () => {
+    const decoded = new TextDecoder().decode(
+      encodeElevenLabsAgentCommand("user_message", { text: "Respondé" }, "group-turn:turn-1")
+    );
+    expect(JSON.parse(decoded)).toEqual({
+      event_type: "elevenlabs_agent_command",
+      event_id: "group-turn:turn-1",
+      elevenlabs_event_type: "user_message",
+      data: { text: "Respondé" },
+    });
+  });
+
   it("derives stable provider event ids from provider delivery ids", () => {
     expect(
       providerEventSourceId({
@@ -80,5 +93,14 @@ describe("strict group call runtime", () => {
         providerEventId: "provider-event-9",
       })
     ).toBe("speak_started:avatar-1:provider-event-9");
+  });
+
+  it("ignores only isolated normalized backchannels for voice barge-in", () => {
+    for (const backchannel of ["sí", "AJA!", "ok.", "Okay", "dale", "claro", "mmm", "eh…"]) {
+      expect(isSignificantGroupBargeInTranscript(backchannel)).toBe(false);
+    }
+    expect(isSignificantGroupBargeInTranscript("sí, pero esperá")).toBe(true);
+    expect(isSignificantGroupBargeInTranscript("pará")).toBe(true);
+    expect(isSignificantGroupBargeInTranscript("   ")).toBe(false);
   });
 });

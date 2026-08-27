@@ -13,10 +13,9 @@ Decisiones de producto vigentes:
 - [0013-owner-participant-activity.md](../thesis/decision-records/0013-owner-participant-activity.md)
 - [0014-identified-public-voice-sessions.md](../thesis/decision-records/0014-identified-public-voice-sessions.md)
 - [0015-creator-dashboard-actionable-metrics.md](../thesis/decision-records/0015-creator-dashboard-actionable-metrics.md)
-- [0018-atomic-elevenlabs-group-agents.md](../thesis/decision-records/0018-atomic-elevenlabs-group-agents.md)
-- [0019-strict-floor-independent-liveavatar-group-sessions.md](../thesis/decision-records/0019-strict-floor-independent-liveavatar-group-sessions.md)
 - [0020-configurable-external-session-limits.md](../thesis/decision-records/0020-configurable-external-session-limits.md)
 - [0021-retire-unused-realtime-service.md](../thesis/decision-records/0021-retire-unused-realtime-service.md)
+- [0023-user-preemptible-group-call-floor.md](../thesis/decision-records/0023-user-preemptible-group-call-floor.md)
 
 ## Direccion Actual
 
@@ -25,7 +24,7 @@ Decisiones de producto vigentes:
 - Compartir soporta links publicos con email obligatorio e invitaciones/accesos por cuenta.
 - Sesiones publicas se atribuyen a `participantEmail` y opcionalmente `participantUserId`.
 - Sync de Agent/Knowledge Base corre en background con reintentos automaticos; no es CTA principal de usuario.
-- `Grupos` usa sesiones LiveAvatar LITE independientes, Agents atómicos, posiciones fijas y un floor estricto; LiveKit compartido queda como evaluación futura.
+- `Grupos` usa sesiones LiveAvatar LITE independientes, Agents atómicos, posiciones fijas y un floor asimétrico: estricto entre avatares y preemptivo sólo para la voz humana capturada por Scribe. LiveKit compartido queda como evaluación futura.
 - El navegador conecta la voz directamente con ElevenLabs/LiveAvatar mediante tokens efímeros; YUNI no despliega un WebSocket propio.
 
 ## Estado
@@ -73,6 +72,7 @@ Decisiones de producto vigentes:
   ciclo de vida externo endurecido.
 - `36-hardening-observability.md`: pendiente; refactorizado con sync queue/retries.
 - `37-group-call-floor-hardening.md`: implementado; router semántico, audio gate, attempts por conexión, `user_activity`, eventos idempotentes y cleanup durable grupal.
+- `38-user-preemptible-group-call-floor.md`: implementado con alcance reducido tras QA; Scribe corta al primer parcial significativo, el backend cancela la ronda y el transcript committed abre un único turno nuevo, sin persistir el fragmento interrumpido.
 
 ## Uso
 
