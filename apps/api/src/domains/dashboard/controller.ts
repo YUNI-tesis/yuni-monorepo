@@ -1,6 +1,6 @@
-import { Hono, type Context } from "hono";
-import { validationError, unauthorizedError } from "../../utils/errors";
-import { getSessionToken, verifySessionToken } from "../auth/session";
+import { Hono } from "hono";
+import { validationError } from "../../utils/errors";
+import type { CreatorSessionEnv } from "../auth/middleware";
 import {
   createCreatorDashboardService,
   type CreatorDashboardRange,
@@ -13,27 +13,21 @@ const DAY_MS = 24 * 60 * 60 * 1_000;
 export type CreatorDashboardControllerDependencies = CreatorDashboardServiceDependencies;
 
 export function createCreatorDashboardController(dependencies: CreatorDashboardControllerDependencies) {
-  const dashboard = new Hono();
+  const dashboard = new Hono<CreatorSessionEnv>();
   const service = createCreatorDashboardService(dependencies);
 
   dashboard.get("/dashboard/creator-summary", async (context) => {
-    const session = await getCurrentSession(context);
-    if (!session) return context.json(unauthorizedError(), 401);
+    const currentUser = context.get("currentUser");
 
     const range = parseRange(context.req.query("from"), context.req.query("to"));
     if (!range.ok) {
       return context.json(validationError([{ message: range.message }]), 400);
     }
 
-    return context.json(await service.getSummary(session.userId, range.value));
+    return context.json(await service.getSummary(currentUser.id, range.value));
   });
 
   return dashboard;
-}
-
-async function getCurrentSession(context: Context) {
-  const token = getSessionToken(context);
-  return token ? verifySessionToken(token) : null;
 }
 
 function parseRange(fromValue?: string, toValue?: string) {

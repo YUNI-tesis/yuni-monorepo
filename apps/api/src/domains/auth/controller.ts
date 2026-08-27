@@ -1,7 +1,8 @@
 import { Hono } from "hono";
 import { LoginInputSchema, RegisterInputSchema } from "@yuni/domain";
 import { conflictError, unauthorizedError, validationError } from "../../utils/errors";
-import { createSessionToken, clearSessionCookie, getSessionToken, setSessionCookie } from "./session";
+import type { CreatorSessionEnv } from "./middleware";
+import { createSessionToken, clearSessionCookie, setSessionCookie } from "./session";
 import { createAuthService, type AuthServiceDependencies } from "./service";
 
 export type AuthControllerDependencies = AuthServiceDependencies;
@@ -58,16 +59,13 @@ export function createAuthController(dependencies: AuthControllerDependencies) {
     return context.json({ ok: true });
   });
 
-  auth.get("/me", async (context) => {
-    const user = await service.getCurrentUserByToken(getSessionToken(context));
+  return auth;
+}
 
-    if (!user) {
-      clearSessionCookie(context);
-      return context.json(unauthorizedError(), 401);
-    }
+export function createCurrentUserController() {
+  const auth = new Hono<CreatorSessionEnv>();
 
-    return context.json({ user });
-  });
+  auth.get("/me", (context) => context.json({ user: context.get("currentUser") }));
 
   return auth;
 }

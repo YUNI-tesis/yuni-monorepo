@@ -43,9 +43,12 @@ describe("web auth proxy", () => {
     expect(response.headers.get("location")).toBeNull();
   });
 
-  it("redirects authenticated users away from auth routes", () => {
-    const response = proxy(createRequest("/auth/login", "yuni_session=token"));
+  it.each(["/auth/login", "/auth/register"])(
+    "keeps %s reachable when a stale session cookie exists",
+    (pathname) => {
+      const response = proxy(createRequest(pathname, "yuni_session=stale-token"));
 
-    expect(response.headers.get("location")).toBe("http://localhost:3000/dashboard");
-  });
+      expect(response.headers.get("location")).toBeNull();
+    }
+  );
 });

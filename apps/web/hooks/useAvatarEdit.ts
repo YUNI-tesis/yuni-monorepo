@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { getAvatar, type ApiAvatar, type UpdateAvatarRequest } from "../lib/api/avatar-api";
 import { ApiClientError } from "../lib/api/http-client";
@@ -122,7 +121,6 @@ export function buildUpdateAvatarRequest(
 }
 
 export function useAvatarEdit(avatarId: string) {
-  const router = useRouter();
   const [loadState, setLoadState] = useState<AvatarEditLoadState>({
     status: "loading",
     avatar: null,
@@ -149,11 +147,6 @@ export function useAvatarEdit(avatarId: string) {
         }
       })
       .catch((caughtError) => {
-        if (caughtError instanceof ApiClientError && caughtError.status === 401) {
-          router.push("/auth/login");
-          return;
-        }
-
         if (!isMounted) {
           return;
         }
@@ -179,7 +172,7 @@ export function useAvatarEdit(avatarId: string) {
     return () => {
       isMounted = false;
     };
-  }, [avatarId, router]);
+  }, [avatarId]);
 
   function updateField<Field extends keyof AvatarEditState>(field: Field, value: AvatarEditState[Field]) {
     setLoadState((currentLoadState) => {

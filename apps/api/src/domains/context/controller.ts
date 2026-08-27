@@ -1,13 +1,7 @@
 import { Hono, type Context } from "hono";
 import { PresignDocumentUploadInputSchema } from "@yuni/domain";
-import {
-  conflictError,
-  notFoundError,
-  serviceUnavailableError,
-  unauthorizedError,
-  validationError,
-} from "../../utils/errors";
-import { getSessionToken, verifySessionToken } from "../auth/session";
+import { conflictError, notFoundError, serviceUnavailableError, validationError } from "../../utils/errors";
+import type { CreatorSessionEnv } from "../auth/middleware";
 import { DocumentStateConflictError } from "./repository";
 import {
   ContextNotFoundError,
@@ -19,28 +13,23 @@ import {
 
 export type AvatarContextControllerDependencies = AvatarContextServiceDependencies;
 
-async function getSession(context: Context) {
-  const token = getSessionToken(context);
-  return token ? verifySessionToken(token) : null;
-}
-
 export function createAvatarContextController(dependencies: AvatarContextControllerDependencies) {
-  const controller = new Hono();
+  const controller = new Hono<CreatorSessionEnv>();
   const service = createAvatarContextService(dependencies);
 
   controller.get("/avatars/:avatarId/context", async (context) => {
-    const session = await getSession(context);
-    if (!session) return context.json(unauthorizedError(), 401);
+    const currentUser = context.get("currentUser");
     try {
-      return context.json({ context: await service.get(session.userId, context.req.param("avatarId")) });
+      return context.json({
+        context: await service.get(currentUser.id, context.req.param("avatarId")),
+      });
     } catch (error) {
       return contextError(context, error);
     }
   });
 
   controller.patch("/avatars/:avatarId/context", async (context) => {
-    const session = await getSession(context);
-    if (!session) return context.json(unauthorizedError(), 401);
+    const currentUser = context.get("currentUser");
     const body = (await context.req.json().catch(() => null)) as { text?: unknown } | null;
     if (!body || typeof body.text !== "string" || body.text.length > 20_000) {
       return context.json(
@@ -50,7 +39,7 @@ export function createAvatarContextController(dependencies: AvatarContextControl
     }
     try {
       return context.json({
-        context: await service.updateText(session.userId, context.req.param("avatarId"), body.text.trim()),
+        context: await service.updateText(currentUser.id, context.req.param("avatarId"), body.text.trim()),
       });
     } catch (error) {
       return contextError(context, error);
@@ -58,13 +47,12 @@ export function createAvatarContextController(dependencies: AvatarContextControl
   });
 
   controller.post("/avatars/:avatarId/documents/presign-upload", async (context) => {
-    const session = await getSession(context);
-    if (!session) return context.json(unauthorizedError(), 401);
+    const currentUser = context.get("currentUser");
     const parsed = PresignDocumentUploadInputSchema.safeParse(await context.req.json().catch(() => null));
     if (!parsed.success) return context.json(validationError(parsed.error.issues), 400);
     try {
       return context.json(
-        await service.presign(session.userId, context.req.param("avatarId"), parsed.data),
+        await service.presign(currentUser.id, context.req.param("avatarId"), parsed.data),
         201
       );
     } catch (error) {
@@ -73,11 +61,10 @@ export function createAvatarContextController(dependencies: AvatarContextControl
   });
 
   controller.post("/documents/:documentId/confirm-upload", async (context) => {
-    const session = await getSession(context);
-    if (!session) return context.json(unauthorizedError(), 401);
+    const currentUser = context.get("currentUser");
     try {
       return context.json({
-        document: await service.confirm(session.userId, context.req.param("documentId")),
+        document: await service.confirm(currentUser.id, context.req.param("documentId")),
       });
     } catch (error) {
       return contextError(context, error);
@@ -85,20 +72,20 @@ export function createAvatarContextController(dependencies: AvatarContextControl
   });
 
   controller.post("/documents/:documentId/retry", async (context) => {
-    const session = await getSession(context);
-    if (!session) return context.json(unauthorizedError(), 401);
+    const currentUser = context.get("currentUser");
     try {
-      return context.json({ document: await service.retry(session.userId, context.req.param("documentId")) });
+      return context.json({
+        document: await service.retry(currentUser.id, context.req.param("documentId")),
+      });
     } catch (error) {
       return contextError(context, error);
     }
   });
 
   controller.delete("/documents/:documentId", async (context) => {
-    const session = await getSession(context);
-    if (!session) return context.json(unauthorizedError(), 401);
+    const currentUser = context.get("currentUser");
     try {
-      return context.json(await service.remove(session.userId, context.req.param("documentId")));
+      return context.json(await service.remove(currentUser.id, context.req.param("documentId")));
     } catch (error) {
       return contextError(context, error);
     }

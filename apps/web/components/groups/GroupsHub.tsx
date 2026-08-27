@@ -22,7 +22,6 @@ import {
   updateAvatarGroup,
   type ApiAvatarGroup,
 } from "../../lib/api/avatar-group-api";
-import { ApiClientError } from "../../lib/api/http-client";
 import catalogStyles from "../catalog/CatalogGrid.module.css";
 import { GroupCard } from "./GroupCard";
 import styles from "./GroupsHub.module.css";
@@ -50,10 +49,6 @@ export function GroupsHub() {
       setPageError(null);
       setGroupStatus("ready");
     } catch (error) {
-      if (error instanceof ApiClientError && error.status === 401) {
-        router.push("/auth/login");
-        return;
-      }
       setPageError(error instanceof Error ? error.message : "No pudimos cargar tus grupos.");
       setGroupStatus("error");
     }

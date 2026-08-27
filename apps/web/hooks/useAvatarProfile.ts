@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { getAvatar, type ApiAvatar } from "../lib/api/avatar-api";
 import { ApiClientError } from "../lib/api/http-client";
@@ -25,7 +24,6 @@ export type AvatarProfileState =
 export type AvatarProfileResult = AvatarProfileState & { reload: () => void };
 
 export function useAvatarProfile(avatarId: string): AvatarProfileResult {
-  const router = useRouter();
   const [state, setState] = useState<AvatarProfileState>({
     status: "loading",
     avatar: null,
@@ -45,11 +43,6 @@ export function useAvatarProfile(avatarId: string): AvatarProfileResult {
         }
       })
       .catch((caughtError) => {
-        if (caughtError instanceof ApiClientError && caughtError.status === 401) {
-          router.push("/auth/login");
-          return;
-        }
-
         if (!isMounted) {
           return;
         }
@@ -73,7 +66,7 @@ export function useAvatarProfile(avatarId: string): AvatarProfileResult {
     return () => {
       isMounted = false;
     };
-  }, [avatarId, reloadKey, router]);
+  }, [avatarId, reloadKey]);
 
   return {
     ...state,

@@ -3,7 +3,6 @@ import { createLogger } from "@yuni/observability";
 import type { PasswordService } from "./password";
 import type { AuthRepository, PublicUser } from "./repository";
 import { toPublicUser } from "./repository";
-import { verifySessionToken } from "./session";
 
 const logger = createLogger("@yuni/api:auth");
 
@@ -55,20 +54,6 @@ export function createAuthService({ repository, passwords, accessGrantLinker }: 
       await linkAccessGrantsBestEffort(accessGrantLinker, user.id, user.email);
 
       return { ok: true, user: toPublicUser(user) };
-    },
-
-    async getCurrentUserByToken(token: string | undefined): Promise<PublicUser | null> {
-      if (!token) {
-        return null;
-      }
-
-      const session = await verifySessionToken(token);
-
-      if (!session) {
-        return null;
-      }
-
-      return repository.findPublicById(session.userId);
     },
   };
 }

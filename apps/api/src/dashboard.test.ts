@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createCreatorDashboardController } from "./domains/dashboard/controller";
 import type { CreatorDashboardRepository, CreatorDashboardSummaryData } from "./domains/dashboard/repository";
 import { createCreatorDashboardService } from "./domains/dashboard/service";
+import { createCreatorSessionMiddleware, type CreatorSessionEnv } from "./domains/auth/middleware";
 import { createSessionToken, SESSION_COOKIE_NAME } from "./domains/auth/session";
 
 const now = new Date("2026-08-16T15:00:00.000Z");
@@ -167,7 +168,23 @@ describe("@yuni/api creator dashboard service", () => {
 describe("@yuni/api creator dashboard endpoint", () => {
   async function setup() {
     const repository = createRepository();
-    const app = new Hono();
+    const app = new Hono<CreatorSessionEnv>();
+    app.use(
+      "*",
+      createCreatorSessionMiddleware({
+        async findPublicById(userId) {
+          if (userId !== "owner-1") return null;
+          return {
+            id: userId,
+            email: "owner@example.com",
+            name: "Owner",
+            imageUrl: null,
+            createdAt: now,
+            updatedAt: now,
+          };
+        },
+      })
+    );
     app.route("/", createCreatorDashboardController({ repository, now: () => now }));
     const token = await createSessionToken({
       id: "owner-1",

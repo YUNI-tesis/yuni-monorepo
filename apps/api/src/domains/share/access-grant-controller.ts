@@ -5,8 +5,8 @@ import {
   SelfAccessGrantError,
   UpdateAccessGrantInputSchema,
 } from "@yuni/domain";
-import { conflictError, notFoundError, unauthorizedError, validationError } from "../../utils/errors";
-import { getSessionToken, verifySessionToken } from "../auth/session";
+import { conflictError, notFoundError, validationError } from "../../utils/errors";
+import type { CreatorSessionEnv } from "../auth/middleware";
 import {
   createAccessGrantsService,
   DuplicateAccessGrantError,
@@ -15,22 +15,16 @@ import {
 
 export type AccessGrantsControllerDependencies = AccessGrantsServiceDependencies;
 
-async function getCurrentSession(context: Context) {
-  const token = getSessionToken(context);
-  return token ? verifySessionToken(token) : null;
-}
-
 export function createAccessGrantsController(dependencies: AccessGrantsControllerDependencies) {
-  const accessGrants = new Hono();
+  const accessGrants = new Hono<CreatorSessionEnv>();
   const service = createAccessGrantsService(dependencies);
 
   accessGrants.get("/avatars/:avatarId/access-grants", async (context) => {
-    const session = await getCurrentSession(context);
-    if (!session) return context.json(unauthorizedError(), 401);
+    const currentUser = context.get("currentUser");
 
     try {
       return context.json({
-        accessGrants: await service.listAccessGrants(session.userId, context.req.param("avatarId")),
+        accessGrants: await service.listAccessGrants(currentUser.id, context.req.param("avatarId")),
       });
     } catch (error) {
       return handleAccessGrantError(error, context);
@@ -38,8 +32,7 @@ export function createAccessGrantsController(dependencies: AccessGrantsControlle
   });
 
   accessGrants.post("/avatars/:avatarId/access-grants", async (context) => {
-    const session = await getCurrentSession(context);
-    if (!session) return context.json(unauthorizedError(), 401);
+    const currentUser = context.get("currentUser");
 
     const body: unknown = await context.req.json().catch(() => null);
     const parsed = CreateAccessGrantInputSchema.safeParse(body);
@@ -51,7 +44,7 @@ export function createAccessGrantsController(dependencies: AccessGrantsControlle
       return context.json(
         {
           accessGrant: await service.createAccessGrant(
-            session.userId,
+            currentUser.id,
             context.req.param("avatarId"),
             parsed.data
           ),
@@ -64,8 +57,7 @@ export function createAccessGrantsController(dependencies: AccessGrantsControlle
   });
 
   accessGrants.patch("/avatars/:avatarId/access-grants/:accessGrantId", async (context) => {
-    const session = await getCurrentSession(context);
-    if (!session) return context.json(unauthorizedError(), 401);
+    const currentUser = context.get("currentUser");
 
     const body: unknown = await context.req.json().catch(() => null);
     const parsed = UpdateAccessGrantInputSchema.safeParse(body);
@@ -76,7 +68,7 @@ export function createAccessGrantsController(dependencies: AccessGrantsControlle
     try {
       return context.json({
         accessGrant: await service.updateAccessGrant(
-          session.userId,
+          currentUser.id,
           context.req.param("avatarId"),
           context.req.param("accessGrantId"),
           parsed.data
@@ -88,12 +80,11 @@ export function createAccessGrantsController(dependencies: AccessGrantsControlle
   });
 
   accessGrants.delete("/avatars/:avatarId/access-grants/:accessGrantId", async (context) => {
-    const session = await getCurrentSession(context);
-    if (!session) return context.json(unauthorizedError(), 401);
+    const currentUser = context.get("currentUser");
 
     try {
       const result = await service.deleteAccessGrant(
-        session.userId,
+        currentUser.id,
         context.req.param("avatarId"),
         context.req.param("accessGrantId")
       );

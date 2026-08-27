@@ -1,9 +1,7 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { listAvatars, type ApiAvatarSummary } from "../lib/api/avatar-api";
-import { ApiClientError } from "../lib/api/http-client";
 
 const avatarListCacheTtlMs = 60_000;
 
@@ -68,7 +66,6 @@ export function invalidateAvatarListCache() {
 }
 
 export function useAvatarList(): AvatarListState {
-  const router = useRouter();
   const [state, setState] = useState<AvatarListState>(() => {
     const cachedAvatars = readFreshAvatarListCache();
 
@@ -91,11 +88,6 @@ export function useAvatarList(): AvatarListState {
         }
       })
       .catch((error) => {
-        if (error instanceof ApiClientError && error.status === 401) {
-          router.push("/auth/login");
-          return;
-        }
-
         if (isMounted) {
           setState({
             status: "error",
@@ -108,7 +100,7 @@ export function useAvatarList(): AvatarListState {
     return () => {
       isMounted = false;
     };
-  }, [router]);
+  }, []);
 
   return state;
 }
