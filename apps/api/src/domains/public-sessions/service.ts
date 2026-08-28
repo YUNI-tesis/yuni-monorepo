@@ -235,6 +235,89 @@ export function createPublicSessionsService(dependencies: PublicSessionsServiceD
       return { id: publicSessionId, status: "active" as const };
     },
 
+    async failStart(publicSessionId: string, sessionToken: string) {
+      const access = await dependencies.tokenService.verifySessionToken(sessionToken);
+      if (!access || access.sessionId !== publicSessionId) throw new InvalidPublicTokenError();
+
+      const session = await dependencies.repository.findForEnd(publicSessionId);
+      if (!session || (session.shareLinkId !== null && session.shareLinkId !== access.shareLinkId)) {
+        throw new NotFoundError("Public session not found");
+      }
+      const conversation = session.conversation;
+      const realtimeSession = session.realtimeSessions[0];
+      if (!realtimeSession) throw new NotFoundError("Public session not found");
+
+      if (session.status === "ended" && realtimeSession.status === "ended") {
+        await stopStoredPublicProviderSession(dependencies, {
+          publicSessionId,
+          realtimeSessionId: realtimeSession.id,
+          providerStoppedAt: realtimeSession.providerStoppedAt,
+          providerSessionTokenCiphertext: realtimeSession.providerSessionTokenCiphertext,
+        });
+        return {
+          id: publicSessionId,
+          status: "ended" as const,
+          endedAt: session.endedAt?.toISOString() ?? null,
+        };
+      }
+      if (session.status === "errored" && realtimeSession.status === "errored") {
+        await stopStoredPublicProviderSession(dependencies, {
+          publicSessionId,
+          realtimeSessionId: realtimeSession.id,
+          providerStoppedAt: realtimeSession.providerStoppedAt,
+          providerSessionTokenCiphertext: realtimeSession.providerSessionTokenCiphertext,
+        });
+        return { id: publicSessionId, status: "errored" as const };
+      }
+      if (!conversation) throw new NotFoundError("Public session not found");
+      if (session.status !== "active" || !["connecting", "active"].includes(realtimeSession.status)) {
+        throw new NotFoundError("Public session not found");
+      }
+
+      const failed = await dependencies.repository.markStartFailed({
+        publicSessionId,
+        realtimeSessionId: realtimeSession.id,
+        conversationId: conversation.id,
+        errorMessage: EXTERNAL_SESSION_START_ERROR_MESSAGE,
+      });
+      if (!failed) {
+        const current = await dependencies.repository.findForEnd(publicSessionId);
+        const currentRealtimeSession = current?.realtimeSessions[0];
+        if (
+          current?.status === "ended" &&
+          currentRealtimeSession?.id === realtimeSession.id &&
+          currentRealtimeSession.status === "ended"
+        ) {
+          await stopStoredPublicProviderSession(dependencies, {
+            publicSessionId,
+            realtimeSessionId: currentRealtimeSession.id,
+            providerStoppedAt: currentRealtimeSession.providerStoppedAt,
+            providerSessionTokenCiphertext: currentRealtimeSession.providerSessionTokenCiphertext,
+          });
+          return {
+            id: publicSessionId,
+            status: "ended" as const,
+            endedAt: current.endedAt?.toISOString() ?? null,
+          };
+        }
+        if (
+          current?.status !== "errored" ||
+          currentRealtimeSession?.id !== realtimeSession.id ||
+          currentRealtimeSession.status !== "errored"
+        ) {
+          throw new NotFoundError("Public session not found");
+        }
+      }
+
+      await stopStoredPublicProviderSession(dependencies, {
+        publicSessionId,
+        realtimeSessionId: realtimeSession.id,
+        providerStoppedAt: realtimeSession.providerStoppedAt,
+        providerSessionTokenCiphertext: realtimeSession.providerSessionTokenCiphertext,
+      });
+      return { id: publicSessionId, status: "errored" as const };
+    },
+
     async end(publicSessionId: string, sessionToken: string, input: EndPublicSessionInput) {
       const access = await dependencies.tokenService.verifySessionToken(sessionToken);
       if (!access || access.sessionId !== publicSessionId) throw new InvalidPublicTokenError();

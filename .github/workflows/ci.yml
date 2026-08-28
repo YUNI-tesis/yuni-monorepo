@@ -34,7 +34,7 @@ jobs:
         run: echo "This event does not promote a pull request to main."
 
       - name: Accept staging promotion
-        if: github.event_name == 'pull_request' && github.base_ref == 'main' && github.head_ref == 'staging'
+        if: github.event_name == 'pull_request' && github.base_ref == 'main' && github.head_ref == 'staging' && github.event.pull_request.head.repo.full_name == github.repository
         run: echo "The staging branch is allowed to promote to main."
 
       - name: Accept Dependabot security update
@@ -42,9 +42,9 @@ jobs:
         run: echo "Dependabot is allowed to target the default branch for security updates."
 
       - name: Reject an unsupported main pull request source
-        if: github.event_name == 'pull_request' && github.base_ref == 'main' && github.head_ref != 'staging' && github.event.pull_request.user.login != 'dependabot[bot]'
+        if: github.event_name == 'pull_request' && github.base_ref == 'main' && (github.head_ref != 'staging' || github.event.pull_request.head.repo.full_name != github.repository) && github.event.pull_request.user.login != 'dependabot[bot]'
         run: |
-          echo "Pull requests to main must come from staging or dependabot[bot]."
+          echo "Pull requests to main must come from this repository's staging branch or dependabot[bot]."
           exit 1
 
   quality:

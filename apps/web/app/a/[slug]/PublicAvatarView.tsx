@@ -19,6 +19,7 @@ import { useLiveAvatarSession } from "../../../hooks/useLiveAvatarSession";
 import {
   confirmPublicSessionStarted,
   endPublicSession,
+  failPublicSessionStart,
   getPublicSharedAvatar,
   identifyPublicVisitor,
   startPublicSession,
@@ -96,6 +97,18 @@ export function PublicAvatarView({ slug }: { slug: string }) {
     []
   );
 
+  const failStartTransport = useCallback(async () => {
+    const session = currentSession.current;
+    if (!session) return;
+    await failPublicSessionStart(session.id, session.token);
+  }, []);
+
+  const failStartTransportOnUnload = useCallback(() => {
+    const session = currentSession.current;
+    if (!session) return;
+    void failPublicSessionStart(session.id, session.token, { keepalive: true }).catch(() => undefined);
+  }, []);
+
   const call = useLiveAvatarSession(slug, {
     startSession: startTransport,
     onStarted: async () => {
@@ -103,6 +116,8 @@ export function PublicAvatarView({ slug }: { slug: string }) {
       if (!session) throw new Error("No pudimos confirmar el inicio de la llamada.");
       await confirmPublicSessionStarted(session.id, session.token);
     },
+    failStart: failStartTransport,
+    failStartOnUnload: failStartTransportOnUnload,
     endSession: endTransport,
     endSessionOnUnload: endTransportOnUnload,
     formatStartError: formatPublicSessionStartError,

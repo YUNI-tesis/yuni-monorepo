@@ -214,6 +214,17 @@ export function reportGroupParticipantFailure(
   });
 }
 
+export function confirmGroupParticipantStarted(
+  sessionId: string,
+  avatarId: string,
+  participantAttemptId: string
+) {
+  return apiRequest<{ ok: true }>(`/group-voice-sessions/${sessionId}/participants/${avatarId}/started`, {
+    method: "POST",
+    body: JSON.stringify({ participantAttemptId }),
+  });
+}
+
 export function retryGroupParticipant(sessionId: string, avatarId: string) {
   return apiRequest<{ participant: ApiGroupVoiceParticipant }>(
     `/group-voice-sessions/${sessionId}/participants/${avatarId}/retry`,

@@ -2,7 +2,11 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { getCreatorDashboardSummary, type ApiCreatorDashboardSummary } from "../lib/api/dashboard-api";
+import {
+  getCreatorDashboardSummary,
+  type ApiCreatorDashboardSummary,
+  type ApiDashboardDays,
+} from "../lib/api/dashboard-api";
 import { ApiClientError } from "../lib/api/http-client";
 
 export type CreatorDashboardState =
@@ -10,37 +14,66 @@ export type CreatorDashboardState =
   | { status: "ready"; data: ApiCreatorDashboardSummary; error: null }
   | { status: "error"; data: null; error: string };
 
-export function useCreatorDashboard() {
+type InternalCreatorDashboardState = {
+  requestedDays: ApiDashboardDays;
+  value: CreatorDashboardState;
+};
+
+export function useCreatorDashboard(days: ApiDashboardDays) {
   const router = useRouter();
-  const [state, setState] = useState<CreatorDashboardState>({
-    status: "loading",
-    data: null,
-    error: null,
+  const [requestKey, setRequestKey] = useState(0);
+  const [timeZone] = useState(() => {
+    try {
+      return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+    } catch {
+      return "UTC";
+    }
+  });
+  const [state, setState] = useState<InternalCreatorDashboardState>({
+    requestedDays: days,
+    value: { status: "loading", data: null, error: null },
   });
 
-  const load = useCallback(async () => {
-    setState({ status: "loading", data: null, error: null });
-
-    try {
-      const data = await getCreatorDashboardSummary();
-      setState({ status: "ready", data, error: null });
-    } catch (error) {
-      if (error instanceof ApiClientError && error.status === 401) {
-        router.push("/auth/login");
-        return;
-      }
-
-      setState({
-        status: "error",
-        data: null,
-        error: error instanceof Error ? error.message : "No pudimos cargar la actividad.",
-      });
-    }
-  }, [router]);
-
   useEffect(() => {
-    void load();
-  }, [load]);
+    const controller = new AbortController();
+    setState({
+      requestedDays: days,
+      value: { status: "loading", data: null, error: null },
+    });
 
-  return { ...state, reload: load };
+    void getCreatorDashboardSummary({ days, timeZone, signal: controller.signal })
+      .then((data) => {
+        if (!controller.signal.aborted) {
+          setState({
+            requestedDays: days,
+            value: { status: "ready", data, error: null },
+          });
+        }
+      })
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) return;
+        if (error instanceof ApiClientError && error.status === 401) {
+          router.push("/auth/login");
+          return;
+        }
+
+        setState({
+          requestedDays: days,
+          value: {
+            status: "error",
+            data: null,
+            error: error instanceof Error ? error.message : "No pudimos cargar la actividad.",
+          },
+        });
+      });
+
+    return () => controller.abort();
+  }, [days, requestKey, router, timeZone]);
+
+  const reload = useCallback(() => setRequestKey((key) => key + 1), []);
+
+  const visibleState: CreatorDashboardState =
+    state.requestedDays === days ? state.value : { status: "loading", data: null, error: null };
+
+  return { ...visibleState, reload };
 }

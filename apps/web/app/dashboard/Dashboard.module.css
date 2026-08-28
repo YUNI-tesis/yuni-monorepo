@@ -10,10 +10,84 @@
   gap: var(--yuni-space-3);
 }
 
+.headerStack {
+  display: grid;
+  gap: var(--yuni-space-4);
+}
+
+.periodRow {
+  display: flex;
+  align-items: center;
+  gap: var(--yuni-space-3);
+  color: var(--yuni-color-text-muted);
+  font-size: var(--yuni-font-sm);
+}
+
+.periodRow > span {
+  font-weight: 800;
+}
+
+.periodRow > small {
+  margin-left: auto;
+}
+
+.periodSelector {
+  display: inline-flex;
+  border: 1px solid var(--yuni-color-border);
+  border-radius: var(--yuni-radius-md);
+  background: var(--yuni-color-surface-soft);
+  padding: 3px;
+}
+
+.periodSelector button {
+  min-height: 38px;
+  border: 0;
+  border-radius: calc(var(--yuni-radius-md) - 3px);
+  background: transparent;
+  color: var(--yuni-color-text-muted);
+  padding: 0 var(--yuni-space-3);
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.periodSelector button:hover {
+  color: var(--yuni-color-text);
+}
+
+.periodSelector button:focus-visible,
+.attentionItem button:focus-visible,
+.chartHotspot:focus-visible {
+  outline: none;
+  box-shadow: var(--yuni-focus-ring);
+}
+
+.periodSelector .periodActive {
+  background: var(--yuni-color-surface-muted);
+  color: var(--yuni-color-text);
+}
+
 .metrics {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: var(--yuni-space-4);
+}
+
+.metrics > * {
+  min-width: 0;
+}
+
+.metrics :global(.yuni-metric-card__label),
+.metrics :global(.yuni-metric-card__value) {
+  width: auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.metrics :global(.yuni-badge) {
+  max-width: 100%;
+  white-space: normal;
+  text-align: left;
 }
 
 .section {
@@ -81,7 +155,6 @@
 }
 
 .attentionGroupHeader p,
-.noItems,
 .moreItems {
   margin: var(--yuni-space-1) 0 0;
   color: var(--yuni-color-text-muted);
@@ -102,13 +175,12 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--yuni-space-3);
-  border: 1px solid transparent;
+  border: 1px solid var(--yuni-color-border);
   border-radius: var(--yuni-radius-sm);
   background: var(--yuni-color-surface-soft);
   color: var(--yuni-color-text);
   padding: var(--yuni-space-2) var(--yuni-space-3);
   text-align: left;
-  cursor: pointer;
   transition:
     border-color 160ms ease,
     background-color 160ms ease;
@@ -116,7 +188,6 @@
 
 .attentionItem:hover {
   border-color: var(--yuni-color-border-strong);
-  background: var(--yuni-color-surface-muted);
 }
 
 .attentionItem:focus-visible,
@@ -130,6 +201,20 @@
   display: grid;
   min-width: 0;
   gap: 2px;
+}
+
+.attentionItem button {
+  flex: 0 0 auto;
+  min-height: 36px;
+  border: 0;
+  border-radius: var(--yuni-radius-sm);
+  background: transparent;
+  color: var(--yuni-color-accent);
+  padding: var(--yuni-space-2);
+  font: inherit;
+  font-size: var(--yuni-font-sm);
+  font-weight: 800;
+  cursor: pointer;
 }
 
 .attentionItem strong,
@@ -204,13 +289,19 @@
 }
 
 .chart {
-  min-height: 220px;
+  display: grid;
+  gap: var(--yuni-space-1);
+}
+
+.chartPlot {
+  position: relative;
+  height: 220px;
 }
 
 .chart svg {
   display: block;
   width: 100%;
-  height: 220px;
+  height: 100%;
   overflow: visible;
 }
 
@@ -219,7 +310,6 @@
   stroke-width: 1;
 }
 
-.conversationLine,
 .participantLine {
   fill: none;
   stroke-linecap: round;
@@ -228,12 +318,66 @@
   vector-effect: non-scaling-stroke;
 }
 
-.conversationLine {
-  stroke: var(--yuni-color-primary);
+.conversationBar {
+  fill: var(--yuni-color-primary);
+  opacity: 0.72;
 }
 
 .participantLine {
   stroke: var(--yuni-color-accent);
+}
+
+.axisLabel {
+  fill: var(--yuni-color-text-muted);
+  font-size: 11px;
+}
+
+.chartHotspot {
+  position: absolute;
+  z-index: 2;
+  width: 18px;
+  height: 18px;
+  transform: translate(-50%, -50%);
+  border: 3px solid var(--yuni-color-surface);
+  border-radius: 50%;
+  background: var(--yuni-color-accent);
+  padding: 0;
+  cursor: help;
+}
+
+.chartHotspot span {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  width: max-content;
+  max-width: 230px;
+  transform: translateX(-50%);
+  border: 1px solid var(--yuni-color-border-strong);
+  border-radius: var(--yuni-radius-sm);
+  background: var(--yuni-color-surface-muted);
+  color: var(--yuni-color-text);
+  padding: var(--yuni-space-2) var(--yuni-space-3);
+  font-size: var(--yuni-font-xs);
+  line-height: 1.4;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+}
+
+.chartHotspot:nth-of-type(-n + 2) span {
+  left: 0;
+  transform: translateX(-8px);
+}
+
+.chartHotspot:nth-last-of-type(-n + 2) span {
+  right: 0;
+  left: auto;
+  transform: translateX(8px);
+}
+
+.chartHotspot:hover span,
+.chartHotspot:focus-visible span {
+  opacity: 1;
 }
 
 .chartDates {
@@ -312,11 +456,120 @@
   cursor: pointer;
 }
 
-.methodNote {
-  max-width: 72ch;
+.desktopTable {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.desktopTable table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.desktopTable th,
+.desktopTable td {
+  border-bottom: 1px solid var(--yuni-color-border);
+  padding: var(--yuni-space-3);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.desktopTable thead th {
+  color: var(--yuni-color-text-muted);
+  font-size: var(--yuni-font-xs);
+  text-transform: uppercase;
+}
+
+.desktopTable tbody tr:last-child th,
+.desktopTable tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.desktopTable tbody th {
+  font-weight: 700;
+}
+
+.secondaryLine {
+  display: block;
+  margin-top: 2px;
+  color: var(--yuni-color-text-muted);
+  font-weight: 400;
+}
+
+.mobileCards {
+  display: none;
+}
+
+.dataCard {
+  display: grid;
+  gap: var(--yuni-space-4);
+  border: 1px solid var(--yuni-color-border);
+  border-radius: var(--yuni-radius-md);
+  background: var(--yuni-color-surface-soft);
+  padding: var(--yuni-space-4);
+}
+
+.dataCard h3,
+.dataCard p {
   margin: 0;
+}
+
+.dataCard p,
+.dataCard small {
+  color: var(--yuni-color-text-muted);
+}
+
+.dataCard dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--yuni-space-3);
+  margin: 0;
+}
+
+.dataCard dl > div {
+  display: grid;
+  gap: 2px;
+}
+
+.dataCard dt {
+  color: var(--yuni-color-text-muted);
+  font-size: var(--yuni-font-xs);
+}
+
+.dataCard dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-weight: 800;
+}
+
+.dataCard .cardWide {
+  grid-column: 1 / -1;
+}
+
+.cardHeading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--yuni-space-3);
+}
+
+.methodology {
+  border-top: 1px solid var(--yuni-color-border);
+  padding-top: var(--yuni-space-4);
   color: var(--yuni-color-text-muted);
   font-size: var(--yuni-font-sm);
+}
+
+.methodology summary {
+  width: fit-content;
+  border-radius: var(--yuni-radius-sm);
+  color: var(--yuni-color-accent);
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.methodology div {
+  max-width: 78ch;
   line-height: 1.55;
 }
 
@@ -349,16 +602,47 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .chart,
-  .chart svg {
-    min-height: 180px;
+  .desktopTable {
+    display: none;
+  }
+
+  .mobileCards {
+    display: grid;
+    gap: var(--yuni-space-3);
+  }
+
+  .periodRow {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .periodRow > span {
+    width: 100%;
+  }
+
+  .periodRow > small {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .attentionItem {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .attentionItem button {
+    padding-left: 0;
+  }
+
+  .chartPlot {
     height: 180px;
   }
 }
 
 @media (max-width: 520px) {
   .metrics {
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--yuni-space-3);
   }
 
   .actions,
@@ -373,6 +657,20 @@
 
   .legend {
     margin-top: var(--yuni-space-3);
+  }
+
+  .periodSelector {
+    width: 100%;
+  }
+
+  .periodSelector button {
+    flex: 1;
+    padding-inline: var(--yuni-space-2);
+  }
+
+  .metrics :global(.yuni-badge) {
+    font-size: 0.67rem;
+    line-height: 1.25;
   }
 }
 

@@ -82,6 +82,36 @@ export function createVoiceSessionsController(dependencies: VoiceSessionsControl
     }
   });
 
+  controller.post("/voice-sessions/:realtimeSessionId/started", async (context) => {
+    const session = await getCurrentSession(context);
+    if (!session) return context.json(unauthorizedError(), 401);
+
+    try {
+      const voiceSession = await service.confirmVoiceSessionStarted(
+        session.userId,
+        context.req.param("realtimeSessionId")
+      );
+      return context.json({ voiceSession });
+    } catch (error) {
+      return toVoiceSessionError(context, error);
+    }
+  });
+
+  controller.post("/voice-sessions/:realtimeSessionId/start-failed", async (context) => {
+    const session = await getCurrentSession(context);
+    if (!session) return context.json(unauthorizedError(), 401);
+
+    try {
+      const voiceSession = await service.failVoiceSessionStart(
+        session.userId,
+        context.req.param("realtimeSessionId")
+      );
+      return context.json({ voiceSession });
+    } catch (error) {
+      return toVoiceSessionError(context, error);
+    }
+  });
+
   controller.post(
     "/voice-sessions/:realtimeSessionId/end",
     bodyLimit({

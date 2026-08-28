@@ -318,7 +318,7 @@ export function startExternalSessionMaintenance(intervalMs = 15_000) {
     if (running) return;
     running = true;
     try {
-      await Promise.all([publicService?.cleanupExpired(), voiceService?.cleanupExpiredShared()]);
+      await Promise.all([publicService?.cleanupExpired(), voiceService?.cleanupExternalSessions()]);
     } catch (error) {
       logger.error("External session maintenance failed", {
         error: error instanceof Error ? error.message : "Unknown cleanup error",

@@ -63,7 +63,7 @@ const participants = [
 const accesses = [
   ["dashboard-seed-avatar-algebra", "ana@dashboard-seed.yuni.local", 80],
   ["dashboard-seed-avatar-algebra", "mateo@dashboard-seed.yuni.local", 25],
-  ["dashboard-seed-avatar-algebra", "lucia@dashboard-seed.yuni.local", 3],
+  ["dashboard-seed-avatar-algebra", "lucia@dashboard-seed.yuni.local", 20],
   ["dashboard-seed-avatar-thesis", "julian@dashboard-seed.yuni.local", 25],
   ["dashboard-seed-avatar-thesis", "camila@dashboard-seed.yuni.local", 50],
   ["dashboard-seed-avatar-thesis", "valentina@dashboard-seed.yuni.local", 16],
@@ -83,7 +83,13 @@ type ConversationSeed = {
   prompt: string;
   answer: string;
   userTurns: number;
-  voice?: { status: "ended" | "errored"; durationSeconds: number; errorMessage?: string };
+  transcript?: boolean;
+  voice?: {
+    status: "ended" | "errored";
+    durationSeconds: number;
+    activated?: boolean;
+    errorMessage?: string;
+  };
 };
 
 // Offsets 1–29 feed the current dashboard period; offsets 30–59 feed its comparison period.
@@ -199,13 +205,71 @@ const conversations: readonly ConversationSeed[] = [
     id: "dashboard-seed-conversation-current-09",
     avatarId: "dashboard-seed-avatar-presentations",
     email: "tomas@dashboard-seed.yuni.local",
-    daysAgo: 18,
-    hour: 16,
+    daysAgo: 19,
+    hour: 10,
     title: "Primer ensayo de la defensa",
     mode: "text",
     prompt: "Mi introducción dura casi cinco minutos.",
     answer: "Reducila a problema, relevancia y aporte; los antecedentes detallados pueden salir.",
     userTurns: 2,
+  },
+  {
+    id: "dashboard-seed-conversation-current-10",
+    avatarId: "dashboard-seed-avatar-thesis",
+    email: "valentina@dashboard-seed.yuni.local",
+    daysAgo: 5,
+    hour: 14,
+    title: "Consulta de voz sin transcript",
+    mode: "voice",
+    prompt: "",
+    answer: "",
+    userTurns: 0,
+    transcript: false,
+    voice: { status: "ended", durationSeconds: 185 },
+  },
+  {
+    id: "dashboard-seed-conversation-current-11",
+    avatarId: "dashboard-seed-avatar-algebra",
+    email: "lucia@dashboard-seed.yuni.local",
+    daysAgo: 2,
+    hour: 19,
+    title: "Intento fallido antes de conectar",
+    mode: "voice",
+    prompt: "",
+    answer: "",
+    userTurns: 0,
+    transcript: false,
+    voice: {
+      status: "errored",
+      durationSeconds: 4,
+      activated: false,
+      errorMessage: "El proveedor rechazó la conexión antes de activar la llamada.",
+    },
+  },
+  {
+    id: "dashboard-seed-conversation-current-12",
+    avatarId: "dashboard-seed-avatar-algebra",
+    email: "ana@dashboard-seed.yuni.local",
+    daysAgo: 1,
+    hour: 2,
+    title: "Consulta pública antes de medianoche local",
+    mode: "text",
+    visibility: "public",
+    prompt: "¿Podemos revisar un último ejercicio?",
+    answer: "Sí, empecemos identificando los datos y la incógnita.",
+    userTurns: 1,
+  },
+  {
+    id: "dashboard-seed-conversation-current-13",
+    avatarId: "dashboard-seed-avatar-algebra",
+    email: "ana@dashboard-seed.yuni.local",
+    daysAgo: 1,
+    hour: 4,
+    title: "Continuación después de medianoche local",
+    mode: "text",
+    prompt: "Ahora quiero comprobar el resultado.",
+    answer: "Reemplazá la incógnita en la ecuación original y verificá ambos lados.",
+    userTurns: 1,
   },
   {
     id: "dashboard-seed-conversation-previous-01",
@@ -286,6 +350,7 @@ function accessKey(avatarId: string, email: string) {
 }
 
 function buildMessages(seed: ConversationSeed, startedAt: Date) {
+  if (seed.transcript === false) return [];
   const followUps = [
     [
       "¿Podemos verlo paso a paso?",
@@ -465,6 +530,30 @@ async function main() {
       accessIds.set(accessKey(avatarId, email), grant.id);
     }
 
+    // Revoked grants remain in activation cohorts so historical funnel rates do not change.
+    await tx.accessGrant.upsert({
+      where: { id: "dashboard-seed-grant-revoked-cohort" },
+      update: {
+        ownerId: owner.id,
+        avatarAgentId: "dashboard-seed-avatar-algebra",
+        participantEmail: "sofia@dashboard-seed.yuni.local",
+        participantUserId: participantIds.get("sofia@dashboard-seed.yuni.local") ?? null,
+        status: "revoked",
+        revokedAt: atDaysAgo(startOfToday, 4, 12),
+        createdAt: atDaysAgo(startOfToday, 24, 12),
+      },
+      create: {
+        id: "dashboard-seed-grant-revoked-cohort",
+        ownerId: owner.id,
+        avatarAgentId: "dashboard-seed-avatar-algebra",
+        participantEmail: "sofia@dashboard-seed.yuni.local",
+        participantUserId: participantIds.get("sofia@dashboard-seed.yuni.local") ?? null,
+        status: "revoked",
+        revokedAt: atDaysAgo(startOfToday, 4, 12),
+        createdAt: atDaysAgo(startOfToday, 24, 12),
+      },
+    });
+
     // Refresh only records owned by this seed. Unrelated local conversations remain untouched.
     await tx.realtimeSession.deleteMany({ where: { id: { in: realtimeSessionIds } } });
     await tx.conversation.deleteMany({ where: { id: { in: conversationIds } } });
@@ -474,7 +563,7 @@ async function main() {
       const visibility = seed.visibility ?? "private";
       const startedAt = atDaysAgo(startOfToday, seed.daysAgo, seed.hour);
       const messages = buildMessages(seed, startedAt);
-      const lastMessageAt = messages.at(-1)?.createdAt ?? startedAt;
+      const lastMessageAt = messages.at(-1)?.createdAt ?? null;
       const participantUserId = participantIds.get(seed.email) ?? null;
       const publicSessionId = visibility === "public" ? `${seed.id}-public` : null;
 
@@ -513,7 +602,7 @@ async function main() {
           title: seed.title,
           lastMessageAt,
           createdAt: startedAt,
-          updatedAt: lastMessageAt,
+          updatedAt: lastMessageAt ?? startedAt,
         },
       });
       await tx.message.createMany({ data: messages });
@@ -530,6 +619,7 @@ async function main() {
             providerSessionId: `seed-${seed.id}`,
             providerStoppedAt: endedAt,
             startedAt,
+            activatedAt: seed.voice.activated === false ? null : startedAt,
             endedAt,
             errorMessage: seed.voice.errorMessage ?? null,
           },

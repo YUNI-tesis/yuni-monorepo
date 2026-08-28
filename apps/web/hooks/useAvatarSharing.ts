@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import {
   createAccessGrant,
   createShareLink,
-  deleteAccessGrant,
   deleteShareLink,
   listAccessGrants,
   listShareLinks,
@@ -218,22 +217,6 @@ export function useAvatarSharing(avatarId: string) {
         error: null,
       }));
       return accessGrant;
-    },
-    async removeGrant(grantId: string) {
-      const result = await mutate(`grant:${grantId}`, () => deleteAccessGrant(avatarId, grantId));
-      if (activeAvatarIdRef.current !== avatarId) return result.outcome;
-
-      if (result.outcome === "deleted") {
-        setGrants((current) => ({
-          status: "ready",
-          data: current.data.filter((grant) => grant.id !== grantId),
-          error: null,
-        }));
-      } else {
-        await loadGrants();
-      }
-
-      return result.outcome;
     },
   };
 }

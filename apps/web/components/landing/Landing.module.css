@@ -2060,7 +2060,12 @@
   height: var(--final-bar-height);
   flex: 1 1 auto;
   border-radius: 99px;
-  background: linear-gradient(180deg, var(--landing-accent), var(--landing-primary-bright) 52%, var(--landing-coral));
+  background: linear-gradient(
+    180deg,
+    var(--landing-accent),
+    var(--landing-primary-bright) 52%,
+    var(--landing-coral)
+  );
   opacity: 0.2;
   animation: finalSignalWave 5.8s var(--final-bar-delay) infinite cubic-bezier(0.87, 0, 0.13, 1);
   transform-origin: center;

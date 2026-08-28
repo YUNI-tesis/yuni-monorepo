@@ -39,8 +39,7 @@ import styles from "./AvatarShareTab.module.css";
 
 type Confirmation =
   | { kind: "delete-link"; id: string; label: string }
-  | { kind: "revoke-grant"; id: string; label: string }
-  | { kind: "delete-grant"; id: string; label: string };
+  | { kind: "revoke-grant"; id: string; label: string };
 
 type LimitsEditor = {
   kind: "link" | "grant";
@@ -80,23 +79,12 @@ export function AvatarShareTab({ avatar }: { avatar: ApiAvatar }) {
           title: "Link público eliminado",
           dedupeKey: `share-link:${confirmation.id}:deleted`,
         });
-      } else if (confirmation.kind === "revoke-grant") {
+      } else {
         await sharing.setGrantStatus(confirmation.id, "revoked");
         toast.success(`Se revocó el acceso de ${confirmation.label}.`, {
           title: "Acceso revocado",
           dedupeKey: `access-grant:${confirmation.id}:revoked`,
         });
-      } else {
-        const outcome = await sharing.removeGrant(confirmation.id);
-        toast.success(
-          outcome === "deleted"
-            ? `Se eliminó definitivamente el acceso de ${confirmation.label}.`
-            : `Se revocó el acceso de ${confirmation.label} para conservar su historial.`,
-          {
-            title: outcome === "deleted" ? "Acceso eliminado" : "Acceso revocado",
-            dedupeKey: `access-grant:${confirmation.id}:removed`,
-          }
-        );
       }
 
       confirmationDialog.current?.close();
@@ -177,13 +165,6 @@ export function AvatarShareTab({ avatar }: { avatar: ApiAvatar }) {
         onRevoke={(grant) =>
           requestConfirmation({
             kind: "revoke-grant",
-            id: grant.id,
-            label: grant.participantEmail,
-          })
-        }
-        onDelete={(grant) =>
-          requestConfirmation({
-            kind: "delete-grant",
             id: grant.id,
             label: grant.participantEmail,
           })
@@ -564,12 +545,10 @@ function AccessGrantsSection({
   sharing,
   onEditLimits,
   onRevoke,
-  onDelete,
 }: {
   sharing: ReturnType<typeof useAvatarSharing>;
   onEditLimits: (grant: ApiAccessGrant) => void;
   onRevoke: (grant: ApiAccessGrant) => void;
-  onDelete: (grant: ApiAccessGrant) => void;
 }) {
   const toast = useToast();
   const createGrantDialog = useRef<HTMLDialogElement>(null);
@@ -765,12 +744,6 @@ function AccessGrantsSection({
                             icon: <DisableIcon />,
                             onSelect: () => onRevoke(grant),
                           },
-                      {
-                        label: "Eliminar",
-                        icon: <TrashIcon />,
-                        tone: "danger",
-                        onSelect: () => onDelete(grant),
-                      },
                     ]}
                   />
                 </div>
@@ -789,8 +762,7 @@ function getActionError(error: unknown) {
 
 function getConfirmationTitle(confirmation: Confirmation | null) {
   if (confirmation?.kind === "delete-link") return "Eliminar link público";
-  if (confirmation?.kind === "revoke-grant") return "Revocar acceso";
-  return "Eliminar acceso";
+  return "Revocar acceso";
 }
 
 function getConfirmationDescription(confirmation: Confirmation | null) {
@@ -798,14 +770,11 @@ function getConfirmationDescription(confirmation: Confirmation | null) {
   if (confirmation.kind === "delete-link") {
     return `El link “${confirmation.label}” dejará de existir definitivamente.`;
   }
-  if (confirmation.kind === "revoke-grant") {
-    return `${confirmation.label} dejará de ver este avatar inmediatamente. Podrás reactivar el acceso después.`;
-  }
-  return `El acceso de ${confirmation.label} se eliminará definitivamente si no tiene actividad. Si ya tiene historial, se revocará para conservar la trazabilidad.`;
+  return `${confirmation.label} dejará de ver este avatar inmediatamente. Podrás reactivar el acceso después.`;
 }
 
 function getConfirmationActionLabel(confirmation: Confirmation | null) {
-  return confirmation?.kind === "revoke-grant" ? "Revocar" : "Eliminar";
+  return confirmation?.kind === "delete-link" ? "Eliminar" : "Revocar";
 }
 
 function MoreIcon() {

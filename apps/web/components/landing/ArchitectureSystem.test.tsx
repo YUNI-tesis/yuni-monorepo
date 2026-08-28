@@ -96,10 +96,7 @@ describe("ArchitectureSystem interactions", () => {
             axis: previousPoint[0] === point[0] ? "v" : "u",
           });
 
-          const endpoints = [
-            `${previousPoint[0]}:${previousPoint[1]}`,
-            `${point[0]}:${point[1]}`,
-          ].sort();
+          const endpoints = [`${previousPoint[0]}:${previousPoint[1]}`, `${point[0]}:${point[1]}`].sort();
           const segment = endpoints.join("|");
           expect(renderedSegments.has(segment)).toBe(false);
           renderedSegments.add(segment);
@@ -132,8 +129,14 @@ describe("ArchitectureSystem interactions", () => {
             second.axis === "u"
               ? ([second.start[0] ?? 0, second.end[0] ?? 0] as const)
               : ([second.start[1] ?? 0, second.end[1] ?? 0] as const);
-          const overlapStart = Math.max(Math.min(firstRange[0], firstRange[1]), Math.min(secondRange[0], secondRange[1]));
-          const overlapEnd = Math.min(Math.max(firstRange[0], firstRange[1]), Math.max(secondRange[0], secondRange[1]));
+          const overlapStart = Math.max(
+            Math.min(firstRange[0], firstRange[1]),
+            Math.min(secondRange[0], secondRange[1])
+          );
+          const overlapEnd = Math.min(
+            Math.max(firstRange[0], firstRange[1]),
+            Math.max(secondRange[0], secondRange[1])
+          );
 
           expect(overlapEnd - overlapStart).toBeLessThanOrEqual(0);
           continue;
@@ -162,7 +165,9 @@ describe("ArchitectureSystem interactions", () => {
 
     expect(screen.queryByRole("button", { name: /^Contexto\b/ })).toBeNull();
     expect(screen.getByRole("button", { name: /Orquestador grupal/ })).toBeTruthy();
-    expect(screen.getByRole("button", { name: /Núcleo YUNI/ }).querySelector("small")?.textContent).toBe("API");
+    expect(screen.getByRole("button", { name: /Núcleo YUNI/ }).querySelector("small")?.textContent).toBe(
+      "API"
+    );
     const liveNode = screen.getByRole("button", { name: /Conversación en vivo/ });
     expect(liveNode.textContent).toContain("ElevenLabs Agent + LiveAvatar");
     expect(liveNode.textContent).toMatch(/voz/i);

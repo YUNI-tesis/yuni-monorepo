@@ -96,7 +96,7 @@ function positionedNode(
   node: Omit<ArchitectureNode, "portX" | "portY" | "portGap" | "portAlign"> & {
     portGap?: number;
     portAlign?: number;
-  },
+  }
 ): ArchitectureNode {
   const { x: portX, y: portY } = projectCircuitPoint(node.grid);
   return { ...node, portX, portY, portGap: node.portGap ?? 24, portAlign: node.portAlign ?? 50 };
@@ -220,28 +220,28 @@ if (!architectureTracks.every((track) => isAxisAlignedCircuitRoute(track.points)
 
 const platformTopPath = circuitPath(
   [circuitPoint(0, 0), circuitPoint(10, 0), circuitPoint(10, 6.5), circuitPoint(0, 6.5)],
-  true,
+  true
 );
 const platformInnerPath = circuitPath(
   [circuitPoint(0.45, 0.45), circuitPoint(9.55, 0.45), circuitPoint(9.55, 6.05), circuitPoint(0.45, 6.05)],
-  true,
+  true
 );
 const platformCircuitPaths = [
   circuitPath(
     [circuitPoint(0.8, 0.8), circuitPoint(9.2, 0.8), circuitPoint(9.2, 5.7), circuitPoint(0.8, 5.7)],
-    true,
+    true
   ),
   circuitPath(
     [circuitPoint(1.2, 1.2), circuitPoint(8.8, 1.2), circuitPoint(8.8, 5.3), circuitPoint(1.2, 5.3)],
-    true,
+    true
   ),
 ] as const;
 const platformGridPaths = [
   ...Array.from({ length: 6 }, (_, index) =>
-    circuitPath([circuitPoint(0, index + 1), circuitPoint(10, index + 1)]),
+    circuitPath([circuitPoint(0, index + 1), circuitPoint(10, index + 1)])
   ),
   ...Array.from({ length: 9 }, (_, index) =>
-    circuitPath([circuitPoint(index + 1, 0), circuitPoint(index + 1, 6.5)]),
+    circuitPath([circuitPoint(index + 1, 0), circuitPoint(index + 1, 6.5)])
   ),
 ] as const;
 const platformBoltPoints = [
@@ -280,7 +280,8 @@ const architectureFlows: readonly ArchitectureFlow[] = [
   {
     id: "core-data",
     d: "",
-    label: "El núcleo guarda y consulta usuarios, avatares, sesiones, mensajes y transcripciones en PostgreSQL.",
+    label:
+      "El núcleo guarda y consulta usuarios, avatares, sesiones, mensajes y transcripciones en PostgreSQL.",
     tone: "control",
     nodes: ["core", "data"],
     bidirectional: true,
@@ -295,7 +296,8 @@ const architectureFlows: readonly ArchitectureFlow[] = [
   {
     id: "core-orchestrator",
     d: "",
-    label: "Solo en conversaciones grupales, el núcleo y el orquestador intercambian el estado de los turnos.",
+    label:
+      "Solo en conversaciones grupales, el núcleo y el orquestador intercambian el estado de los turnos.",
     tone: "knowledge",
     nodes: ["core", "orchestrator"],
     bidirectional: true,
@@ -402,9 +404,7 @@ export function ArchitectureSystem({ reducedMotion }: { reducedMotion: boolean }
   const activeNode = architectureNodes.find((node) => node.id === activeNodeId);
   const connectedNodeIds = activeNodeId
     ? new Set(
-        architectureFlows
-          .filter((flow) => flow.nodes.includes(activeNodeId))
-          .flatMap((flow) => flow.nodes),
+        architectureFlows.filter((flow) => flow.nodes.includes(activeNodeId)).flatMap((flow) => flow.nodes)
       )
     : null;
 
@@ -425,7 +425,12 @@ export function ArchitectureSystem({ reducedMotion }: { reducedMotion: boolean }
             </h2>
           </motion.div>
 
-          <div id="architecture-system-readout" className={styles.readout} aria-live="polite" aria-atomic="true">
+          <div
+            id="architecture-system-readout"
+            className={styles.readout}
+            aria-live="polite"
+            aria-atomic="true"
+          >
             <span>{activeNode ? activeNode.technology : "Un recorrido coordinado"}</span>
             <p>
               {activeNode
@@ -555,7 +560,9 @@ export function ArchitectureSystem({ reducedMotion }: { reducedMotion: boolean }
                   aria-controls="architecture-system-readout"
                   aria-expanded={activeNodeId === node.id}
                   data-active={activeNodeId === node.id ? "true" : undefined}
-                  data-muted={connectedNodeIds !== null && !connectedNodeIds.has(node.id) ? "true" : undefined}
+                  data-muted={
+                    connectedNodeIds !== null && !connectedNodeIds.has(node.id) ? "true" : undefined
+                  }
                   onMouseDown={(event) => event.preventDefault()}
                   onPointerEnter={() => setHoveredNodeId(node.id)}
                   onPointerLeave={() =>
@@ -596,8 +603,8 @@ export function ArchitectureSystem({ reducedMotion }: { reducedMotion: boolean }
 
         <div className={styles.semanticSummary}>
           <p>
-            El usuario se comunica con la aplicación web; el núcleo de YUNI coordina los datos, la conversación
-            en vivo y, cuando corresponde, los turnos grupales.
+            El usuario se comunica con la aplicación web; el núcleo de YUNI coordina los datos, la
+            conversación en vivo y, cuando corresponde, los turnos grupales.
           </p>
           <ol>
             {architectureFlows.map((flow) => (

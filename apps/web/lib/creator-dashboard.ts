@@ -11,9 +11,11 @@ export function formatDashboardCountDelta(metric: ApiDashboardCountMetric) {
 }
 
 export function formatDashboardRateDelta(metric: ApiDashboardRateMetric) {
-  if (metric.rate === null) return "Sin datos suficientes";
   const ratio = `${metric.value} de ${metric.total}`;
-  if (metric.changePercentagePoints === null) return ratio;
+  const current = metric.rate === null ? `${ratio} · sin datos suficientes` : ratio;
+  if (metric.previousRate === null) return `${current} · sin base anterior`;
+  if (metric.rate === null) return current;
+  if (metric.changePercentagePoints === null) return `${ratio} · sin comparación`;
   if (metric.changePercentagePoints === 0) return `${ratio} · sin cambios`;
   return `${ratio} · ${metric.changePercentagePoints > 0 ? "+" : ""}${formatNumber(metric.changePercentagePoints)} pp`;
 }
@@ -41,19 +43,22 @@ export function formatDashboardDate(value: string | null) {
   }).format(new Date(value));
 }
 
-export function formatDashboardPeriod(from: string, to: string) {
+export function formatDashboardPeriod(from: string, to: string, timeZone = "UTC") {
   const inclusiveTo = new Date(new Date(to).getTime() - 1);
   const formatter = new Intl.DateTimeFormat("es-AR", {
     day: "numeric",
     month: "short",
-    timeZone: "UTC",
+    timeZone,
   });
   return `${formatter.format(new Date(from))}–${formatter.format(inclusiveTo)}`;
 }
 
 export function getDashboardAttentionPath(item: ApiDashboardAttentionItem) {
-  if (item.type === "failed_avatar") {
+  if (item.type === "unavailable_avatar") {
     return `/avatars/${encodeURIComponent(item.avatarId)}/edit`;
+  }
+  if (item.type === "unused_direct_access") {
+    return `/avatars/${encodeURIComponent(item.avatarId)}?tab=compartir`;
   }
   if (!item.participantKey) {
     return `/avatars/${encodeURIComponent(item.avatarId)}?tab=activity`;

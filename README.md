@@ -74,9 +74,10 @@ pnpm db:reset
 ```
 
 La seed del dashboard es idempotente y recrea únicamente sus registros con fechas relativas al día
-de ejecución. Incluye actividad actual e histórica, participantes recurrentes, conversaciones de
-texto y voz, una sesión fallida, accesos sin uso y un avatar con error de sincronización. Todos sus
-IDs usan el prefijo `dashboard-seed-`, y los demás datos locales no se modifican.
+de ejecución. Incluye actividad actual e histórica, ambos orígenes, recurrencia alrededor de la
+medianoche local, cohortes de activación, chat, voz activada sin transcript, un fallo previo a la
+conexión, accesos sin uso y un avatar con error terminal. Todos sus IDs usan el prefijo
+`dashboard-seed-`, y los demás datos locales no se modifican.
 
 Para verla, iniciá sesión con:
 

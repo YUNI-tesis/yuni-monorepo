@@ -5,7 +5,9 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Badge, Button, ErrorState, LoadingState, YuniIcon, useToast, type BadgeTone } from "@yuni/ui";
 import { useLiveAvatarSession, type LiveAvatarDiagnostics } from "../../hooks/useLiveAvatarSession";
 import {
+  confirmVoiceSessionStarted,
   endVoiceSessionOnUnload,
+  failVoiceSessionStart,
   getAvatarInteractionContext,
   getConversation,
   listAvatarConversations,
@@ -173,6 +175,13 @@ export function InteractCall({ avatarId }: { avatarId: string }) {
   );
 
   const call = useLiveAvatarSession(avatarId, {
+    onStarted: async (realtimeSessionId) => {
+      await confirmVoiceSessionStarted(realtimeSessionId);
+    },
+    failStart: (realtimeSessionId) => failVoiceSessionStart(realtimeSessionId),
+    failStartOnUnload: (realtimeSessionId) => {
+      void failVoiceSessionStart(realtimeSessionId, { keepalive: true }).catch(() => undefined);
+    },
     onEnded: () => loadHistory({ selectLatest: false }),
     endSessionOnUnload: (realtimeSessionId, transcript) => {
       endVoiceSessionOnUnload(realtimeSessionId, transcript);

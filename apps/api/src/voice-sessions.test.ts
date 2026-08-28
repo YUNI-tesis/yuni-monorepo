@@ -118,6 +118,7 @@ function createTestDependencies(
       avatarAgentId: string;
       providerSessionId: string | null;
       status: string;
+      activatedAt: Date | null;
       endedAt: Date | null;
       errorMessage: string | null;
     }
@@ -299,6 +300,7 @@ function createTestDependencies(
             avatarAgentId: input.avatarAgentId,
             providerSessionId: null,
             status: "connecting",
+            activatedAt: null,
             endedAt: null,
             errorMessage: null,
           });
@@ -315,13 +317,21 @@ function createTestDependencies(
 
           return { ...realtimeSession, conversation };
         },
-        async markActive(id, providerSessionId) {
+        async markPrepared(id, providerSessionId) {
           if (options.activationError) throw options.activationError;
           const realtimeSession = realtimeSessions.get(id);
           if (!realtimeSession) throw new Error("missing realtime session");
-          realtimeSession.status = "active";
           realtimeSession.providerSessionId = providerSessionId ?? null;
 
+          return realtimeSession;
+        },
+        async markActive(id) {
+          const realtimeSession = realtimeSessions.get(id);
+          if (!realtimeSession || !["connecting", "active"].includes(realtimeSession.status)) return null;
+          if (realtimeSession.status === "connecting") {
+            realtimeSession.status = "active";
+            realtimeSession.activatedAt = new Date("2026-06-08T00:00:30.000Z");
+          }
           return realtimeSession;
         },
         async markEnded(id) {
@@ -371,6 +381,22 @@ function createTestDependencies(
           realtimeSession.status = "errored";
           realtimeSession.endedAt = new Date("2026-06-08T00:02:00.000Z");
           realtimeSession.errorMessage = errorMessage;
+          return true;
+        },
+        async failUnconfirmedOwnerStart(id, conversationId, errorMessage) {
+          const realtimeSession = realtimeSessions.get(id);
+          if (!realtimeSession || realtimeSession.status !== "connecting") return false;
+          realtimeSession.status = "errored";
+          realtimeSession.endedAt = new Date("2026-06-08T00:02:00.000Z");
+          realtimeSession.errorMessage = errorMessage;
+          if (conversationId) {
+            const conversation = conversations.get(conversationId);
+            if (conversation) {
+              conversation.status = "ended";
+              conversation.updatedAt = new Date("2026-06-08T00:02:00.000Z");
+            }
+          }
+          return true;
         },
         async markProviderStopped() {},
         async expireSharedIfActive(id, conversationId) {
@@ -614,6 +640,80 @@ describe("@yuni/api voice sessions", () => {
     expect(body.voiceSession.apiKey).toBeUndefined();
     expect(JSON.stringify(body.voiceSession)).not.toMatch(/providerAgentId|providerSessionId|"sessionId"/);
     expect(state.avatars.get("avatar-1")?.providerSyncStatus).toBe("synced");
+    expect(state.realtimeSessions.get("realtime-1")).toMatchObject({
+      status: "connecting",
+      activatedAt: null,
+      providerSessionId: "liveavatar-session-id",
+    });
+
+    const confirmResponse = await app.request("/voice-sessions/realtime-1/started", {
+      method: "POST",
+      headers: { Cookie: cookie },
+    });
+    expect(confirmResponse.status).toBe(200);
+    expect(state.realtimeSessions.get("realtime-1")).toMatchObject({
+      status: "active",
+      activatedAt: new Date("2026-06-08T00:00:30.000Z"),
+    });
+
+    const repeatedConfirmation = await app.request("/voice-sessions/realtime-1/started", {
+      method: "POST",
+      headers: { Cookie: cookie },
+    });
+    expect(repeatedConfirmation.status).toBe(200);
+  });
+
+  it("records a client SDK startup failure as an error instead of a normal end", async () => {
+    const state = createTestDependencies();
+    const app = createApp(state.dependencies);
+    const cookie = await login(app);
+
+    const startResponse = await app.request("/avatars/avatar-1/voice-sessions", {
+      method: "POST",
+      headers: { Cookie: cookie },
+    });
+    expect(startResponse.status).toBe(201);
+
+    const failedResponse = await app.request("/voice-sessions/realtime-1/start-failed", {
+      method: "POST",
+      headers: { Cookie: cookie },
+    });
+    expect(failedResponse.status).toBe(200);
+    expect(await json(failedResponse)).toMatchObject({
+      voiceSession: { id: "realtime-1", status: "errored" },
+    });
+    expect(state.realtimeSessions.get("realtime-1")).toMatchObject({
+      status: "errored",
+      activatedAt: null,
+      errorMessage: expect.any(String),
+    });
+    expect(state.conversations.get("conversation-1")?.status).toBe("ended");
+
+    const repeatedFailure = await app.request("/voice-sessions/realtime-1/start-failed", {
+      method: "POST",
+      headers: { Cookie: cookie },
+    });
+    expect(repeatedFailure.status).toBe(200);
+
+    await app.request("/avatars/avatar-1/voice-sessions", {
+      method: "POST",
+      headers: { Cookie: cookie },
+    });
+    await app.request("/voice-sessions/realtime-2/started", {
+      method: "POST",
+      headers: { Cookie: cookie },
+    });
+    const activatedAt = state.realtimeSessions.get("realtime-2")?.activatedAt;
+
+    const failureAfterActivation = await app.request("/voice-sessions/realtime-2/start-failed", {
+      method: "POST",
+      headers: { Cookie: cookie },
+    });
+    expect(failureAfterActivation.status).toBe(200);
+    expect(state.realtimeSessions.get("realtime-2")).toMatchObject({
+      status: "errored",
+      activatedAt,
+    });
   });
 
   it("keeps the owner unlimited while a new context sync uses the last usable provider version", async () => {
@@ -759,6 +859,19 @@ describe("@yuni/api voice sessions", () => {
       participantEmail: participant.email,
       mode: "voice",
     });
+    expect(state.realtimeSessions.get("realtime-1")?.activatedAt).toBeNull();
+
+    expect(
+      (
+        await app.request("/voice-sessions/realtime-1/started", {
+          method: "POST",
+          headers: { Cookie: participantCookie },
+        })
+      ).status
+    ).toBe(200);
+    expect(state.realtimeSessions.get("realtime-1")?.activatedAt).toEqual(
+      new Date("2026-06-08T00:00:30.000Z")
+    );
   });
 
   it("fails closed when shared session protections are not configured", async () => {
@@ -1092,6 +1205,14 @@ describe("@yuni/api voice sessions", () => {
       method: "POST",
       headers: { Cookie: cookie },
     });
+    expect(
+      (
+        await app.request("/voice-sessions/realtime-1/started", {
+          method: "POST",
+          headers: { Cookie: cookie },
+        })
+      ).status
+    ).toBe(200);
     const request = () =>
       app.request("/voice-sessions/realtime-1/end", {
         method: "POST",

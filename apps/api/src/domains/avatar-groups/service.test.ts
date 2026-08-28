@@ -971,6 +971,50 @@ describe("avatar group voice service", () => {
     expect(dependencies.liveAvatarProvider.stopSession).not.toHaveBeenCalled();
   });
 
+  it("confirms the current participant attempt after the client starts", async () => {
+    const confirmParticipantStarted = vi.fn().mockResolvedValue(true);
+    const dependencies = {
+      repository: {
+        findVoiceSessionForOwner: vi.fn().mockResolvedValue({
+          id: "session-1",
+          conversationId: "conversation-1",
+          status: "active",
+          expiresAt: new Date("2030-01-01T00:10:00.000Z"),
+          participants: [],
+        }),
+        confirmParticipantStarted,
+      },
+    } as unknown as AvatarGroupsServiceDependencies;
+
+    await expect(
+      createAvatarGroupsService(dependencies).confirmParticipantStarted("user-1", "session-1", "avatar-1", {
+        participantAttemptId: "realtime-1",
+      })
+    ).resolves.toEqual({ ok: true });
+    expect(confirmParticipantStarted).toHaveBeenCalledWith("user-1", "session-1", "avatar-1", "realtime-1");
+  });
+
+  it("rejects a stale participant start confirmation", async () => {
+    const dependencies = {
+      repository: {
+        findVoiceSessionForOwner: vi.fn().mockResolvedValue({
+          id: "session-1",
+          conversationId: "conversation-1",
+          status: "active",
+          expiresAt: new Date("2030-01-01T00:10:00.000Z"),
+          participants: [],
+        }),
+        confirmParticipantStarted: vi.fn().mockResolvedValue(false),
+      },
+    } as unknown as AvatarGroupsServiceDependencies;
+
+    await expect(
+      createAvatarGroupsService(dependencies).confirmParticipantStarted("user-1", "session-1", "avatar-1", {
+        participantAttemptId: "realtime-stale",
+      })
+    ).rejects.toThrow("Intento de participante no encontrado");
+  });
+
   it("recovers stale deliberations before cleaning floor leases", async () => {
     const recoverStaleDeliberatingRounds = vi.fn().mockResolvedValue(1);
     const dependencies = {

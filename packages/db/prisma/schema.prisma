@@ -124,16 +124,17 @@ model AccessGrant {
   maxSessionDurationSeconds Int?
   maxSessionsPer24Hours     Int?
 
-  avatarAgent         AvatarAgent       @relation(fields: [avatarAgentId], references: [id], onDelete: Cascade)
-  owner               User              @relation("AccessGrantOwner", fields: [ownerId], references: [id], onDelete: Cascade)
-  participantUser     User?             @relation("AccessGrantParticipant", fields: [participantUserId], references: [id], onDelete: SetNull)
+  avatarAgent         AvatarAgent          @relation(fields: [avatarAgentId], references: [id], onDelete: Cascade)
+  owner               User                 @relation("AccessGrantOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  participantUser     User?                @relation("AccessGrantParticipant", fields: [participantUserId], references: [id], onDelete: SetNull)
   conversations       Conversation[]
-  realtimeSessions    RealtimeSession[] @relation("RealtimeSessionAccessGrant")
+  realtimeSessions    RealtimeSession[]    @relation("RealtimeSessionAccessGrant")
   avatarGroupMembers  AvatarGroupMember[]
   conversationAvatars ConversationAvatar[]
 
   @@unique([avatarAgentId, participantEmail])
   @@index([ownerId, avatarAgentId])
+  @@index([ownerId, status, createdAt])
   @@index([participantUserId, status])
   @@index([participantEmail, status])
 }
@@ -169,6 +170,8 @@ model Conversation {
 
   @@index([ownerId, avatarAgentId, lastMessageAt])
   @@index([avatarAgentId])
+  // The normalized participant-email index is maintained as raw SQL in the dashboard activity migration.
+  @@index([avatarAgentId, participantEmail, lastMessageAt])
   @@index([accessGrantId])
   @@index([publicSessionId])
   @@index([shareLinkId])
@@ -192,6 +195,7 @@ model Message {
 
   @@unique([conversationId, sourceEventId])
   @@index([conversationId, createdAt])
+  @@index([role, createdAt])
   @@index([speakerAvatarId])
 }
 
@@ -417,6 +421,7 @@ model RealtimeSession {
   providerSessionTokenCiphertext String?
   providerStoppedAt              DateTime?
   startedAt                      DateTime              @default(now())
+  activatedAt                    DateTime?
   endedAt                        DateTime?
   expiresAt                      DateTime?
   errorMessage                   String?
@@ -427,10 +432,12 @@ model RealtimeSession {
   avatarAgent           AvatarAgent            @relation(fields: [avatarAgentId], references: [id], onDelete: Cascade)
   groupVoiceParticipant GroupVoiceParticipant?
 
-  @@index([conversationId])
+  @@index([conversationId, startedAt])
   @@index([publicSessionId])
   @@index([accessGrantId, status, startedAt])
   @@index([avatarAgentId])
+  @@index([avatarAgentId, activatedAt])
+  @@index([avatarAgentId, endedAt])
   @@index([status])
   @@index([avatarAgentId, status, startedAt])
 }

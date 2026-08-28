@@ -4,6 +4,7 @@ import type { PrismaClient } from "@prisma/client";
 type Db = PrismaClient;
 const countedStatuses = ["connecting", "active", "ended"] as const;
 const activeStatuses = ["connecting", "active"] as const;
+const unconfirmedOwnerSessionGraceMs = 5 * 60_000;
 
 export function createExternalSessionPolicyRepository(db: Db) {
   return {
@@ -218,16 +219,27 @@ export function createExternalSessionPolicyRepository(db: Db) {
       });
     },
 
-    listSharedForProviderStop(now: Date, limit = 50, afterId?: string) {
+    listPrivateForProviderStop(now: Date, limit = 50, afterId?: string) {
+      const unconfirmedOwnerStartedBefore = new Date(now.getTime() - unconfirmedOwnerSessionGraceMs);
       return db.realtimeSession.findMany({
         where: {
           ...(afterId ? { id: { gt: afterId } } : {}),
           providerStoppedAt: null,
           providerSessionTokenCiphertext: { not: null },
-          accessGrantId: { not: null },
+          publicSessionId: null,
+          groupVoiceParticipant: { is: null },
           OR: [
             { status: { in: ["ended", "errored"] } },
-            { status: { in: [...activeStatuses] }, expiresAt: { lte: now } },
+            {
+              status: { in: [...activeStatuses] },
+              expiresAt: { lte: now },
+              accessGrantId: { not: null },
+            },
+            {
+              status: "connecting",
+              accessGrantId: null,
+              startedAt: { lte: unconfirmedOwnerStartedBefore },
+            },
           ],
         },
         orderBy: { id: "asc" },
@@ -237,6 +249,7 @@ export function createExternalSessionPolicyRepository(db: Db) {
           status: true,
           conversationId: true,
           expiresAt: true,
+          accessGrantId: true,
           providerSessionTokenCiphertext: true,
         },
       });

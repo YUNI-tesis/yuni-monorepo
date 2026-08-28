@@ -1,6 +1,8 @@
 import { NotFoundError, OwnershipError } from "@yuni/domain";
-import { createHash } from "node:crypto";
 import type { AvatarActivityRepository } from "./repository";
+import { createParticipantKey } from "../../utils/participant-key";
+
+export { createParticipantKey } from "../../utils/participant-key";
 
 export class InvalidActivityCursorError extends Error {
   constructor() {
@@ -141,10 +143,6 @@ type ActivityConversationRecordLike = {
 function normalizeActivityError(error: unknown, message: string): Error {
   if (error instanceof OwnershipError) return new NotFoundError(message);
   return error instanceof Error ? error : new Error("Unknown activity error");
-}
-
-export function createParticipantKey(email: string) {
-  return `p_${createHash("sha256").update(email.trim().toLowerCase()).digest("base64url")}`;
 }
 
 async function resolveParticipant(
