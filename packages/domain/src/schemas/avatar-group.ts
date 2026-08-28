@@ -61,11 +61,20 @@ export const GroupProviderEventInputSchema = z.discriminatedUnion("type", [
   }),
 ]);
 
-export const InterruptGroupVoiceSessionInputSchema = z.strictObject({
-  reason: z.enum(["user", "unauthorized_audio", "timeout", "participant_error"]).default("user"),
-  expectedAvatarId: YuniIdSchema.optional(),
-  expectedTurnId: YuniIdSchema.optional(),
-});
+export const InterruptGroupVoiceSessionInputSchema = z.discriminatedUnion("reason", [
+  z.strictObject({
+    reason: z.literal("user"),
+    trigger: z.literal("voice"),
+    sourceEventId: z.string().trim().min(1).max(160),
+    expectedAvatarId: YuniIdSchema,
+    expectedTurnId: YuniIdSchema,
+  }),
+  z.strictObject({
+    reason: z.enum(["unauthorized_audio", "timeout", "participant_error"]),
+    expectedAvatarId: YuniIdSchema.optional(),
+    expectedTurnId: YuniIdSchema.optional(),
+  }),
+]);
 
 export const GroupVoiceParticipantFailureInputSchema = z.strictObject({
   sourceEventId: z.string().trim().min(1).max(160),

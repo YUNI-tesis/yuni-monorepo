@@ -11,6 +11,17 @@ export type GroupMediaElement = Pick<HTMLMediaElement, "muted">;
 
 export type ElevenLabsCommandType = "contextual_update" | "user_activity" | "user_message";
 
+const ISOLATED_GROUP_BARGE_IN_BACKCHANNELS = new Set([
+  "si",
+  "aja",
+  "ok",
+  "okay",
+  "dale",
+  "claro",
+  "mmm",
+  "eh",
+]);
+
 export function applyGroupAudioGate(
   mediaElements: ReadonlyMap<string, GroupMediaElement>,
   ownerAvatarId: string | null
@@ -57,11 +68,13 @@ export function shouldSendGroupUserActivity(input: {
 
 export function encodeElevenLabsAgentCommand(
   elevenlabsEventType: ElevenLabsCommandType,
-  data: Record<string, string> = {}
+  data: Record<string, string> = {},
+  eventId?: string
 ) {
   return new TextEncoder().encode(
     JSON.stringify({
       event_type: "elevenlabs_agent_command",
+      ...(eventId ? { event_id: eventId } : {}),
       elevenlabs_event_type: elevenlabsEventType,
       data,
     })
@@ -74,4 +87,16 @@ export function providerEventSourceId(input: {
   providerEventId: string;
 }) {
   return `${input.type}:${input.avatarId}:${input.providerEventId}`;
+}
+
+export function isSignificantGroupBargeInTranscript(text: string) {
+  const normalized = text
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("es")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim()
+    .replace(/\s+/g, " ");
+
+  return Boolean(normalized) && !ISOLATED_GROUP_BARGE_IN_BACKCHANNELS.has(normalized);
 }

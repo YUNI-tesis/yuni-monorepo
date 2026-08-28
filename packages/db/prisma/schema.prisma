@@ -270,6 +270,7 @@ model GroupVoiceSession {
   participants             GroupVoiceParticipant[]
   rounds                   GroupVoiceRound[]
   providerEvents           GroupVoiceProviderEvent[]
+  interruptionEvents       GroupVoiceInterruptionEvent[]
   participantFailureEvents GroupVoiceParticipantFailureEvent[]
 
   @@index([avatarGroupId])
@@ -291,9 +292,10 @@ model GroupVoiceRound {
   updatedAt           DateTime              @updatedAt
   completedAt         DateTime?
 
-  groupVoiceSession GroupVoiceSession  @relation(fields: [groupVoiceSessionId], references: [id], onDelete: Cascade)
-  userMessage       Message            @relation(fields: [userMessageId], references: [id], onDelete: Cascade)
-  plannedTurns      GroupPlannedTurn[]
+  groupVoiceSession  GroupVoiceSession             @relation(fields: [groupVoiceSessionId], references: [id], onDelete: Cascade)
+  userMessage        Message                       @relation(fields: [userMessageId], references: [id], onDelete: Cascade)
+  plannedTurns       GroupPlannedTurn[]
+  interruptionEvents GroupVoiceInterruptionEvent[]
 
   @@unique([groupVoiceSessionId, sourceEventId])
   @@index([groupVoiceSessionId, createdAt])
@@ -313,8 +315,9 @@ model GroupPlannedTurn {
   createdAt       DateTime               @default(now())
   updatedAt       DateTime               @updatedAt
 
-  round       GroupVoiceRound @relation(fields: [roundId], references: [id], onDelete: Cascade)
-  avatarAgent AvatarAgent     @relation(fields: [avatarAgentId], references: [id], onDelete: Cascade)
+  round              GroupVoiceRound               @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  avatarAgent        AvatarAgent                   @relation(fields: [avatarAgentId], references: [id], onDelete: Cascade)
+  interruptionEvents GroupVoiceInterruptionEvent[]
 
   @@unique([roundId, position])
   @@unique([roundId, avatarAgentId])
@@ -336,6 +339,29 @@ model GroupVoiceProviderEvent {
 
   @@unique([groupVoiceSessionId, sourceEventId])
   @@index([groupVoiceSessionId, createdAt])
+  @@index([turnId])
+}
+
+model GroupVoiceInterruptionEvent {
+  id                   String                        @id @default(cuid())
+  groupVoiceSessionId  String
+  sourceEventId        String
+  roundId              String
+  turnId               String
+  trigger              String
+  reason               String
+  outcome              GroupVoiceInterruptionOutcome
+  interruptedAvatarId  String?
+  spokenFragmentLength Int                           @default(0)
+  createdAt            DateTime                      @default(now())
+
+  groupVoiceSession GroupVoiceSession @relation(fields: [groupVoiceSessionId], references: [id], onDelete: Cascade)
+  round             GroupVoiceRound   @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  turn              GroupPlannedTurn  @relation(fields: [turnId], references: [id], onDelete: Cascade)
+
+  @@unique([groupVoiceSessionId, sourceEventId])
+  @@index([groupVoiceSessionId, createdAt])
+  @@index([roundId])
   @@index([turnId])
 }
 
@@ -667,6 +693,11 @@ enum GroupProviderEventType {
   speak_started
   speak_ended
   interruption
+}
+
+enum GroupVoiceInterruptionOutcome {
+  interrupted
+  stale
 }
 
 enum GroupVoiceParticipantStatus {

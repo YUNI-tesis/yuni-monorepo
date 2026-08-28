@@ -501,12 +501,12 @@ export function createAvatarGroupsService(dependencies: AvatarGroupsServiceDepen
       if (result.kind === "next" && result.next) {
         return reconcileCurrentSpeak(userId, sessionId, session, {});
       }
-      if (result.kind === "completed" || result.kind === "interrupted") {
+      if (result.kind === "completed") {
         return {
           phase: "listening" as const,
           directive: {
             action: "listen" as const,
-            reason: result.kind === "completed" ? "round_complete" : "interrupted",
+            reason: "round_complete" as const,
           },
           floor: null,
         };
@@ -561,17 +561,6 @@ export function createAvatarGroupsService(dependencies: AvatarGroupsServiceDepen
             floor: null,
           };
         }
-        if (
-          parsed.type === "interruption" &&
-          current.session?.orchestrationPhase === "listening" &&
-          !current.turn
-        ) {
-          return {
-            phase: "listening" as const,
-            directive: { action: "listen" as const, reason: "interrupted" },
-            floor: null,
-          };
-        }
         return {
           phase: current.session?.orchestrationPhase ?? "listening",
           directive: null,
@@ -589,6 +578,40 @@ export function createAvatarGroupsService(dependencies: AvatarGroupsServiceDepen
       const parsed = InterruptGroupVoiceSessionInputSchema.parse(input);
       const session = await requireSession(userId, sessionId);
       assertLive(session);
+      if (parsed.reason === "user") {
+        const startedAt = Date.now();
+        const result = await dependencies.repository.interruptRoundByUser(userId, sessionId, {
+          sourceEventId: parsed.sourceEventId,
+          trigger: parsed.trigger,
+          expectedAvatarId: parsed.expectedAvatarId,
+          expectedTurnId: parsed.expectedTurnId,
+        });
+        logger.info("human group interruption", {
+          sessionId,
+          sourceEventId: parsed.sourceEventId,
+          expectedTurnId: parsed.expectedTurnId,
+          expectedAvatarId: parsed.expectedAvatarId,
+          result: result.kind,
+          outcome: "outcome" in result ? result.outcome : result.kind,
+          durationMs: Date.now() - startedAt,
+        });
+        const duplicateInterruption =
+          result.kind === "duplicate" && result.outcome === "interrupted" && result.replayable;
+        if (result.kind === "stale" || (result.kind === "duplicate" && !duplicateInterruption)) {
+          return {
+            phase: result.session.orchestrationPhase,
+            directive: null,
+            floor: toFloorDto(result.session),
+          };
+        }
+        return {
+          phase: "listening" as const,
+          directive: result.avatarId
+            ? { action: "interrupt" as const, avatarId: result.avatarId, reason: parsed.reason }
+            : { action: "listen" as const, reason: parsed.reason },
+          floor: null,
+        };
+      }
       const result = await dependencies.repository.interruptRound(userId, sessionId, {
         ...(parsed.expectedAvatarId ? { avatarId: parsed.expectedAvatarId } : {}),
         ...(parsed.expectedTurnId ? { turnId: parsed.expectedTurnId } : {}),

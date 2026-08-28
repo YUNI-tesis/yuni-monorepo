@@ -12,7 +12,7 @@ Decision source: [0009-product-navigation-sharing-background-sync.md](../thesis/
 - Las sesiones publicas se atribuyen a `participantEmail` y opcionalmente `participantUserId`.
 - La sincronizacion de Agent/Knowledge Base corre en background con retries automaticos.
 - La UI normal solo muestra fallos o procesamiento relevante de contexto/documentos.
-- `Grupos` reúne llamadas privadas de dos o tres avatares con posiciones fijas, Agents atómicos y floor estricto según [ADR 0019](../thesis/decision-records/0019-strict-floor-independent-liveavatar-group-sessions.md).
+- `Grupos` reúne llamadas privadas de dos o tres avatares con posiciones fijas, Agents atómicos y floor asimétrico: estricto entre avatares y preemptivo para la voz humana según [ADR 0023](../thesis/decision-records/0023-user-preemptible-group-call-floor.md).
 
 ## Estado Actual
 
@@ -24,6 +24,7 @@ Decision source: [0009-product-navigation-sharing-background-sync.md](../thesis/
 - Pendiente: contexto/documentos reales, progreso, sesiones publicas identificadas y hardening.
 - La estrategia recomendada para MVP sigue siendo validar temprano la experiencia conversacional con ElevenLabs Agents + LiveAvatar LITE, sin esperar a completar RAG propio.
 - Implementado: router semántico, floor estricto, attempts por conexión y cleanup durable de llamadas grupales con sesiones LiveAvatar LITE independientes (`37`).
+- Implementado con alcance reducido tras QA: barge-in humano por Scribe, cancelación de la ronda y un único reenrutado committed, sin persistencia del fragmento audible (`38`).
 
 ## Regla De Trabajo Para Dos Personas
 

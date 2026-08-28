@@ -42,6 +42,7 @@ import {
   encodeElevenLabsAgentCommand,
   isAuthorizedSpeechEnd,
   isAuthorizedSpeechStart,
+  isSignificantGroupBargeInTranscript,
   providerEventSourceId,
   shouldSendGroupUserActivity,
   type ElevenLabsCommandType,
@@ -89,7 +90,27 @@ type LocalTurnLedgerEntry = {
   originalResponse: string | null;
   latestResponse: string | null;
   responseReceived: boolean;
+  responseAttributionClosed: boolean;
   responseKeys: Set<string>;
+};
+
+type PendingUserInterruption = {
+  sessionId: string;
+  avatarId: string;
+  avatarName: string;
+  turnId: string;
+  callEpoch: number;
+  sourceEventId: string;
+  committedContent: string | null;
+  transcriptId: string | null;
+  rerouteSourceEventId: string | null;
+  cancellationConfirmed: boolean;
+  routed: boolean;
+};
+
+type DeferredSpeakDirective = {
+  directive: Extract<ApiGroupTurnDirective, { action: "speak" }>;
+  callEpoch: number;
 };
 
 type ParsedElevenLabsResponse = {
@@ -150,6 +171,7 @@ export function GroupInteractCall({ groupId }: { groupId: string }) {
   const [audibleOwnerId, setAudibleOwnerId] = useState<string | null>(null);
   const [turnPhase, setTurnPhase] = useState<TurnPhase>("listening");
   const [isMuted, setIsMuted] = useState(false);
+  const [isUserInterrupting, setIsUserInterrupting] = useState(false);
   const [partialTranscript, setPartialTranscript] = useState("");
   const [, setTranscript] = useState<TranscriptEntry[]>([]);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
@@ -185,6 +207,16 @@ export function GroupInteractCall({ groupId }: { groupId: string }) {
   const participantRetryInFlightRef = useRef(new Map<string, string>());
   const turnLedgerRef = useRef(new Map<string, LocalTurnLedgerEntry>());
   const responseTurnIdRef = useRef(new Map<string, string>());
+  const providerPlaybackTurnsRef = useRef(new Map<string, string[]>());
+  const providerCommandTurnIdsRef = useRef(new Map<string, string>());
+  const providerEventTurnIdsRef = useRef(new Map<string, string>());
+  const providerSourceCorrelationRequiredAvatarIdsRef = useRef(new Set<string>());
+  const deferredSpeakDirectivesRef = useRef(new Map<string, DeferredSpeakDirective>());
+  const pendingUserInterruptionRef = useRef<PendingUserInterruption | null>(null);
+  const tryRouteUserInterruptionRef = useRef<() => void>(() => undefined);
+  const handleDirectiveRef = useRef<(directive: ApiGroupTurnDirective) => Promise<void>>(
+    async () => undefined
+  );
   const startupPendingAvatarIdsRef = useRef(new Map<string, string>());
   const startupTimeoutsRef = useRef(new Map<string, { startupKey: string; timer: number }>());
   const startupCueFinishersRef = useRef(new Map<string, { startupKey: string; finish: () => void }>());
@@ -192,6 +224,7 @@ export function GroupInteractCall({ groupId }: { groupId: string }) {
   const callEpochRef = useRef(0);
   const participantsRef = useRef<LocalParticipant[]>([]);
   const endingRef = useRef(false);
+  const isMutedRef = useRef(false);
   const startingRef = useRef(false);
   const heartbeatInFlightRef = useRef(false);
   const mountedRef = useRef(true);
@@ -324,14 +357,101 @@ export function GroupInteractCall({ groupId }: { groupId: string }) {
     }
   }, []);
 
+  const clearUserInterruption = useCallback(() => {
+    pendingUserInterruptionRef.current = null;
+    setIsUserInterrupting(false);
+  }, []);
+
+  const currentProviderPlaybackTurn = useCallback((avatarId: string) => {
+    return providerPlaybackTurnsRef.current.get(avatarId)?.[0] ?? null;
+  }, []);
+
+  const unambiguousDeferredProviderTerminalTurn = useCallback(
+    (avatarId: string, sourceEventId?: string) => {
+      if (!deferredSpeakDirectivesRef.current.has(avatarId)) return null;
+      if (sourceEventId && providerCommandTurnIdsRef.current.has(sourceEventId)) return null;
+      const playbackTurnId = currentProviderPlaybackTurn(avatarId);
+      return playbackTurnId && turnLedgerRef.current.get(playbackTurnId)?.state === "interrupted"
+        ? playbackTurnId
+        : null;
+    },
+    [currentProviderPlaybackTurn]
+  );
+
+  const rememberProviderEventTurn = useCallback(
+    (
+      type: string,
+      avatarId: string,
+      providerEventId: string,
+      fallbackTurnId: string | null,
+      sourceEventId?: string
+    ) => {
+      const key = `${type}:${avatarId}:${providerEventId}`;
+      const remembered = providerEventTurnIdsRef.current.get(key);
+      if (remembered) return remembered;
+      const sourceTurnId = sourceEventId ? providerCommandTurnIdsRef.current.get(sourceEventId) : undefined;
+      if (sourceTurnId) {
+        providerEventTurnIdsRef.current.set(key, sourceTurnId);
+        return sourceTurnId;
+      }
+      if (providerSourceCorrelationRequiredAvatarIdsRef.current.has(avatarId)) return null;
+      if (fallbackTurnId) providerEventTurnIdsRef.current.set(key, fallbackTurnId);
+      return fallbackTurnId;
+    },
+    []
+  );
+
+  const enqueueProviderPlaybackTurn = useCallback((avatarId: string, turnId: string) => {
+    const queue = providerPlaybackTurnsRef.current.get(avatarId) ?? [];
+    if (!queue.includes(turnId)) queue.push(turnId);
+    providerPlaybackTurnsRef.current.set(avatarId, queue);
+  }, []);
+
+  const removeProviderPlaybackTurn = useCallback((avatarId: string, turnId: string) => {
+    const queue = providerPlaybackTurnsRef.current.get(avatarId);
+    if (!queue) return false;
+    const index = queue.indexOf(turnId);
+    if (index < 0) return false;
+    const wasHead = index === 0;
+    queue.splice(index, 1);
+    if (queue.length === 0) providerPlaybackTurnsRef.current.delete(avatarId);
+    return wasHead;
+  }, []);
+
+  const finishProviderPlaybackTurn = useCallback(
+    (avatarId: string, turnId: string) => {
+      if (!removeProviderPlaybackTurn(avatarId, turnId)) return;
+      const finishedTurn = turnLedgerRef.current.get(turnId);
+      if (finishedTurn?.state === "interrupted") finishedTurn.responseAttributionClosed = true;
+      const deferred = deferredSpeakDirectivesRef.current.get(avatarId);
+      if (!deferred) return;
+      const nextTurnId = providerPlaybackTurnsRef.current.get(avatarId)?.[0];
+      if (nextTurnId && turnLedgerRef.current.get(nextTurnId)?.state === "interrupted") return;
+      deferredSpeakDirectivesRef.current.delete(avatarId);
+      queueMicrotask(() => {
+        if (
+          !mountedRef.current ||
+          endingRef.current ||
+          deferred.callEpoch !== callEpochRef.current ||
+          sessionRef.current === null
+        )
+          return;
+        void handleDirectiveRef.current(deferred.directive);
+      });
+    },
+    [removeProviderPlaybackTurn]
+  );
+
   useEffect(() => {
     participantsRef.current = participants;
   }, [participants]);
 
   const applyAudioGate = useCallback((ownerAvatarId: string | null) => {
-    audibleOwnerRef.current = ownerAvatarId;
-    applyGroupAudioGate(mediaElementsRef.current, ownerAvatarId);
-    setAudibleOwnerId(ownerAvatarId);
+    const pendingInterruption = pendingUserInterruptionRef.current;
+    const gatedOwner = pendingInterruption?.callEpoch === callEpochRef.current ? null : ownerAvatarId;
+    audibleOwnerRef.current = gatedOwner;
+    applyGroupAudioGate(mediaElementsRef.current, gatedOwner);
+    setAudibleOwnerId(gatedOwner);
   }, []);
 
   const closeScribe = useCallback(() => {
@@ -357,6 +477,7 @@ export function GroupInteractCall({ groupId }: { groupId: string }) {
     clearTurnTimeout();
     floorAuthorizationRef.current = null;
     pendingDirectiveRef.current = null;
+    deferredSpeakDirectivesRef.current.clear();
     applyAudioGate(null);
     setTurnOwnerId(null);
     setActiveSpeakerId(null);
@@ -381,7 +502,13 @@ export function GroupInteractCall({ groupId }: { groupId: string }) {
           pendingDirective?.turnId === input.turnId && pendingDirective.callEpoch === input.callEpoch;
         if (!ownsAuthorizedTurn && !ownsPendingTurn) return;
         pendingDirectiveRef.current = null;
+        const deferred = deferredSpeakDirectivesRef.current.get(input.avatarId);
+        if (deferred?.directive.turnId === input.turnId) {
+          deferredSpeakDirectivesRef.current.delete(input.avatarId);
+        }
         if (ownsAuthorizedTurn) floorAuthorizationRef.current = null;
+        const expiredLedgerEntry = turnLedgerRef.current.get(input.turnId);
+        if (expiredLedgerEntry) expiredLedgerEntry.state = "interrupted";
         speakingAvatarIdsRef.current.delete(input.avatarId);
         setActiveSpeakerId((current) => (current === input.avatarId ? null : current));
         setTurnOwnerId((current) => (current === input.avatarId ? null : current));
@@ -491,6 +618,12 @@ export function GroupInteractCall({ groupId }: { groupId: string }) {
       if (participantFailureByGenerationRef.current.has(generationKey)) return;
 
       const authorization = floorAuthorizationRef.current;
+      const failedPlaybackTurnId = currentProviderPlaybackTurn(input.avatarId);
+      if (failedPlaybackTurnId) {
+        const failedPlayback = turnLedgerRef.current.get(failedPlaybackTurnId);
+        if (failedPlayback) failedPlayback.state = "interrupted";
+        removeProviderPlaybackTurn(input.avatarId, failedPlaybackTurnId);
+      }
       if (authorization?.avatarId === input.avatarId) {
         floorAuthorizationRef.current = null;
         speakingAvatarIdsRef.current.delete(input.avatarId);
@@ -585,6 +718,7 @@ export function GroupInteractCall({ groupId }: { groupId: string }) {
             return next;
           });
           await reconcileServerResultRef.current(result);
+          tryRouteUserInterruptionRef.current();
         } catch (error) {
           if (
             delivery.state !== "pending" ||
@@ -611,12 +745,29 @@ export function GroupInteractCall({ groupId }: { groupId: string }) {
 
       schedule(PARTICIPANT_FAILURE_RETRY_DELAYS_MS[0]);
     },
-    [applyAudioGate, refreshPendingFailureCount, releaseDisplayedFloor, renewFloorLease, setServerPhase]
+    [
+      applyAudioGate,
+      currentProviderPlaybackTurn,
+      refreshPendingFailureCount,
+      releaseDisplayedFloor,
+      removeProviderPlaybackTurn,
+      renewFloorLease,
+      setServerPhase,
+    ]
   );
 
   const handleDirective = useCallback(
     async (directive: ApiGroupTurnDirective) => {
+      const pendingInterruption = pendingUserInterruptionRef.current;
+      if (directive.action === "speak" && pendingInterruption?.callEpoch === callEpochRef.current) {
+        applyAudioGate(null);
+        return;
+      }
       if (directive.action === "suppress") {
+        deferredSpeakDirectivesRef.current.delete(directive.avatarId);
+        const providerTurnId = currentProviderPlaybackTurn(directive.avatarId);
+        const providerTurn = providerTurnId ? turnLedgerRef.current.get(providerTurnId) : null;
+        if (providerTurn) providerTurn.state = "interrupted";
         safelyInterruptLiveSession(liveSessionsRef.current.get(directive.avatarId)?.session);
         speakingAvatarIdsRef.current.delete(directive.avatarId);
         latestAvatarTextRef.current.delete(directive.avatarId);
@@ -633,6 +784,10 @@ export function GroupInteractCall({ groupId }: { groupId: string }) {
         return;
       }
       if (directive.action === "interrupt") {
+        deferredSpeakDirectivesRef.current.delete(directive.avatarId);
+        const providerTurnId = currentProviderPlaybackTurn(directive.avatarId);
+        const providerTurn = providerTurnId ? turnLedgerRef.current.get(providerTurnId) : null;
+        if (providerTurn) providerTurn.state = "interrupted";
         safelyInterruptLiveSession(liveSessionsRef.current.get(directive.avatarId)?.session);
         speakingAvatarIdsRef.current.delete(directive.avatarId);
         latestAvatarTextRef.current.delete(directive.avatarId);
@@ -655,6 +810,35 @@ export function GroupInteractCall({ groupId }: { groupId: string }) {
       if (endingRef.current) return;
       if (handledTurnIdsRef.current.has(directive.turnId)) return;
       const callEpoch = callEpochRef.current;
+      const blockingPlaybackTurnId = currentProviderPlaybackTurn(directive.avatarId);
+      const blockingPlayback = blockingPlaybackTurnId
+        ? turnLedgerRef.current.get(blockingPlaybackTurnId)
+        : null;
+      if (
+        blockingPlayback &&
+        blockingPlayback.turnId !== directive.turnId &&
+        blockingPlayback.state === "interrupted"
+      ) {
+        providerSourceCorrelationRequiredAvatarIdsRef.current.add(directive.avatarId);
+        deferredSpeakDirectivesRef.current.set(directive.avatarId, { directive, callEpoch });
+        pendingDirectiveRef.current = {
+          turnId: directive.turnId,
+          avatarId: directive.avatarId,
+          callEpoch,
+        };
+        applyAudioGate(null);
+        setTurnOwnerId(directive.avatarId);
+        setServerPhase("queued");
+        setPartialTranscript("");
+        scheduleFloorExpiry({
+          turnId: directive.turnId,
+          avatarId: directive.avatarId,
+          avatarName: directive.avatarName,
+          leaseExpiresAt: directive.leaseExpiresAt,
+          callEpoch,
+        });
+        return;
+      }
       const instance = liveSessionsRef.current.get(directive.avatarId);
       if (!instance) {
         const participant = participantsRef.current.find((item) => item.avatar.id === directive.avatarId);
@@ -690,6 +874,7 @@ export function GroupInteractCall({ groupId }: { groupId: string }) {
         originalResponse: null,
         latestResponse: null,
         responseReceived: false,
+        responseAttributionClosed: false,
         responseKeys: new Set(),
       });
       pruneTurnLedger(turnLedgerRef.current, responseTurnIdRef.current);
@@ -709,7 +894,8 @@ export function GroupInteractCall({ groupId }: { groupId: string }) {
           endingRef.current ||
           sessionRef.current === null ||
           pendingDirectiveRef.current?.turnId !== directive.turnId ||
-          pendingDirectiveRef.current.callEpoch !== callEpoch
+          pendingDirectiveRef.current.callEpoch !== callEpoch ||
+          pendingUserInterruptionRef.current?.turnId === directive.turnId
         )
           return;
         pendingDirectiveRef.current = null;
@@ -719,9 +905,24 @@ export function GroupInteractCall({ groupId }: { groupId: string }) {
           callEpoch,
           state: "queued",
         };
+        const providerCommandId = `group-turn:${callEpoch}:${directive.turnId}`;
+        providerCommandTurnIdsRef.current.set(providerCommandId, directive.turnId);
+        enqueueProviderPlaybackTurn(directive.avatarId, directive.turnId);
+        applyAudioGate(null);
+        for (const speakingAvatarId of [...speakingAvatarIdsRef.current]) {
+          if (speakingAvatarId === directive.avatarId) continue;
+          safelyInterruptLiveSession(liveSessionsRef.current.get(speakingAvatarId)?.session);
+          speakingAvatarIdsRef.current.delete(speakingAvatarId);
+        }
         applyAudioGate(directive.avatarId);
-        await sendElevenLabsCommand(instance.session, "user_message", { text: directive.instruction });
+        await sendElevenLabsCommand(
+          instance.session,
+          "user_message",
+          { text: directive.instruction },
+          providerCommandId
+        );
       } catch (error) {
+        removeProviderPlaybackTurn(directive.avatarId, directive.turnId);
         applyAudioGate(null);
         enqueueParticipantFailure({
           avatarId: directive.avatarId,
@@ -736,16 +937,25 @@ export function GroupInteractCall({ groupId }: { groupId: string }) {
     },
     [
       applyAudioGate,
+      currentProviderPlaybackTurn,
+      enqueueProviderPlaybackTurn,
       enqueueParticipantFailure,
       releaseDisplayedFloor,
+      removeProviderPlaybackTurn,
       scheduleFloorExpiry,
       sendUserActivity,
       setServerPhase,
     ]
   );
 
+  handleDirectiveRef.current = handleDirective;
+
   const reconcileExistingFloor = useCallback(
     (floor: ApiGroupFloorSnapshot) => {
+      if (pendingUserInterruptionRef.current?.callEpoch === callEpochRef.current) {
+        applyAudioGate(null);
+        return;
+      }
       if (!isUsableFloorSnapshot(floor)) {
         releaseDisplayedFloor();
         return;
@@ -820,8 +1030,12 @@ export function GroupInteractCall({ groupId }: { groupId: string }) {
         participantFailureDeliveriesRef.current.size > 0 ||
         participantRetryInFlightRef.current.size > 0
       )
-        return;
+        return false;
       const callEpoch = callEpochRef.current;
+      const pendingReroute = pendingUserInterruptionRef.current;
+      const clearsInterruption = Boolean(
+        pendingReroute?.routed && pendingReroute.rerouteSourceEventId === input.sourceEventId
+      );
       setServerPhase("deliberating");
       applyAudioGate(null);
       setPartialTranscript("");
@@ -829,6 +1043,9 @@ export function GroupInteractCall({ groupId }: { groupId: string }) {
         .then(async () => {
           const result = await submitGroupTurn(sessionId, input);
           if (callEpochRef.current !== callEpoch || endingRef.current) return;
+          if (clearsInterruption && pendingUserInterruptionRef.current === pendingReroute) {
+            clearUserInterruption();
+          }
           await reconcileServerResult(result);
         })
         .catch((error) => {
@@ -837,8 +1054,9 @@ export function GroupInteractCall({ groupId }: { groupId: string }) {
           setServerPhase("listening");
           setCallError(error instanceof Error ? error.message : "No pudimos coordinar el siguiente turno.");
         });
+      return true;
     },
-    [applyAudioGate, reconcileServerResult, releaseDisplayedFloor, setServerPhase]
+    [applyAudioGate, clearUserInterruption, reconcileServerResult, releaseDisplayedFloor, setServerPhase]
   );
 
   const reportProviderEvent = useCallback(
@@ -856,8 +1074,8 @@ export function GroupInteractCall({ groupId }: { groupId: string }) {
             generation: participantInstance.generation,
           }
         : null;
-      orchestrationQueueRef.current = orchestrationQueueRef.current
-        .then(async () => {
+      const deliver = async () => {
+        try {
           let result;
           try {
             result = await reportGroupProviderEvent(sessionId, input);
@@ -866,6 +1084,14 @@ export function GroupInteractCall({ groupId }: { groupId: string }) {
           }
           if (callEpochRef.current !== callEpoch || endingRef.current) return;
           providerEventDeliveryStateRef.current.set(input.sourceEventId, "acked");
+          if (
+            input.turnId &&
+            turnLedgerRef.current.get(input.turnId)?.state === "interrupted" &&
+            options.affectsFloor !== false
+          ) {
+            applyAudioGate(null);
+            return;
+          }
           if (result.directive?.action === "suppress") {
             const currentInstance = liveSessionsRef.current.get(result.directive.avatarId);
             const authorization = floorAuthorizationRef.current;
@@ -888,15 +1114,181 @@ export function GroupInteractCall({ groupId }: { groupId: string }) {
           if (options.affectsFloor !== false) {
             await reconcileServerResult(result);
           }
-        })
-        .catch((error) => {
+        } catch (error) {
           if (callEpochRef.current !== callEpoch) return;
           providerEventDeliveryStateRef.current.set(input.sourceEventId, "failed");
-          setCallError(error instanceof Error ? error.message : "No pudimos confirmar el turno del avatar.");
-        });
+          if (options.affectsFloor !== false) {
+            setCallError(
+              error instanceof Error ? error.message : "No pudimos confirmar el turno del avatar."
+            );
+          }
+        }
+      };
+      if (options.affectsFloor === false) {
+        void deliver();
+        return;
+      }
+      orchestrationQueueRef.current = orchestrationQueueRef.current.then(deliver);
     },
-    [reconcileServerResult]
+    [applyAudioGate, reconcileServerResult]
   );
+
+  const tryRouteUserInterruption = useCallback(() => {
+    const pending = pendingUserInterruptionRef.current;
+    if (
+      !pending ||
+      pending.routed ||
+      !pending.cancellationConfirmed ||
+      !pending.committedContent ||
+      pending.callEpoch !== callEpochRef.current ||
+      pending.sessionId !== sessionRef.current?.id ||
+      endingRef.current
+    )
+      return;
+
+    pending.routed = true;
+    const transcriptId = pending.transcriptId ?? crypto.randomUUID();
+    pending.transcriptId = transcriptId;
+    pending.rerouteSourceEventId = `scribe:${transcriptId}`;
+    const accepted = routeHumanTurn({
+      sourceEventId: pending.rerouteSourceEventId,
+      content: pending.committedContent,
+    });
+    if (!accepted) {
+      pending.routed = false;
+      setCallError("No pudimos coordinar tu nueva intervención.");
+    }
+  }, [routeHumanTurn]);
+
+  tryRouteUserInterruptionRef.current = tryRouteUserInterruption;
+
+  const beginUserInterruption = useCallback(
+    (triggerText: string) => {
+      const sessionId = sessionRef.current?.id;
+      const callEpoch = callEpochRef.current;
+      if (
+        !sessionId ||
+        endingRef.current ||
+        isMutedRef.current ||
+        participantFailureDeliveriesRef.current.size > 0 ||
+        participantRetryInFlightRef.current.size > 0
+      )
+        return null;
+
+      const authorization = floorAuthorizationRef.current;
+      const pendingDirective = pendingDirectiveRef.current;
+      const owner = authorization
+        ? {
+            turnId: authorization.turnId,
+            avatarId: authorization.avatarId,
+            callEpoch: authorization.callEpoch,
+          }
+        : pendingDirective;
+      if (!owner || owner.callEpoch !== callEpoch) return null;
+      if (authorization && !["queued", "speaking", "committing"].includes(authorization.state)) {
+        return null;
+      }
+      const existing = pendingUserInterruptionRef.current;
+      if (existing?.callEpoch === callEpoch && existing.sessionId === sessionId) return existing;
+
+      const sourceEventId = `scribe-barge-in:${crypto.randomUUID()}`;
+      const ledgerEntry = turnLedgerRef.current.get(owner.turnId);
+      const avatarName =
+        participantsRef.current.find((participant) => participant.avatar.id === owner.avatarId)?.avatar
+          .name ?? "El avatar";
+      const pending: PendingUserInterruption = {
+        sessionId,
+        avatarId: owner.avatarId,
+        avatarName,
+        turnId: owner.turnId,
+        callEpoch,
+        sourceEventId,
+        committedContent: null,
+        transcriptId: null,
+        rerouteSourceEventId: null,
+        cancellationConfirmed: false,
+        routed: false,
+      };
+      pendingUserInterruptionRef.current = pending;
+      setIsUserInterrupting(true);
+      setCallError(null);
+      setPartialTranscript(triggerText);
+      clearTurnTimeout();
+      applyAudioGate(null);
+      pendingDirectiveRef.current = null;
+      const deferredDirective = deferredSpeakDirectivesRef.current.get(owner.avatarId);
+      if (deferredDirective?.directive.turnId === owner.turnId) {
+        deferredSpeakDirectivesRef.current.delete(owner.avatarId);
+      }
+      speakingAvatarIdsRef.current.delete(owner.avatarId);
+      setActiveSpeakerId((current) => (current === owner.avatarId ? null : current));
+      if (ledgerEntry) ledgerEntry.state = "interrupted";
+      safelyInterruptLiveSession(liveSessionsRef.current.get(owner.avatarId)?.session);
+      void interruptGroupVoiceSession(sessionId, "user", {
+        trigger: "voice",
+        sourceEventId,
+        avatarId: owner.avatarId,
+        turnId: owner.turnId,
+      })
+        .then(async (result) => {
+          if (
+            pendingUserInterruptionRef.current !== pending ||
+            pending.callEpoch !== callEpochRef.current ||
+            pending.sessionId !== sessionRef.current?.id ||
+            endingRef.current
+          )
+            return;
+          if (result.phase !== "listening" || result.floor !== null) {
+            setCallError("El servidor no confirmó que la ronda anterior haya terminado.");
+            return;
+          }
+          await reconcileServerResult(result);
+          if (
+            pendingUserInterruptionRef.current !== pending ||
+            pending.callEpoch !== callEpochRef.current ||
+            pending.sessionId !== sessionRef.current?.id ||
+            endingRef.current
+          )
+            return;
+          pending.cancellationConfirmed = true;
+          releaseDisplayedFloor();
+          setServerPhase("listening");
+          tryRouteUserInterruptionRef.current();
+        })
+        .catch((error) => {
+          if (
+            pendingUserInterruptionRef.current !== pending ||
+            pending.callEpoch !== callEpochRef.current ||
+            pending.sessionId !== sessionRef.current?.id ||
+            endingRef.current
+          )
+            return;
+          setCallError(
+            error instanceof Error ? error.message : "No pudimos confirmar la interrupción de la ronda."
+          );
+        });
+      return pending;
+    },
+    [applyAudioGate, clearTurnTimeout, reconcileServerResult, releaseDisplayedFloor, setServerPhase]
+  );
+
+  const commitUserInterruption = useCallback((pending: PendingUserInterruption, content: string) => {
+    if (
+      pendingUserInterruptionRef.current !== pending ||
+      pending.callEpoch !== callEpochRef.current ||
+      pending.sessionId !== sessionRef.current?.id ||
+      !content ||
+      pending.committedContent
+    )
+      return;
+    pending.committedContent = content;
+    pending.transcriptId = crypto.randomUUID();
+    setTranscript((current) => [
+      ...current,
+      { id: pending.transcriptId!, role: "user", speakerName: "Vos", content },
+    ]);
+    tryRouteUserInterruptionRef.current();
+  }, []);
 
   const startScribe = useCallback(async () => {
     const sessionId = sessionRef.current?.id;
@@ -919,25 +1311,41 @@ export function GroupInteractCall({ groupId }: { groupId: string }) {
       },
     });
     const onPartialTranscript = (event: { text: string }) => {
-      if (callEpochRef.current !== callEpoch) return;
-      if (
-        floorAuthorizationRef.current !== null ||
-        turnPhaseRef.current !== "listening" ||
-        participantFailureDeliveriesRef.current.size > 0 ||
-        participantRetryInFlightRef.current.size > 0
-      ) {
+      if (callEpochRef.current !== callEpoch || isMutedRef.current) return;
+      if (participantFailureDeliveriesRef.current.size > 0 || participantRetryInFlightRef.current.size > 0) {
+        setPartialTranscript("");
+        return;
+      }
+      const pendingInterruption = pendingUserInterruptionRef.current;
+      if (pendingInterruption?.callEpoch === callEpoch) {
+        setPartialTranscript(event.text);
+        return;
+      }
+      if (floorAuthorizationRef.current !== null || pendingDirectiveRef.current !== null) {
+        if (isSignificantGroupBargeInTranscript(event.text)) beginUserInterruption(event.text);
+        else setPartialTranscript("");
+        return;
+      }
+      if (turnPhaseRef.current !== "listening") {
         setPartialTranscript("");
         return;
       }
       setPartialTranscript(event.text);
     };
     const onCommittedTranscript = (event: { text: string }) => {
-      if (callEpochRef.current !== callEpoch) return;
+      if (callEpochRef.current !== callEpoch || isMutedRef.current) return;
       const content = event.text.trim();
       setPartialTranscript("");
+      if (!content) return;
+      const pendingInterruption = pendingUserInterruptionRef.current;
+      if (pendingInterruption?.callEpoch === callEpoch) {
+        commitUserInterruption(pendingInterruption, content);
+        return;
+      }
+      if (floorAuthorizationRef.current !== null || pendingDirectiveRef.current !== null) {
+        return;
+      }
       if (
-        !content ||
-        floorAuthorizationRef.current !== null ||
         turnPhaseRef.current !== "listening" ||
         participantFailureDeliveriesRef.current.size > 0 ||
         participantRetryInFlightRef.current.size > 0
@@ -961,7 +1369,7 @@ export function GroupInteractCall({ groupId }: { groupId: string }) {
       connection.off(RealtimeEvents.ERROR, onError);
     };
     scribeRef.current = connection;
-  }, [closeScribe, routeHumanTurn]);
+  }, [beginUserInterruption, closeScribe, commitUserInterruption, routeHumanTurn]);
 
   const initializeLiveParticipant = useCallback(
     async (participant: ApiGroupVoiceParticipant, callEpoch = callEpochRef.current) => {
@@ -1058,20 +1466,39 @@ export function GroupInteractCall({ groupId }: { groupId: string }) {
           applyAudioGate(authorization?.state === "committing" ? null : (authorization?.avatarId ?? null));
         }
       };
-      const onSpeakStarted = (event: { event_id: string }) => {
+      const onSpeakStarted = (event: { event_id: string; source_event_id?: string }) => {
         if (!isCurrentCall()) return;
         if (startupPendingAvatarIdsRef.current.get(avatarId) === startupKey) {
-          const authorization = floorAuthorizationRef.current;
-          applyAudioGate(authorization?.state === "committing" ? null : (authorization?.avatarId ?? null));
+          safelyInterruptLiveSession(live);
+          speakingAvatarIdsRef.current.delete(avatarId);
+          finishStartupCue();
+          return;
+        }
+        const playbackTurnId = currentProviderPlaybackTurn(avatarId);
+        const rememberedTurnId = rememberProviderEventTurn(
+          "speak_started",
+          avatarId,
+          event.event_id,
+          playbackTurnId,
+          event.source_event_id
+        );
+        if (providerSourceCorrelationRequiredAvatarIdsRef.current.has(avatarId) && !rememberedTurnId) return;
+        const pendingInterruption = pendingUserInterruptionRef.current;
+        if (pendingInterruption?.callEpoch === callEpoch) {
+          safelyInterruptLiveSession(live);
+          speakingAvatarIdsRef.current.delete(avatarId);
+          applyAudioGate(null);
+          setActiveSpeakerId((current) => (current === avatarId ? null : current));
           return;
         }
         const authorization = floorAuthorizationRef.current;
         const logicalTurnId =
-          authorization?.avatarId === avatarId &&
+          rememberedTurnId ??
+          (authorization?.avatarId === avatarId &&
           authorization.callEpoch === callEpoch &&
           (authorization.state === "queued" || authorization.state === "speaking")
             ? authorization.turnId
-            : null;
+            : null);
         const sourceEventId = providerEventSourceId({
           type: "speak_started",
           avatarId,
@@ -1079,6 +1506,36 @@ export function GroupInteractCall({ groupId }: { groupId: string }) {
         });
         const deliveryState = providerEventDeliveryStateRef.current.get(sourceEventId);
         if (deliveryState === "inflight" || deliveryState === "acked") return;
+        const logicalLedger = logicalTurnId ? turnLedgerRef.current.get(logicalTurnId) : null;
+        const belongsToCurrentAuthorization = Boolean(
+          logicalTurnId &&
+          authorization?.turnId === logicalTurnId &&
+          authorization.avatarId === avatarId &&
+          authorization.callEpoch === callEpoch
+        );
+        if (logicalTurnId && (logicalLedger?.state === "interrupted" || !belongsToCurrentAuthorization)) {
+          if (!beginProviderEventDelivery(sourceEventId)) return;
+          const reusesCurrentAvatarSession = Boolean(
+            authorization?.avatarId === avatarId &&
+            authorization.callEpoch === callEpoch &&
+            authorization.turnId !== logicalTurnId
+          );
+          if (!reusesCurrentAvatarSession) {
+            safelyInterruptLiveSession(live);
+            speakingAvatarIdsRef.current.delete(avatarId);
+            applyAudioGate(authorization?.state === "committing" ? null : (authorization?.avatarId ?? null));
+          }
+          reportProviderEvent(
+            {
+              sourceEventId,
+              turnId: logicalTurnId,
+              avatarId,
+              type: "speak_started",
+            },
+            { affectsFloor: false }
+          );
+          return;
+        }
         const isFailedAuthorizedRedelivery =
           deliveryState === "failed" &&
           authorization?.avatarId === avatarId &&
@@ -1101,9 +1558,25 @@ export function GroupInteractCall({ groupId }: { groupId: string }) {
           return;
         }
         if (!beginProviderEventDelivery(sourceEventId)) return;
+        for (const entry of turnLedgerRef.current.values()) {
+          if (
+            entry.avatarId === avatarId &&
+            entry.callEpoch === callEpoch &&
+            entry.turnId !== authorization.turnId &&
+            entry.state === "interrupted"
+          ) {
+            entry.responseAttributionClosed = true;
+          }
+        }
         if (!isFailedAuthorizedRedelivery) authorization.state = "speaking";
         const ledgerEntry = turnLedgerRef.current.get(authorization.turnId);
         if (ledgerEntry) ledgerEntry.state = "speaking";
+        applyAudioGate(null);
+        for (const speakingAvatarId of [...speakingAvatarIdsRef.current]) {
+          if (speakingAvatarId === avatarId) continue;
+          safelyInterruptLiveSession(liveSessionsRef.current.get(speakingAvatarId)?.session);
+          speakingAvatarIdsRef.current.delete(speakingAvatarId);
+        }
         speakingAvatarIdsRef.current.add(avatarId);
         applyAudioGate(avatarId);
         setActiveSpeakerId(avatarId);
@@ -1116,25 +1589,77 @@ export function GroupInteractCall({ groupId }: { groupId: string }) {
           type: "speak_started",
         });
       };
-      const onSpeakEnded = (event: { event_id: string }) => {
+      const onSpeakEnded = (event: { event_id: string; source_event_id?: string }) => {
         if (!isCurrentCall()) return;
         if (startupPendingAvatarIdsRef.current.get(avatarId) === startupKey) {
           finishStartupCue();
           return;
         }
+        const playbackTurnId = currentProviderPlaybackTurn(avatarId);
+        const rememberedTurnId =
+          unambiguousDeferredProviderTerminalTurn(avatarId, event.source_event_id) ??
+          rememberProviderEventTurn(
+            "speak_ended",
+            avatarId,
+            event.event_id,
+            playbackTurnId,
+            event.source_event_id
+          );
+        if (providerSourceCorrelationRequiredAvatarIdsRef.current.has(avatarId) && !rememberedTurnId) return;
+        const pendingInterruption = pendingUserInterruptionRef.current;
+        if (pendingInterruption?.callEpoch === callEpoch) {
+          speakingAvatarIdsRef.current.delete(avatarId);
+          applyAudioGate(null);
+          if (rememberedTurnId && turnLedgerRef.current.get(rememberedTurnId)?.state === "interrupted") {
+            finishProviderPlaybackTurn(avatarId, rememberedTurnId);
+          }
+          return;
+        }
         const authorization = floorAuthorizationRef.current;
         const logicalTurnId =
-          authorization?.avatarId === avatarId &&
+          rememberedTurnId ??
+          (authorization?.avatarId === avatarId &&
           authorization.callEpoch === callEpoch &&
           (authorization.state === "speaking" || authorization.state === "committing")
             ? authorization.turnId
-            : null;
+            : null);
         const sourceEventId = providerEventSourceId({
           type: "speak_ended",
           avatarId,
           providerEventId: logicalTurnId ? `turn:${logicalTurnId}` : event.event_id,
         });
         const deliveryState = providerEventDeliveryStateRef.current.get(sourceEventId);
+        const logicalLedger = logicalTurnId ? turnLedgerRef.current.get(logicalTurnId) : null;
+        const belongsToCurrentAuthorization = Boolean(
+          logicalTurnId &&
+          authorization?.turnId === logicalTurnId &&
+          authorization.avatarId === avatarId &&
+          authorization.callEpoch === callEpoch
+        );
+        if (logicalTurnId && (logicalLedger?.state === "interrupted" || !belongsToCurrentAuthorization)) {
+          finishProviderPlaybackTurn(avatarId, logicalTurnId);
+          const reusesCurrentAvatarSession = Boolean(
+            authorization?.avatarId === avatarId &&
+            authorization.callEpoch === callEpoch &&
+            authorization.turnId !== logicalTurnId
+          );
+          if (!reusesCurrentAvatarSession) {
+            speakingAvatarIdsRef.current.delete(avatarId);
+            applyAudioGate(authorization?.state === "committing" ? null : (authorization?.avatarId ?? null));
+          }
+          if (deliveryState === "inflight" || deliveryState === "acked") return;
+          if (!beginProviderEventDelivery(sourceEventId)) return;
+          reportProviderEvent(
+            {
+              sourceEventId,
+              turnId: logicalTurnId,
+              avatarId,
+              type: "speak_ended",
+            },
+            { affectsFloor: false }
+          );
+          return;
+        }
         if (deliveryState === "inflight" || deliveryState === "acked") return;
         const isFailedAuthorizedRedelivery =
           deliveryState === "failed" &&
@@ -1174,16 +1699,25 @@ export function GroupInteractCall({ groupId }: { groupId: string }) {
           type: "speak_ended",
           ...(content ? { content } : {}),
         });
+        finishProviderPlaybackTurn(avatarId, authorization.turnId);
       };
-      const onAvatarTranscription = (event: { event_id: string; text: string }) => {
+      const onAvatarTranscription = (event: { event_id: string; source_event_id?: string; text: string }) => {
         if (!isCurrentCall()) return;
         const content = event.text.trim();
         const authorization = floorAuthorizationRef.current;
+        const playbackTurnId = rememberProviderEventTurn(
+          "avatar_transcription",
+          avatarId,
+          event.event_id,
+          currentProviderPlaybackTurn(avatarId),
+          event.source_event_id
+        );
         if (
           !content ||
           !authorization ||
           authorization.avatarId !== avatarId ||
           authorization.callEpoch !== callEpoch ||
+          playbackTurnId !== authorization.turnId ||
           !speakingAvatarIdsRef.current.has(avatarId)
         )
           return;
@@ -1193,6 +1727,7 @@ export function GroupInteractCall({ groupId }: { groupId: string }) {
       };
       const onElevenLabsAgentEvent = (event: {
         event_id: string;
+        source_event_id?: string;
         elevenlabs_event_type: string;
         data: Record<string, unknown>;
       }) => {
@@ -1204,15 +1739,55 @@ export function GroupInteractCall({ groupId }: { groupId: string }) {
           const response = parseElevenLabsResponse(event.data);
           if (!response) return;
           const type = event.elevenlabs_event_type;
-          const turnId = resolveTurnForAgentResponse({
-            avatarId,
-            callEpoch,
+          const rememberedResponseTurnId = rememberProviderEventTurn(
             type,
-            response,
-            authorization: floorAuthorizationRef.current,
-            ledger: turnLedgerRef.current,
-            responseTurnIds: responseTurnIdRef.current,
-          });
+            avatarId,
+            event.event_id,
+            null,
+            event.source_event_id
+          );
+          if (
+            type === "agent_response" &&
+            providerSourceCorrelationRequiredAvatarIdsRef.current.has(avatarId) &&
+            !rememberedResponseTurnId
+          )
+            return;
+          const currentPlaybackResponseTurnId =
+            type === "agent_response" ? currentProviderPlaybackTurn(avatarId) : null;
+          const hasOlderUnresolvedInterruptedResponse = [...turnLedgerRef.current.values()].some(
+            (entry) =>
+              entry.avatarId === avatarId &&
+              entry.callEpoch === callEpoch &&
+              entry.turnId !== currentPlaybackResponseTurnId &&
+              entry.state === "interrupted" &&
+              !entry.responseReceived &&
+              !entry.responseAttributionClosed
+          );
+          const playbackResponseTurnId = hasOlderUnresolvedInterruptedResponse
+            ? null
+            : currentPlaybackResponseTurnId;
+          const episodeTurnId =
+            rememberedResponseTurnId ??
+            (playbackResponseTurnId
+              ? rememberProviderEventTurn(
+                  type,
+                  avatarId,
+                  event.event_id,
+                  playbackResponseTurnId,
+                  event.source_event_id
+                )
+              : null);
+          const turnId =
+            episodeTurnId ??
+            resolveTurnForAgentResponse({
+              avatarId,
+              callEpoch,
+              type,
+              response,
+              authorization: floorAuthorizationRef.current,
+              ledger: turnLedgerRef.current,
+              responseTurnIds: responseTurnIdRef.current,
+            });
           if (!turnId) return;
           const sourceEventId = providerEventSourceId({
             type,
@@ -1261,28 +1836,60 @@ export function GroupInteractCall({ groupId }: { groupId: string }) {
         }
         if (event.elevenlabs_event_type !== "interruption") return;
         const authorization = floorAuthorizationRef.current;
-        if (!authorization || authorization.avatarId !== avatarId || authorization.callEpoch !== callEpoch)
-          return;
+        const pendingInterruption = pendingUserInterruptionRef.current;
+        const deferredInterruptedTurnId = unambiguousDeferredProviderTerminalTurn(
+          avatarId,
+          event.source_event_id
+        );
+        const interruptionFallbackTurnId =
+          currentProviderPlaybackTurn(avatarId) ??
+          (pendingInterruption?.avatarId === avatarId && pendingInterruption.callEpoch === callEpoch
+            ? pendingInterruption.turnId
+            : authorization?.avatarId === avatarId && authorization.callEpoch === callEpoch
+              ? authorization.turnId
+              : null);
+        const turnId =
+          deferredInterruptedTurnId ??
+          rememberProviderEventTurn(
+            "interruption",
+            avatarId,
+            event.event_id,
+            interruptionFallbackTurnId,
+            event.source_event_id
+          );
+        if (providerSourceCorrelationRequiredAvatarIdsRef.current.has(avatarId) && !turnId) return;
+        if (!turnId) return;
         const sourceEventId = providerEventSourceId({
           type: "interruption",
           avatarId,
           providerEventId: event.event_id,
         });
         const deliveryState = providerEventDeliveryStateRef.current.get(sourceEventId);
-        const isFailedAuthorizedRedelivery =
-          deliveryState === "failed" && authorization.state === "committing";
-        if (authorization.state !== "speaking" && !isFailedAuthorizedRedelivery) return;
+        const isFailedAuthorizedRedelivery = deliveryState === "failed";
+        const drainsDeferredInterruptedPlayback = Boolean(
+          turnLedgerRef.current.get(turnId)?.state === "interrupted" &&
+          deferredSpeakDirectivesRef.current.has(avatarId)
+        );
+        if (
+          !pendingInterruption &&
+          authorization?.state !== "speaking" &&
+          !isFailedAuthorizedRedelivery &&
+          !drainsDeferredInterruptedPlayback
+        )
+          return;
         if (!beginProviderEventDelivery(sourceEventId)) return;
-        applyAudioGate(null);
-        if (!isFailedAuthorizedRedelivery) authorization.state = "committing";
-        const ledgerEntry = turnLedgerRef.current.get(authorization.turnId);
-        if (ledgerEntry) ledgerEntry.state = "interrupted";
-        reportProviderEvent({
-          sourceEventId,
-          turnId: authorization.turnId,
-          avatarId,
-          type: "interruption",
-        });
+        reportProviderEvent(
+          {
+            sourceEventId,
+            turnId,
+            avatarId,
+            type: "interruption",
+          },
+          { affectsFloor: false }
+        );
+        if (turnLedgerRef.current.get(turnId)?.state === "interrupted") {
+          finishProviderPlaybackTurn(avatarId, turnId);
+        }
       };
       const onSessionStopped = () => failCurrentInstance("session_stopped");
       const onSessionDisconnected = () => failCurrentInstance("stream_error");
@@ -1363,10 +1970,14 @@ export function GroupInteractCall({ groupId }: { groupId: string }) {
     [
       applyAudioGate,
       beginProviderEventDelivery,
+      currentProviderPlaybackTurn,
       detachLiveSessionListeners,
       enqueueParticipantFailure,
+      finishProviderPlaybackTurn,
+      rememberProviderEventTurn,
       reportProviderEvent,
       setServerPhase,
+      unambiguousDeferredProviderTerminalTurn,
     ]
   );
 
@@ -1375,6 +1986,8 @@ export function GroupInteractCall({ groupId }: { groupId: string }) {
       const activeSession = sessionRef.current;
       if (endingRef.current) return;
       endingRef.current = true;
+      clearUserInterruption();
+      isMutedRef.current = true;
       startRequestTokenRef.current += 1;
       startingRef.current = false;
       heartbeatInFlightRef.current = false;
@@ -1412,6 +2025,11 @@ export function GroupInteractCall({ groupId }: { groupId: string }) {
       setPendingRetryCount(0);
       turnLedgerRef.current.clear();
       responseTurnIdRef.current.clear();
+      providerPlaybackTurnsRef.current.clear();
+      providerCommandTurnIdsRef.current.clear();
+      providerEventTurnIdsRef.current.clear();
+      providerSourceCorrelationRequiredAvatarIdsRef.current.clear();
+      deferredSpeakDirectivesRef.current.clear();
       try {
         if (serverEnd) await serverEnd;
         setCallStatus("ended");
@@ -1437,6 +2055,7 @@ export function GroupInteractCall({ groupId }: { groupId: string }) {
     [
       applyAudioGate,
       clearParticipantFailureDeliveries,
+      clearUserInterruption,
       clearTurnTimeout,
       closeScribe,
       detachLiveSessionListeners,
@@ -1507,6 +2126,8 @@ export function GroupInteractCall({ groupId }: { groupId: string }) {
     setCallError(null);
     setTranscript([]);
     setIsMuted(false);
+    isMutedRef.current = false;
+    clearUserInterruption();
     setTurnOwnerId(null);
     setServerPhase("listening");
     floorAuthorizationRef.current = null;
@@ -1521,6 +2142,11 @@ export function GroupInteractCall({ groupId }: { groupId: string }) {
     setPendingRetryCount(0);
     turnLedgerRef.current.clear();
     responseTurnIdRef.current.clear();
+    providerPlaybackTurnsRef.current.clear();
+    providerCommandTurnIdsRef.current.clear();
+    providerEventTurnIdsRef.current.clear();
+    providerSourceCorrelationRequiredAvatarIdsRef.current.clear();
+    deferredSpeakDirectivesRef.current.clear();
     clearParticipantFailureDeliveries();
     for (const finisher of startupCueFinishersRef.current.values()) finisher.finish();
     startupCueFinishersRef.current.clear();
@@ -1647,48 +2273,33 @@ export function GroupInteractCall({ groupId }: { groupId: string }) {
       if (participantRetryInFlightRef.current.get(avatarId) === retryToken) {
         participantRetryInFlightRef.current.delete(avatarId);
         setPendingRetryCount(participantRetryInFlightRef.current.size);
+        tryRouteUserInterruptionRef.current();
       }
     }
   }
 
   async function toggleMute() {
     if (
-      floorAuthorizationRef.current !== null ||
-      turnPhaseRef.current !== "listening" ||
+      pendingUserInterruptionRef.current !== null ||
+      participantFailureDeliveriesRef.current.size > 0 ||
       participantRetryInFlightRef.current.size > 0
     )
       return;
-    if (isMuted) {
+    if (isMutedRef.current) {
       setCallError(null);
       try {
+        isMutedRef.current = false;
         await startScribe();
         setIsMuted(false);
       } catch (error) {
+        isMutedRef.current = true;
         setCallError(error instanceof Error ? error.message : "No pudimos activar el micrófono.");
       }
     } else {
+      isMutedRef.current = true;
       closeScribe();
       setIsMuted(true);
       setPartialTranscript("");
-    }
-  }
-
-  async function interruptCurrentAvatar() {
-    const directive = floorAuthorizationRef.current;
-    const activeSessionId = sessionRef.current?.id;
-    if (!directive || !activeSessionId) return;
-    try {
-      const result = await interruptGroupVoiceSession(activeSessionId, "user", {
-        avatarId: directive.avatarId,
-        turnId: directive.turnId,
-      });
-      safelyInterruptLiveSession(liveSessionsRef.current.get(directive.avatarId)?.session);
-      speakingAvatarIdsRef.current.delete(directive.avatarId);
-      latestAvatarTextRef.current.delete(directive.avatarId);
-      await reconcileServerResult(result);
-      setCallError(null);
-    } catch (error) {
-      setCallError(error instanceof Error ? error.message : "No pudimos interrumpir al avatar.");
     }
   }
 
@@ -1773,11 +2384,13 @@ export function GroupInteractCall({ groupId }: { groupId: string }) {
         void endCall("unload");
       } else {
         callEpochRef.current += 1;
+        isMutedRef.current = true;
+        clearUserInterruption();
         closeScribe();
         applyAudioGate(null);
       }
     };
-  }, [applyAudioGate, closeScribe, endCall]);
+  }, [applyAudioGate, clearUserInterruption, closeScribe, endCall]);
 
   if (loadStatus === "loading") {
     return <LoadingState title="Cargando grupo" description="Estamos preparando la sala." />;
@@ -1817,12 +2430,8 @@ export function GroupInteractCall({ groupId }: { groupId: string }) {
       (memberPosition.get(right.avatar.id) ?? Number.MAX_SAFE_INTEGER)
   );
   const isLive = callStatus === "active" || callStatus === "degraded";
-  const canUserSpeak =
-    isLive &&
-    pendingFailureCount === 0 &&
-    pendingRetryCount === 0 &&
-    turnOwnerId === null &&
-    turnPhase === "listening";
+  const canToggleMicrophone =
+    isLive && pendingFailureCount === 0 && pendingRetryCount === 0 && !isUserInterrupting;
   const canStart =
     availableMemberIds.size >= 2 &&
     (callStatus === "idle" || callStatus === "ended" || callStatus === "error");
@@ -1953,7 +2562,12 @@ export function GroupInteractCall({ groupId }: { groupId: string }) {
             ) : null}
             {isLive ? (
               <p className={styles.turnIndicator} aria-live="polite">
-                {turnStatusLabel(turnPhase, turnOwnerName, isMuted)}
+                {turnStatusLabel(
+                  turnPhase,
+                  pendingUserInterruptionRef.current?.avatarName ?? turnOwnerName,
+                  isMuted,
+                  isUserInterrupting
+                )}
               </p>
             ) : null}
             <InteractCallControls
@@ -1961,11 +2575,11 @@ export function GroupInteractCall({ groupId }: { groupId: string }) {
               isMuted={isMuted}
               canStart={canStart}
               isActive={isLive || callStatus === "starting"}
-              canToggleMute={canUserSpeak}
+              canToggleMute={canToggleMicrophone}
               canInterrupt={false}
               onStart={() => void requestGroupCallStart()}
               onToggleMute={() => void toggleMute()}
-              onInterrupt={() => void interruptCurrentAvatar()}
+              onInterrupt={() => undefined}
               onEnd={() => void endCall("user")}
             />
           </>
@@ -1978,7 +2592,8 @@ export function GroupInteractCall({ groupId }: { groupId: string }) {
 async function sendElevenLabsCommand(
   session: LiveAvatarSession,
   elevenlabsEventType: ElevenLabsCommandType,
-  data: Record<string, string> = {}
+  data: Record<string, string> = {},
+  eventId?: string
 ) {
   const room = (
     session as unknown as {
@@ -1993,7 +2608,7 @@ async function sendElevenLabsCommand(
     }
   ).room;
   if (!room?.localParticipant?.publishData) throw new Error("El canal del avatar todavía no está listo.");
-  await room.localParticipant.publishData(encodeElevenLabsAgentCommand(elevenlabsEventType, data), {
+  await room.localParticipant.publishData(encodeElevenLabsAgentCommand(elevenlabsEventType, data, eventId), {
     reliable: true,
     topic: "agent-control",
   });
@@ -2073,15 +2688,16 @@ function resolveTurnForAgentResponse(input: {
     return originalMatches.length === 1 ? (originalMatches[0]?.turnId ?? null) : null;
   }
 
+  const unmatched = candidates.filter((entry) => !entry.responseReceived && !entry.responseAttributionClosed);
   if (
     input.authorization?.avatarId === input.avatarId &&
     input.authorization.callEpoch === input.callEpoch &&
-    input.ledger.has(input.authorization.turnId)
+    input.ledger.has(input.authorization.turnId) &&
+    unmatched.every((entry) => entry.turnId === input.authorization?.turnId)
   ) {
     return input.authorization.turnId;
   }
 
-  const unmatched = candidates.filter((entry) => !entry.responseReceived);
   return unmatched.length === 1 ? (unmatched[0]?.turnId ?? null) : null;
 }
 
@@ -2275,8 +2891,20 @@ function participantTurnLabel(input: {
   return input.isLive ? "Escuchando" : "Listo";
 }
 
-function turnStatusLabel(phase: TurnPhase, turnOwnerName: string | undefined, isMuted: boolean) {
-  if (phase === "speaking") return `${turnOwnerName ?? "El avatar"} está hablando · esperá a que termine`;
+function turnStatusLabel(
+  phase: TurnPhase,
+  turnOwnerName: string | undefined,
+  isMuted: boolean,
+  isUserInterrupting: boolean
+) {
+  if (isUserInterrupting) {
+    return `Te escuchamos · interrumpiendo a ${turnOwnerName ?? "el avatar"}…`;
+  }
+  if (phase === "speaking") {
+    return isMuted
+      ? `${turnOwnerName ?? "El avatar"} está hablando · activá el micrófono para interrumpir`
+      : `${turnOwnerName ?? "El avatar"} está hablando · hablá para interrumpir`;
+  }
   if (phase === "queued") return `${turnOwnerName ?? "El avatar"} está preparando su respuesta`;
   if (phase === "deliberating") return "Analizando el pedido y consultando a los expertos…";
   if (phase === "committing") return "Guardando la intervención…";
