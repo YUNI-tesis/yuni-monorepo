@@ -67,27 +67,29 @@ export const productMoments = [
 export const architectureLayers = [
   {
     number: "01",
-    title: "Experiencia",
-    description: "Creación, interacción y lectura de actividad en una interfaz continua.",
-    tags: ["Next.js", "React", "Motion"],
+    title: "Aplicación web",
+    description:
+      "Creadores y participantes configuran avatares, comparten accesos y conversan desde una misma interfaz.",
+    tags: ["Next.js", "React", "TypeScript"],
   },
   {
     number: "02",
-    title: "Dominio",
-    description: "Identidades, permisos, conversaciones y reglas que mantienen coherencia.",
-    tags: ["API", "TypeScript", "Contratos"],
+    title: "Núcleo YUNI",
+    description: "La API autentica, valida permisos y coordina avatares, sesiones y servicios externos.",
+    tags: ["Hono", "Zod", "Prisma"],
   },
   {
     number: "03",
-    title: "Presencia",
-    description: "Inteligencia, voz y avatar sincronizados durante cada encuentro.",
-    tags: ["OpenAI", "ElevenLabs", "LiveAvatar"],
+    title: "Datos y procesos",
+    description: "El estado queda persistido y los documentos se procesan en segundo plano, con reintentos.",
+    tags: ["PostgreSQL", "S3 / MinIO", "Worker"],
   },
   {
     number: "04",
-    title: "Memoria",
-    description: "Datos, contexto y procesamiento para aprender de cada interacción.",
-    tags: ["PostgreSQL", "Workers", "Observabilidad"],
+    title: "Conversación en vivo",
+    description:
+      "ElevenLabs y LiveAvatar producen voz y presencia; OpenAI + LangGraph dirigen los turnos grupales.",
+    tags: ["ElevenLabs Agents", "LiveAvatar", "OpenAI + LangGraph"],
   },
 ] as const;
 
