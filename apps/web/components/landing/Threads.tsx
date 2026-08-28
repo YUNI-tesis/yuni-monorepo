@@ -123,8 +123,8 @@ export function Threads({
         uTime: { value: 0 },
         uResolution: { value: [1, 1] },
         uMouse: { value: [0, 0] },
-        uColorA: { value: theme === "light" ? [0.027, 0.373, 0.42] : [0.39, 0.76, 0.84] },
-        uColorB: { value: theme === "light" ? [0.416, 0.141, 0.494] : [0.75, 0.35, 0.88] },
+        uColorA: { value: theme === "light" ? [0, 0.561, 0.639] : [0.39, 0.76, 0.84] },
+        uColorB: { value: theme === "light" ? [0.698, 0.286, 0.812] : [0.75, 0.35, 0.88] },
         uAmplitude: { value: amplitude },
       },
     });

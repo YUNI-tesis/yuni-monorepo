@@ -102,7 +102,7 @@
 }
 
 .platformShadow {
-  fill: rgba(0, 0, 0, var(--landing-platform-shadow-opacity));
+  fill: var(--landing-platform-shadow);
   filter: url("#architecture-shadow");
   transform: translateY(8px);
 }
@@ -296,7 +296,7 @@
   inset: 5px -5px -7px 5px;
   border: 1px solid color-mix(in srgb, var(--node-accent) 14%, rgba(var(--landing-ink-rgb), 0.06));
   border-radius: 13px;
-  background: rgba(var(--landing-node-underlay-rgb), 0.96);
+  background: rgba(var(--landing-node-underlay-rgb), var(--landing-node-underlay-opacity));
   content: "";
   pointer-events: none;
   transition: opacity 420ms var(--landing-ease);
@@ -323,8 +323,8 @@
     linear-gradient(145deg, rgba(var(--landing-ink-rgb), 0.045), transparent 42%),
     rgba(var(--landing-elevated-rgb), 0.96);
   box-shadow:
-    0 8px 0 -4px rgba(var(--landing-deep-rgb), 0.98),
-    0 20px 34px rgba(0, 0, 0, var(--landing-node-shadow-opacity)),
+    0 8px 0 -4px var(--landing-node-step-shadow),
+    var(--landing-node-elevation-shadow),
     inset 0 1px 0 rgba(var(--landing-ink-rgb), 0.07);
   color: var(--landing-text);
   font: inherit;
@@ -358,8 +358,8 @@
   border-color: color-mix(in srgb, var(--node-accent) 70%, var(--landing-mix-contrast) 6%);
   background: color-mix(in srgb, var(--landing-panel-hover) 88%, var(--node-accent) 12%);
   box-shadow:
-    0 13px 0 -8px rgba(var(--landing-deep-rgb), 0.96),
-    0 24px 46px rgba(0, 0, 0, var(--landing-node-hover-shadow-opacity)),
+    0 13px 0 -8px var(--landing-node-hover-step-shadow),
+    var(--landing-node-hover-elevation-shadow),
     0 0 30px color-mix(in srgb, var(--node-accent) 18%, transparent),
     inset 0 1px 0 rgba(var(--landing-ink-rgb), 0.1);
 }
