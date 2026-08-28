@@ -6,7 +6,9 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import React, {
   useEffect,
+  useLayoutEffect,
   useRef,
+  useState,
   type CSSProperties,
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
@@ -30,6 +32,11 @@ const navigation = [
   { label: "Arquitectura", href: "#arquitectura" },
   { label: "Tesis", href: "#tesis" },
 ] as const;
+
+const LANDING_THEME_STORAGE_KEY = "yuni:landing-theme";
+const LANDING_THEME_BOOTSTRAP = `try{const theme=localStorage.getItem("${LANDING_THEME_STORAGE_KEY}");if(theme==="dark"||theme==="light")document.currentScript?.parentElement?.setAttribute("data-theme",theme)}catch{}`;
+
+type LandingTheme = "dark" | "light";
 
 type RevealProps = {
   children: ReactNode;
@@ -64,6 +71,35 @@ function MarkIcon() {
   return (
     <svg viewBox="0 0 20 20" aria-hidden="true">
       <path d="m4.5 10.5 3.2 3.1 7.8-8" fill="none" stroke="currentColor" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function ThemeIcon({ theme }: { theme: LandingTheme }) {
+  if (theme === "dark") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="12" cy="12" r="3.75" fill="none" stroke="currentColor" strokeWidth="1.7" />
+        <path
+          d="M12 2.75v2M12 19.25v2M2.75 12h2M19.25 12h2M5.46 5.46l1.42 1.42M17.12 17.12l1.42 1.42M18.54 5.46l-1.42 1.42M6.88 17.12l-1.42 1.42"
+          fill="none"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeWidth="1.7"
+        />
+      </svg>
+    );
+  }
+
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        d="M20.25 15.16A8.4 8.4 0 0 1 8.84 3.75 8.41 8.41 0 1 0 20.25 15.16Z"
+        fill="none"
+        stroke="currentColor"
+        strokeLinejoin="round"
+        strokeWidth="1.7"
+      />
     </svg>
   );
 }
@@ -214,16 +250,24 @@ function ProductScene({ type }: { type: (typeof productMoments)[number]["scene"]
 function PresenceVisual({
   progress,
   reducedMotion,
+  theme,
 }: {
   progress: MotionValue<number>;
   reducedMotion: boolean;
+  theme: LandingTheme;
 }) {
   const scale = useTransform(progress, [0, 0.36, 0.72, 1], [0.82, 0.94, 1.05, 1.13]);
   const rotate = useTransform(progress, [0, 1], [-6, 5]);
   const glow = useTransform(
     progress,
     [0, 0.45, 1],
-    ["0 0 38px rgba(190,106,220,0.16)", "0 0 86px rgba(190,106,220,0.34)", "0 0 118px rgba(100,195,215,0.38)"]
+    theme === "light"
+      ? ["0 0 28px rgba(106,36,126,0.14)", "0 0 58px rgba(106,36,126,0.2)", "0 0 78px rgba(7,95,107,0.22)"]
+      : [
+          "0 0 38px rgba(190,106,220,0.16)",
+          "0 0 86px rgba(190,106,220,0.34)",
+          "0 0 118px rgba(100,195,215,0.38)",
+        ]
   );
   const threadOpacity = useTransform(progress, [0, 0.35, 0.78, 1], [0.15, 0.48, 0.86, 1]);
 
@@ -233,7 +277,7 @@ function PresenceVisual({
         className={styles.presenceThreads}
         style={{ opacity: reducedMotion ? 0.55 : threadOpacity }}
       >
-        <Threads amplitude={0.1} enableMouseInteraction={false} />
+        <Threads amplitude={0.1} enableMouseInteraction={false} theme={theme} />
       </motion.div>
       <span className={`${styles.orbit} ${styles.orbitOne}`} />
       <span className={`${styles.orbit} ${styles.orbitTwo}`} />
@@ -288,14 +332,14 @@ function ThesisConvergence({ reducedMotion }: { reducedMotion: boolean }) {
       >
         <defs>
           <linearGradient id="thesis-lucas" x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0" stopColor="#71d0de" stopOpacity="0.24" />
-            <stop offset="0.72" stopColor="#71d0de" />
-            <stop offset="1" stopColor="#c776e4" />
+            <stop offset="0" stopColor="var(--landing-accent)" stopOpacity="0.24" />
+            <stop offset="0.72" stopColor="var(--landing-accent)" />
+            <stop offset="1" stopColor="var(--landing-primary)" />
           </linearGradient>
           <linearGradient id="thesis-santiago" x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0" stopColor="#f09a87" stopOpacity="0.24" />
-            <stop offset="0.72" stopColor="#f09a87" />
-            <stop offset="1" stopColor="#c776e4" />
+            <stop offset="0" stopColor="var(--landing-coral)" stopOpacity="0.24" />
+            <stop offset="0.72" stopColor="var(--landing-coral)" />
+            <stop offset="1" stopColor="var(--landing-primary)" />
           </linearGradient>
           <filter id="thesis-glow" x="-20%" y="-80%" width="140%" height="260%">
             <feGaussianBlur stdDeviation="7" />
@@ -379,6 +423,7 @@ function FinalSignal() {
 
 export function LandingExperience() {
   const reducedMotion = useReducedMotion() ?? false;
+  const [theme, setTheme] = useState<LandingTheme>("dark");
   const presenceRef = useRef<HTMLDivElement>(null);
   const { scrollYProgress: pageProgress } = useScroll();
   const { scrollYProgress: presenceProgress } = useScroll({
@@ -389,6 +434,27 @@ export function LandingExperience() {
 
   useSmoothScroll(reducedMotion);
 
+  useLayoutEffect(() => {
+    try {
+      const storedTheme = window.localStorage.getItem(LANDING_THEME_STORAGE_KEY);
+      if (storedTheme === "dark" || storedTheme === "light") setTheme(storedTheme);
+    } catch {
+      // The switch remains usable when storage is unavailable (for example, in strict privacy mode).
+    }
+  }, []);
+
+  const toggleTheme = () => {
+    setTheme((currentTheme) => {
+      const nextTheme = currentTheme === "dark" ? "light" : "dark";
+      try {
+        window.localStorage.setItem(LANDING_THEME_STORAGE_KEY, nextTheme);
+      } catch {
+        // Theme persistence is optional; the current session still updates immediately.
+      }
+      return nextTheme;
+    });
+  };
+
   const scrollToAnchor = (event: ReactMouseEvent<HTMLAnchorElement>, href: string) => {
     if (!href.startsWith("#")) return;
     const target = document.querySelector(href);
@@ -398,7 +464,8 @@ export function LandingExperience() {
   };
 
   return (
-    <div className={styles.root}>
+    <div className={styles.root} data-theme={theme} suppressHydrationWarning>
+      <script dangerouslySetInnerHTML={{ __html: LANDING_THEME_BOOTSTRAP }} />
       <a className={styles.skipLink} href="#contenido">
         Saltar al contenido
       </a>
@@ -416,17 +483,29 @@ export function LandingExperience() {
               </a>
             ))}
           </nav>
-          <Link className={`${styles.button} ${styles.headerCta}`} href="/dashboard" prefetch={false}>
-            Explorar demo
-            <ArrowIcon />
-          </Link>
+          <div className={styles.headerActions}>
+            <button
+              type="button"
+              className={styles.themeToggle}
+              aria-label="Modo claro"
+              aria-pressed={theme === "light"}
+              title={theme === "dark" ? "Activar modo claro" : "Activar modo oscuro"}
+              onClick={toggleTheme}
+            >
+              <ThemeIcon theme={theme} />
+            </button>
+            <Link className={`${styles.button} ${styles.headerCta}`} href="/dashboard" prefetch={false}>
+              Explorar demo
+              <ArrowIcon />
+            </Link>
+          </div>
         </div>
         <motion.span className={styles.readingProgress} style={{ scaleX: smoothProgress }} />
       </header>
 
       <main id="contenido">
         <section className={styles.hero} aria-labelledby="hero-title">
-          <Threads />
+          <Threads theme={theme} />
           <div className={styles.heroGrain} aria-hidden="true" />
           <div className={styles.heroHalo} aria-hidden="true">
             <span />
@@ -529,7 +608,7 @@ export function LandingExperience() {
               </h2>
               <p>Cuatro decisiones convierten una configuración en alguien con quien encontrarse.</p>
             </div>
-            <PresenceVisual progress={presenceProgress} reducedMotion={reducedMotion} />
+            <PresenceVisual progress={presenceProgress} reducedMotion={reducedMotion} theme={theme} />
           </div>
           <div className={styles.stageList}>
             {presenceStages.map((stage) => (
@@ -640,7 +719,9 @@ export function LandingExperience() {
               <Reveal key={capability.number} delay={(index % 4) * 0.05} reducedMotion={reducedMotion}>
                 <SpotlightCard
                   className={styles.capabilityCard}
-                  spotlightColor={index % 2 ? "rgba(100, 195, 215, 0.18)" : "rgba(190, 106, 220, 0.2)"}
+                  spotlightColor={
+                    index % 2 ? "var(--landing-spotlight-accent)" : "var(--landing-spotlight-primary)"
+                  }
                 >
                   <div className={styles.capabilityCardHeader}>
                     <span className={styles.capabilityIcon}>

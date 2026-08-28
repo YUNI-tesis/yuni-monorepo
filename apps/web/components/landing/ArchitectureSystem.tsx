@@ -96,7 +96,7 @@ function positionedNode(
   node: Omit<ArchitectureNode, "portX" | "portY" | "portGap" | "portAlign"> & {
     portGap?: number;
     portAlign?: number;
-  },
+  }
 ): ArchitectureNode {
   const { x: portX, y: portY } = projectCircuitPoint(node.grid);
   return { ...node, portX, portY, portGap: node.portGap ?? 24, portAlign: node.portAlign ?? 50 };
@@ -110,7 +110,7 @@ const architectureNodes: readonly ArchitectureNode[] = [
     description: "Inicia la interacción y recibe voz, rostro y video.",
     icon: "person",
     grid: nodeGrid.user,
-    accent: "#71d0de",
+    accent: "var(--landing-accent)",
   }),
   positionedNode({
     id: "web",
@@ -119,7 +119,7 @@ const architectureNodes: readonly ArchitectureNode[] = [
     description: "Permite configurar avatares, compartir accesos e iniciar conversaciones.",
     icon: "browser",
     grid: nodeGrid.web,
-    accent: "#71d0de",
+    accent: "var(--landing-accent)",
   }),
   positionedNode({
     id: "core",
@@ -128,7 +128,7 @@ const architectureNodes: readonly ArchitectureNode[] = [
     description: "Autentica, valida permisos y coordina sesiones y servicios externos.",
     icon: "core",
     grid: nodeGrid.core,
-    accent: "#e5a0f5",
+    accent: "var(--landing-primary-bright)",
     portGap: 30,
     portAlign: 60,
     featured: true,
@@ -140,7 +140,7 @@ const architectureNodes: readonly ArchitectureNode[] = [
     description: "Guarda usuarios, avatares, sesiones, mensajes y transcripciones.",
     icon: "database",
     grid: nodeGrid.data,
-    accent: "#71d0de",
+    accent: "var(--landing-accent)",
   }),
   positionedNode({
     id: "orchestrator",
@@ -149,7 +149,7 @@ const architectureNodes: readonly ArchitectureNode[] = [
     description: "Solo en conversaciones grupales, decide qué avatar interviene y en qué orden.",
     icon: "direction",
     grid: nodeGrid.orchestrator,
-    accent: "#c776e4",
+    accent: "var(--landing-primary)",
     portAlign: 65,
     compact: true,
   }),
@@ -161,7 +161,7 @@ const architectureNodes: readonly ArchitectureNode[] = [
       "ElevenLabs genera la respuesta y la voz; LiveAvatar suma rostro, gestos y video en tiempo real.",
     icon: "avatar",
     grid: nodeGrid.live,
-    accent: "#f09a87",
+    accent: "var(--landing-coral)",
     portAlign: 45,
   }),
 ] as const;
@@ -220,28 +220,28 @@ if (!architectureTracks.every((track) => isAxisAlignedCircuitRoute(track.points)
 
 const platformTopPath = circuitPath(
   [circuitPoint(0, 0), circuitPoint(10, 0), circuitPoint(10, 6.5), circuitPoint(0, 6.5)],
-  true,
+  true
 );
 const platformInnerPath = circuitPath(
   [circuitPoint(0.45, 0.45), circuitPoint(9.55, 0.45), circuitPoint(9.55, 6.05), circuitPoint(0.45, 6.05)],
-  true,
+  true
 );
 const platformCircuitPaths = [
   circuitPath(
     [circuitPoint(0.8, 0.8), circuitPoint(9.2, 0.8), circuitPoint(9.2, 5.7), circuitPoint(0.8, 5.7)],
-    true,
+    true
   ),
   circuitPath(
     [circuitPoint(1.2, 1.2), circuitPoint(8.8, 1.2), circuitPoint(8.8, 5.3), circuitPoint(1.2, 5.3)],
-    true,
+    true
   ),
 ] as const;
 const platformGridPaths = [
   ...Array.from({ length: 6 }, (_, index) =>
-    circuitPath([circuitPoint(0, index + 1), circuitPoint(10, index + 1)]),
+    circuitPath([circuitPoint(0, index + 1), circuitPoint(10, index + 1)])
   ),
   ...Array.from({ length: 9 }, (_, index) =>
-    circuitPath([circuitPoint(index + 1, 0), circuitPoint(index + 1, 6.5)]),
+    circuitPath([circuitPoint(index + 1, 0), circuitPoint(index + 1, 6.5)])
   ),
 ] as const;
 const platformBoltPoints = [
@@ -280,7 +280,8 @@ const architectureFlows: readonly ArchitectureFlow[] = [
   {
     id: "core-data",
     d: "",
-    label: "El núcleo guarda y consulta usuarios, avatares, sesiones, mensajes y transcripciones en PostgreSQL.",
+    label:
+      "El núcleo guarda y consulta usuarios, avatares, sesiones, mensajes y transcripciones en PostgreSQL.",
     tone: "control",
     nodes: ["core", "data"],
     bidirectional: true,
@@ -295,7 +296,8 @@ const architectureFlows: readonly ArchitectureFlow[] = [
   {
     id: "core-orchestrator",
     d: "",
-    label: "Solo en conversaciones grupales, el núcleo y el orquestador intercambian el estado de los turnos.",
+    label:
+      "Solo en conversaciones grupales, el núcleo y el orquestador intercambian el estado de los turnos.",
     tone: "knowledge",
     nodes: ["core", "orchestrator"],
     bidirectional: true,
@@ -402,9 +404,7 @@ export function ArchitectureSystem({ reducedMotion }: { reducedMotion: boolean }
   const activeNode = architectureNodes.find((node) => node.id === activeNodeId);
   const connectedNodeIds = activeNodeId
     ? new Set(
-        architectureFlows
-          .filter((flow) => flow.nodes.includes(activeNodeId))
-          .flatMap((flow) => flow.nodes),
+        architectureFlows.filter((flow) => flow.nodes.includes(activeNodeId)).flatMap((flow) => flow.nodes)
       )
     : null;
 
@@ -425,7 +425,12 @@ export function ArchitectureSystem({ reducedMotion }: { reducedMotion: boolean }
             </h2>
           </motion.div>
 
-          <div id="architecture-system-readout" className={styles.readout} aria-live="polite" aria-atomic="true">
+          <div
+            id="architecture-system-readout"
+            className={styles.readout}
+            aria-live="polite"
+            aria-atomic="true"
+          >
             <span>{activeNode ? activeNode.technology : "Un recorrido coordinado"}</span>
             <p>
               {activeNode
@@ -444,22 +449,22 @@ export function ArchitectureSystem({ reducedMotion }: { reducedMotion: boolean }
           >
             <defs>
               <linearGradient id="architecture-platform" x1="0" y1="0" x2="1" y2="1">
-                <stop offset="0" stopColor="#21162c" />
-                <stop offset="0.48" stopColor="#130b1c" />
-                <stop offset="1" stopColor="#0d0815" />
+                <stop offset="0" stopColor="var(--landing-platform-high)" />
+                <stop offset="0.48" stopColor="var(--landing-platform-mid)" />
+                <stop offset="1" stopColor="var(--landing-platform-low)" />
               </linearGradient>
               <linearGradient id="architecture-platform-front" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0" stopColor="#12091b" />
-                <stop offset="1" stopColor="#06030b" />
+                <stop offset="0" stopColor="var(--landing-platform-front-high)" />
+                <stop offset="1" stopColor="var(--landing-platform-front-low)" />
               </linearGradient>
               <linearGradient id="architecture-platform-side" x1="0" y1="0" x2="1" y2="1">
-                <stop offset="0" stopColor="#0c0712" />
-                <stop offset="1" stopColor="#050208" />
+                <stop offset="0" stopColor="var(--landing-platform-side-high)" />
+                <stop offset="1" stopColor="var(--landing-platform-side-low)" />
               </linearGradient>
               <linearGradient id="architecture-rim" x1="0" y1="0" x2="1" y2="0">
-                <stop offset="0" stopColor="#71d0de" stopOpacity="0.55" />
-                <stop offset="0.52" stopColor="#c776e4" stopOpacity="0.32" />
-                <stop offset="1" stopColor="#f09a87" stopOpacity="0.5" />
+                <stop offset="0" stopColor="var(--landing-accent)" stopOpacity="0.55" />
+                <stop offset="0.52" stopColor="var(--landing-primary)" stopOpacity="0.32" />
+                <stop offset="1" stopColor="var(--landing-coral)" stopOpacity="0.5" />
               </linearGradient>
               <filter id="architecture-glow" x="-30%" y="-30%" width="160%" height="160%">
                 <feGaussianBlur stdDeviation="5" />
@@ -555,7 +560,9 @@ export function ArchitectureSystem({ reducedMotion }: { reducedMotion: boolean }
                   aria-controls="architecture-system-readout"
                   aria-expanded={activeNodeId === node.id}
                   data-active={activeNodeId === node.id ? "true" : undefined}
-                  data-muted={connectedNodeIds !== null && !connectedNodeIds.has(node.id) ? "true" : undefined}
+                  data-muted={
+                    connectedNodeIds !== null && !connectedNodeIds.has(node.id) ? "true" : undefined
+                  }
                   onMouseDown={(event) => event.preventDefault()}
                   onPointerEnter={() => setHoveredNodeId(node.id)}
                   onPointerLeave={() =>
@@ -596,8 +603,8 @@ export function ArchitectureSystem({ reducedMotion }: { reducedMotion: boolean }
 
         <div className={styles.semanticSummary}>
           <p>
-            El usuario se comunica con la aplicación web; el núcleo de YUNI coordina los datos, la conversación
-            en vivo y, cuando corresponde, los turnos grupales.
+            El usuario se comunica con la aplicación web; el núcleo de YUNI coordina los datos, la
+            conversación en vivo y, cuando corresponde, los turnos grupales.
           </p>
           <ol>
             {architectureFlows.map((flow) => (

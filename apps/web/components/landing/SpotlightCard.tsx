@@ -16,7 +16,7 @@ type SpotlightCardProps = HTMLAttributes<HTMLElement> & {
 export function SpotlightCard({
   as: Element = "article",
   className = "",
-  spotlightColor = "rgba(190, 106, 220, 0.2)",
+  spotlightColor = "var(--landing-spotlight-primary)",
   onPointerMove,
   onPointerLeave,
   style,
