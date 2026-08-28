@@ -63,9 +63,15 @@ type ThreadsProps = {
   className?: string;
   amplitude?: number;
   enableMouseInteraction?: boolean;
+  theme?: "dark" | "light";
 };
 
-export function Threads({ className = "", amplitude = 0.17, enableMouseInteraction = true }: ThreadsProps) {
+export function Threads({
+  className = "",
+  amplitude = 0.17,
+  enableMouseInteraction = true,
+  theme = "dark",
+}: ThreadsProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -117,8 +123,8 @@ export function Threads({ className = "", amplitude = 0.17, enableMouseInteracti
         uTime: { value: 0 },
         uResolution: { value: [1, 1] },
         uMouse: { value: [0, 0] },
-        uColorA: { value: [0.39, 0.76, 0.84] },
-        uColorB: { value: [0.75, 0.35, 0.88] },
+        uColorA: { value: theme === "light" ? [0.027, 0.373, 0.42] : [0.39, 0.76, 0.84] },
+        uColorB: { value: theme === "light" ? [0.416, 0.141, 0.494] : [0.75, 0.35, 0.88] },
         uAmplitude: { value: amplitude },
       },
     });
@@ -193,7 +199,7 @@ export function Threads({ className = "", amplitude = 0.17, enableMouseInteracti
       if (canvas.parentNode === container) container.removeChild(canvas);
       gl.getExtension("WEBGL_lose_context")?.loseContext();
     };
-  }, [amplitude, enableMouseInteraction]);
+  }, [amplitude, enableMouseInteraction, theme]);
 
   return (
     <div ref={containerRef} className={`${styles.root ?? ""} ${className}`} aria-hidden="true">
