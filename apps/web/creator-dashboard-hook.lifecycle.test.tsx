@@ -6,16 +6,15 @@ import { useCreatorDashboard } from "./hooks/useCreatorDashboard";
 
 const mocks = vi.hoisted(() => ({
   getCreatorDashboardSummary: vi.fn(),
-  router: { push: vi.fn() },
 }));
 
-vi.mock("next/navigation", () => ({ useRouter: () => mocks.router }));
 vi.mock("./lib/api/dashboard-api", async (importOriginal) => {
   const original = await importOriginal<typeof import("./lib/api/dashboard-api")>();
   return { ...original, getCreatorDashboardSummary: mocks.getCreatorDashboardSummary };
 });
 
 let dom: JSDOM;
+let act: typeof import("@testing-library/react").act;
 let cleanup: typeof import("@testing-library/react").cleanup;
 let render: typeof import("@testing-library/react").render;
 let screen: typeof import("@testing-library/react").screen;
@@ -48,12 +47,11 @@ describe("creator dashboard request lifecycle", () => {
     vi.stubGlobal("HTMLElement", dom.window.HTMLElement);
     vi.stubGlobal("Event", dom.window.Event);
 
-    ({ cleanup, render, screen, waitFor } = await import("@testing-library/react"));
+    ({ act, cleanup, render, screen, waitFor } = await import("@testing-library/react"));
   });
 
   beforeEach(() => {
     mocks.getCreatorDashboardSummary.mockReset();
-    mocks.router.push.mockReset();
   });
 
   afterEach(() => cleanup());
@@ -74,11 +72,16 @@ describe("creator dashboard request lifecycle", () => {
     view.rerender(<DashboardProbe days={7} />);
     expect(screen.getByText("loading")).toBeTruthy();
 
-    second.resolve(summary(7));
+    await act(async () => {
+      second.resolve(summary(7));
+      await second.promise;
+    });
     await waitFor(() => expect(screen.getByText("7")).toBeTruthy());
 
-    first.resolve(summary(30));
-    await Promise.resolve();
+    await act(async () => {
+      first.resolve(summary(30));
+      await first.promise;
+    });
     expect(screen.queryByText("30")).toBeNull();
     expect(screen.getByText("7")).toBeTruthy();
   });
