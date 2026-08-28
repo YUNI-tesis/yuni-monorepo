@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import React, { useState } from "react";
-import { Button, Card, EmptyState, ErrorState, LoadingState, PageHeader } from "@yuni/ui";
+import { Button, Card, EmptyState, ErrorState, LoadingState, PageHeader, YuniIcon } from "@yuni/ui";
 import { useAvatarList } from "../../hooks/useAvatarList";
 import {
   avatarListFilters,
@@ -24,12 +24,18 @@ export function AvatarListView() {
 
   return (
     <div className={catalogStyles.layout}>
-      <PageHeader
-        eyebrow="Mis avatares"
-        title="Mis avatares"
-        description="Administra tus avatares propios y encontrá acá los que otros usuarios te compartan."
-        actions={<Button onClick={() => router.push("/avatars/new")}>Crear avatar</Button>}
-      />
+      <div className={styles.mobileHeader}>
+        <PageHeader
+          eyebrow="Mis avatares"
+          title="Mis avatares"
+          description="Administra tus avatares propios y encontrá acá los que otros usuarios te compartan."
+          actions={
+            <Button icon={<YuniIcon name="add" />} onClick={() => router.push("/avatars/new")}>
+              Crear avatar
+            </Button>
+          }
+        />
+      </div>
 
       <AvatarListFilterControls activeFilter={activeFilter} onFilterChange={setActiveFilter} />
 
@@ -53,7 +59,7 @@ export function AvatarListView() {
           )}
         </Card>
       ) : (
-        <div className={catalogStyles.grid}>
+        <div className={`${catalogStyles.grid} ${styles.avatarGrid}`}>
           {sortedAvatars.map((avatar) => (
             <AvatarCard
               key={avatar.id}

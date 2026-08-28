@@ -28,6 +28,7 @@ export type CatalogCardProps = {
   menuItems?: DropdownMenuItem[];
   primaryAction?: { label: string; icon: YuniIconName; onSelect: () => void };
   notice?: ReactNode;
+  compactOnMobile?: boolean;
   onNavigate: (href: string) => void;
 };
 
@@ -45,12 +46,20 @@ export function CatalogCard({
   menuItems = [],
   primaryAction,
   notice,
+  compactOnMobile = false,
   onNavigate,
 }: CatalogCardProps) {
   const Title = headingLevel;
+  const hasMenu = menuItems.length > 0 && Boolean(menuLabel);
 
   return (
-    <Card as="article" padding="sm" className={styles.card} aria-labelledby={`catalog-card-title-${id}`}>
+    <Card
+      as="article"
+      padding="sm"
+      className={`${styles.card} ${compactOnMobile ? styles.compactOnMobile : ""}`}
+      aria-labelledby={`catalog-card-title-${id}`}
+      {...(compactOnMobile ? { "data-mobile-layout": "compact" } : {})}
+    >
       <a
         className={styles.profileLink}
         href={href}
@@ -61,7 +70,7 @@ export function CatalogCard({
         }}
       />
 
-      <div className={styles.media}>
+      <div className={`${styles.media} ${hasMenu ? styles.mediaWithMenu : ""}`}>
         <CatalogArtworkView artwork={artwork} />
         <span className={`${styles.status} ${styles[status.tone]}`}>
           <span className={styles.statusDot} aria-hidden="true" />
@@ -82,7 +91,7 @@ export function CatalogCard({
           ) : null}
         </div>
 
-        {menuItems.length > 0 && menuLabel ? (
+        {hasMenu && menuLabel ? (
           <div className={styles.menu}>
             <DropdownMenu
               compact
@@ -94,7 +103,7 @@ export function CatalogCard({
         ) : null}
       </div>
 
-      <div className={styles.footer}>
+      <div className={`${styles.footer} ${primaryAction ? "" : styles.footerNotice}`}>
         {primaryAction ? (
           <Button
             className={styles.primaryAction}

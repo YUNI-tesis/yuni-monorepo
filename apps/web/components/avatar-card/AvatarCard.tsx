@@ -92,6 +92,7 @@ export function AvatarCard({ avatar, variant, onNavigate }: AvatarCardProps) {
           }
         : {})}
       notice={getUnavailableMessage(avatar)}
+      compactOnMobile={variant === "catalog"}
       onNavigate={onNavigate}
     />
   );

@@ -4,6 +4,10 @@
   gap: var(--yuni-space-8);
 }
 
+.mobileHeader {
+  display: none;
+}
+
 .actions {
   display: flex;
   flex-wrap: wrap;
@@ -357,6 +361,34 @@
 }
 
 @media (max-width: 520px) {
+  .desktopHeader {
+    display: none;
+  }
+
+  .mobileHeader {
+    display: block;
+  }
+
+  .mobileHeader :global(.yuni-page-header) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: center;
+    margin-bottom: 0;
+  }
+
+  .mobileHeader :global(.yuni-page-header__content) {
+    gap: 0;
+  }
+
+  .mobileHeader :global(.yuni-page-header__eyebrow),
+  .mobileHeader :global(.yuni-page-header__description) {
+    display: none;
+  }
+
+  .mobileHeader :global(.yuni-page-header__title) {
+    font-size: 2rem;
+  }
+
   .metrics {
     grid-template-columns: minmax(0, 1fr);
   }
