@@ -8,6 +8,7 @@ import {
   type CreatorDashboardDays,
   type CreatorDashboardServiceDependencies,
 } from "./service";
+import { normalizeTimeZoneForPostgres } from "./time-zone";
 
 const logger = createLogger("@yuni/api:creator-dashboard");
 
@@ -55,8 +56,12 @@ function parseOptions(daysValue?: string, timeZoneValue?: string) {
   }
   const days = Number(normalizedDays) as CreatorDashboardDays;
 
-  const timeZone = timeZoneValue ?? "UTC";
-  if (timeZone.length > 100 || !isValidTimeZone(timeZone)) {
+  const requestedTimeZone = timeZoneValue ?? "UTC";
+  if (requestedTimeZone.length > 100) {
+    return { ok: false as const, message: "timeZone must be a valid IANA time zone" };
+  }
+  const timeZone = normalizeTimeZoneForPostgres(requestedTimeZone);
+  if (!isValidTimeZone(timeZone)) {
     return { ok: false as const, message: "timeZone must be a valid IANA time zone" };
   }
 
