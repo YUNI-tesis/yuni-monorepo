@@ -15,7 +15,7 @@ export function LiveAvatarStep({
     <section className={styles.panel}>
       <StepHeading
         title="Avatar visual"
-        description="Selecciona la apariencia que tendrá el avatar durante la interacción."
+        description="Elegí la apariencia que verán las personas durante la conversación."
       />
       <LiveAvatarPicker
         optionsState={liveAvatarOptions}

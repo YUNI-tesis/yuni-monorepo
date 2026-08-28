@@ -8,7 +8,7 @@ export function IdentityStep({ builder }: { builder: AvatarBuilderController }) 
     <section className={styles.panel}>
       <StepHeading
         title="Identidad"
-        description="Estos datos son los que van a ver vos y, mas adelante, quienes reciban un link publico."
+        description="Definí cómo vas a reconocerlo y qué información verán quienes interactúen con él."
       />
       <div className={styles.formGrid}>
         <FormField label="Nombre" htmlFor="avatar-name" error={builder.errors.name}>
@@ -21,14 +21,15 @@ export function IdentityStep({ builder }: { builder: AvatarBuilderController }) 
           />
         </FormField>
         <FormField
-          label="Descripcion"
+          label="Descripción"
           htmlFor="avatar-description"
-          hint="Corta, concreta y visible para visitantes."
+          hint="Se muestra en el perfil y ayuda a diferenciarlo de otros avatares."
         >
           <Textarea
             id="avatar-description"
+            className={styles.descriptionInput}
             value={builder.state.description}
-            placeholder="Un avatar para responder consultas de producto."
+            placeholder="Contá brevemente para qué sirve este avatar."
             onChange={(event) => builder.updateField("description", event.currentTarget.value)}
           />
         </FormField>

@@ -6,18 +6,22 @@ import styles from "../AvatarBuilder.module.css";
 export function PersonaStep({ builder }: { builder: AvatarBuilderController }) {
   return (
     <section className={styles.panel}>
-      <StepHeading title="Persona" description="Defini como debe comportarse el agente cuando responda." />
+      <StepHeading
+        title="Personalidad"
+        description="Indicá cómo debe comportarse y responder durante una conversación."
+      />
       <FormField
-        label="Instrucciones"
+        label="Instrucciones de comportamiento"
         htmlFor="avatar-instructions"
-        hint="Ejemplo: responde con claridad, pregunta cuando falte contexto y evita inventar."
+        hint="Ejemplo: respondé con claridad, preguntá cuando falte información y evitá inventar."
         error={builder.errors.instructions}
       >
         <Textarea
           id="avatar-instructions"
+          className={styles.instructionsInput}
           value={builder.state.instructions}
           invalid={Boolean(builder.errors.instructions)}
-          placeholder="Responde de forma clara y amable."
+          placeholder="Describí el tono, los límites y la forma de responder."
           onChange={(event) => builder.updateField("instructions", event.currentTarget.value)}
         />
       </FormField>
