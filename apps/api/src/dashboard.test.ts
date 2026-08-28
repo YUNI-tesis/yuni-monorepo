@@ -512,6 +512,25 @@ describe("@yuni/api creator dashboard endpoint", () => {
     );
 
     expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual(
+      expect.objectContaining({
+        period: expect.objectContaining({ timeZone: "America/Argentina/Buenos_Aires" }),
+      })
+    );
+    expect(repository.getSummaryData).toHaveBeenCalledWith(
+      "owner-1",
+      expect.objectContaining({ timeZone: "America/Argentina/Buenos_Aires" })
+    );
+  });
+
+  it("normalizes browser time-zone aliases before querying PostgreSQL", async () => {
+    const { app, repository, cookie } = await setup();
+
+    const response = await app.request("/dashboard/creator-summary?days=30&timeZone=America%2FBuenos_Aires", {
+      headers: { Cookie: cookie },
+    });
+
+    expect(response.status).toBe(200);
     expect(repository.getSummaryData).toHaveBeenCalledWith(
       "owner-1",
       expect.objectContaining({ timeZone: "America/Argentina/Buenos_Aires" })
