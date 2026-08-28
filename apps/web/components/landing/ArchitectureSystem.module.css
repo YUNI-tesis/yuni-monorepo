@@ -330,6 +330,7 @@
   font: inherit;
   text-align: left;
   cursor: pointer;
+  touch-action: manipulation;
   transition:
     opacity 420ms var(--landing-ease),
     border-color 420ms var(--landing-ease),
@@ -352,7 +353,6 @@
   opacity: var(--landing-muted-item-opacity);
 }
 
-.node:hover,
 .node:focus-visible,
 .node[data-active="true"] {
   border-color: color-mix(in srgb, var(--node-accent) 70%, var(--landing-mix-contrast) 6%);
