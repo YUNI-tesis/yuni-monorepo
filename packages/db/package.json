@@ -25,7 +25,7 @@
     "@yuni/config": "workspace:*",
     "@yuni/domain": "workspace:*",
     "prisma": "^5.22.0",
-    "tsx": "^4.21.0"
+    "tsx": "^4.23.12"
   },
   "prisma": {
     "schema": "prisma/schema.prisma",
