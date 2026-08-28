@@ -130,12 +130,9 @@ export function updateAccessGrant(
 }
 
 export function deleteAccessGrant(avatarId: string, accessGrantId: string) {
-  return apiRequest<{ ok: true; outcome: "deleted" | "revoked" }>(
-    `/avatars/${avatarId}/access-grants/${accessGrantId}`,
-    {
-      method: "DELETE",
-    }
-  );
+  return apiRequest<{ ok: true; outcome: "revoked" }>(`/avatars/${avatarId}/access-grants/${accessGrantId}`, {
+    method: "DELETE",
+  });
 }
 
 export function getPublicSharedAvatar(slug: string) {
@@ -169,6 +166,22 @@ export function confirmPublicSessionStarted(publicSessionId: string, publicSessi
       headers: { Authorization: `Bearer ${publicSessionToken}` },
     }
   );
+}
+
+export function failPublicSessionStart(
+  publicSessionId: string,
+  publicSessionToken: string,
+  options: { keepalive?: boolean } = {}
+) {
+  return apiRequest<{
+    publicSession:
+      | { id: string; status: "errored" }
+      | { id: string; status: "ended"; endedAt: string | null };
+  }>(`/public/sessions/${encodeURIComponent(publicSessionId)}/start-failed`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${publicSessionToken}` },
+    ...(options.keepalive !== undefined ? { keepalive: options.keepalive } : {}),
+  });
 }
 
 export function endPublicSession(

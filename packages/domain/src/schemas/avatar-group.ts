@@ -74,6 +74,10 @@ export const GroupVoiceParticipantFailureInputSchema = z.strictObject({
   expectedTurnId: YuniIdSchema.optional(),
 });
 
+export const GroupVoiceParticipantStartedInputSchema = z.strictObject({
+  participantAttemptId: YuniIdSchema,
+});
+
 export const EndGroupVoiceSessionInputSchema = z.strictObject({
   reason: z.enum(["user", "timeout", "no_participants", "unload"]).default("user"),
 });
@@ -84,4 +88,5 @@ export type GroupVoiceTurnInput = z.infer<typeof GroupVoiceTurnInputSchema>;
 export type GroupProviderEventInput = z.infer<typeof GroupProviderEventInputSchema>;
 export type InterruptGroupVoiceSessionInput = z.infer<typeof InterruptGroupVoiceSessionInputSchema>;
 export type GroupVoiceParticipantFailureInput = z.infer<typeof GroupVoiceParticipantFailureInputSchema>;
+export type GroupVoiceParticipantStartedInput = z.infer<typeof GroupVoiceParticipantStartedInputSchema>;
 export type EndGroupVoiceSessionInput = z.infer<typeof EndGroupVoiceSessionInputSchema>;

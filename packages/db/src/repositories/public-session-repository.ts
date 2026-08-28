@@ -79,21 +79,31 @@ export function createPublicSessionRepository(db: Db) {
         `;
         if (!sessions[0]) return false;
 
+        const activatedAt = new Date();
         const transition = await tx.realtimeSession.updateMany({
           where: {
             id: input.realtimeSessionId,
             publicSessionId: input.publicSessionId,
             status: "connecting",
           },
-          data: { status: "active" },
+          data: { status: "active", activatedAt },
         });
         if (transition.count === 1) {
           await tx.shareLink.updateMany({
             where: { id: input.shareLinkId },
-            data: { lastUsedAt: new Date() },
+            data: { lastUsedAt: activatedAt },
           });
+          return true;
         }
-        return transition.count === 1;
+
+        const current = await tx.realtimeSession.findFirst({
+          where: {
+            id: input.realtimeSessionId,
+            publicSessionId: input.publicSessionId,
+          },
+          select: { status: true, activatedAt: true },
+        });
+        return current?.status === "active" && Boolean(current.activatedAt);
       });
     },
 

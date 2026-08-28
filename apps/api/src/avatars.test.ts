@@ -283,6 +283,15 @@ function createTestDependencies(
         async findPrivateForParticipant() {
           return null;
         },
+        async markPrepared() {
+          return {
+            id: "realtime-1",
+            conversationId: "conversation-1",
+            providerSessionId: "liveavatar-session",
+            status: "connecting",
+            endedAt: null,
+          };
+        },
         async markActive() {
           return {
             id: "realtime-1",
@@ -312,7 +321,12 @@ function createTestDependencies(
             finalized: true,
           };
         },
-        async markErrored() {},
+        async markErrored() {
+          return true;
+        },
+        async failUnconfirmedOwnerStart() {
+          return true;
+        },
         async markProviderStopped() {},
         async expireSharedIfActive() {},
       },

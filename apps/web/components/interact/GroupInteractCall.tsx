@@ -6,6 +6,7 @@ import { AgentEventsEnum, LiveAvatarSession, SessionEvent } from "@heygen/liveav
 import { CommitStrategy, RealtimeEvents, Scribe, type RealtimeConnection } from "@elevenlabs/client";
 import { Badge, Button, ErrorState, LoadingState, YuniIcon, useToast } from "@yuni/ui";
 import {
+  confirmGroupParticipantStarted,
   endGroupVoiceSession,
   getAvatarGroup,
   getGroupConversation,
@@ -30,6 +31,7 @@ import {
 } from "../../lib/api/avatar-group-api";
 import { getMe } from "../../lib/api/auth-api";
 import { ApiClientError } from "../../lib/api/http-client";
+import { confirmLiveAvatarSessionStartedWithRetry } from "../../hooks/useLiveAvatarSession";
 import {
   CallExperienceShell,
   CallParticipantStage,
@@ -1325,6 +1327,16 @@ export function GroupInteractCall({ groupId }: { groupId: string }) {
         }
         const authorization = floorAuthorizationRef.current;
         applyAudioGate(authorization?.state === "committing" ? null : (authorization?.avatarId ?? null));
+        const groupVoiceSessionId = sessionRef.current?.id;
+        if (!groupVoiceSessionId) return false;
+        const confirmed = await confirmLiveAvatarSessionStartedWithRetry(
+          async (attemptId) => {
+            await confirmGroupParticipantStarted(groupVoiceSessionId, avatarId, attemptId);
+          },
+          participantAttemptId,
+          { isCurrent: isCurrentCall }
+        );
+        if (!confirmed || !isCurrentCall()) return false;
         if (!startupCueFinished) {
           const startupTimeout = window.setTimeout(finishStartupCue, 4_000);
           startupTimeoutsRef.current.set(avatarId, { startupKey, timer: startupTimeout });

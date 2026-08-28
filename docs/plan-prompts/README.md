@@ -17,6 +17,7 @@ Decisiones de producto vigentes:
 - [0019-strict-floor-independent-liveavatar-group-sessions.md](../thesis/decision-records/0019-strict-floor-independent-liveavatar-group-sessions.md)
 - [0020-configurable-external-session-limits.md](../thesis/decision-records/0020-configurable-external-session-limits.md)
 - [0021-retire-unused-realtime-service.md](../thesis/decision-records/0021-retire-unused-realtime-service.md)
+- [0024-objective-dashboard-activity-methodology.md](../thesis/decision-records/0024-objective-dashboard-activity-methodology.md)
 
 ## Direccion Actual
 
@@ -47,7 +48,7 @@ Decisiones de producto vigentes:
 - `13-voice-selector-config.md`: implementado.
 - `14-documents-filedrop-shell.md`: pendiente; refactorizado a tab Contexto.
 - `15-share-links-api.md`: implementado; links + access grants + listado seguro de compartidos.
-- `16-share-metrics-api.md`: implementado parcialmente; dashboard owner-level, actividad unificada, recurrencia, sesiones y alertas listos. Costos y desglose específico por link/grant quedan pendientes.
+- `16-share-metrics-api.md`: implementado para el dashboard de actividad objetiva; incluye eventos chat/voz, períodos 7/30/90 con zona local, orígenes, recurrencia, cohortes, salud y alertas accionables. Costos y reporte económico por link/grant continúan en `27`.
 - `17-share-tab-ui.md`: implementado; administra links y accesos sin emails ni metricas.
 - `18-interact-shell-ui.md`: implementado para owner y usuarios autenticados con acceso compartido; fullscreen, voz e historial listos.
 - `19-private-conversations-api.md`: implementado para owner/shared autenticado; identidad publica queda asociada a `23`.
@@ -73,6 +74,8 @@ Decisiones de producto vigentes:
   ciclo de vida externo endurecido.
 - `36-hardening-observability.md`: pendiente; refactorizado con sync queue/retries.
 - `37-group-call-floor-hardening.md`: implementado; router semántico, audio gate, attempts por conexión, `user_activity`, eventos idempotentes y cleanup durable grupal.
+- `38-ci-cd-devsecops.md`: implementado en repositorio; workflows, seguridad y runbook listos. La
+  activación administrativa de rulesets y Railway Wait for CI se verifica durante el rollout.
 
 ## Uso
 

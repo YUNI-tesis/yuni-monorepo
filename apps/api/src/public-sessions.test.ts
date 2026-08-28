@@ -24,12 +24,21 @@ function createFixture(
     expiredProviderSession?: boolean;
     policyError?: Error;
     syncingWithUsableVersion?: boolean;
+    concurrentEndDuringStartFailure?: boolean;
   } = {}
 ) {
   let ended = false;
+  let startFailed = false;
   const markStarted = vi.fn(async () => true);
   const markPrepared = vi.fn(async () => true);
-  const markStartFailed = vi.fn(async () => []);
+  const markStartFailed = vi.fn(async () => {
+    if (options.concurrentEndDuringStartFailure) {
+      ended = true;
+      return false;
+    }
+    startFailed = true;
+    return true;
+  });
   const stopSession = vi.fn(async () => undefined);
   const markProviderStopped = vi.fn(async () => ({ count: 1 }));
   const expireIfActive = vi.fn(async () => true);
@@ -85,13 +94,14 @@ function createFixture(
       findForEnd: vi.fn(async () => ({
         id: "public-session-1",
         shareLinkId: options.deletedLinkDuringEnd ? null : "link-1",
-        status: ended ? "ended" : "active",
-        endedAt: ended ? new Date() : null,
+        status: startFailed ? "errored" : ended ? "ended" : "active",
+        endedAt: startFailed || ended ? new Date() : null,
         avatarAgent: { name: "Avatar público" },
         conversation: { id: "conversation-1" },
         realtimeSessions: [
           {
             id: "realtime-1",
+            status: startFailed ? "errored" : ended ? "ended" : "connecting",
             providerStoppedAt: null,
             providerSessionTokenCiphertext: "encrypted:live-token",
           },
@@ -338,6 +348,57 @@ describe("@yuni/api public sessions", () => {
         }),
       ])
     );
+  });
+
+  it("records a public client startup failure and stops its provider session", async () => {
+    const fixture = createFixture();
+
+    const response = await fixture.app.request("/public/sessions/public-session-1/start-failed", {
+      method: "POST",
+      headers: { Authorization: "Bearer public-session-token" },
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      publicSession: { id: "public-session-1", status: "errored" },
+    });
+    expect(fixture.markStartFailed).toHaveBeenCalledWith({
+      publicSessionId: "public-session-1",
+      realtimeSessionId: "realtime-1",
+      conversationId: "conversation-1",
+      errorMessage: expect.any(String),
+    });
+    expect(fixture.stopSession).toHaveBeenCalledWith("live-token");
+
+    const repeatedFailure = await fixture.app.request("/public/sessions/public-session-1/start-failed", {
+      method: "POST",
+      headers: { Authorization: "Bearer public-session-token" },
+    });
+    expect(repeatedFailure.status).toBe(200);
+    expect(fixture.markStartFailed).toHaveBeenCalledOnce();
+  });
+
+  it("returns an ended public session when normal close wins against start-failed", async () => {
+    const fixture = createFixture({ concurrentEndDuringStartFailure: true });
+
+    const response = await fixture.app.request("/public/sessions/public-session-1/start-failed", {
+      method: "POST",
+      headers: { Authorization: "Bearer public-session-token" },
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      publicSession: { id: "public-session-1", status: "ended", endedAt: expect.any(String) },
+    });
+    expect(fixture.markStartFailed).toHaveBeenCalledOnce();
+    expect(fixture.stopSession).toHaveBeenCalledWith("live-token");
+
+    const repeatedFailure = await fixture.app.request("/public/sessions/public-session-1/start-failed", {
+      method: "POST",
+      headers: { Authorization: "Bearer public-session-token" },
+    });
+    expect(repeatedFailure.status).toBe(200);
+    expect(fixture.markStartFailed).toHaveBeenCalledOnce();
   });
 
   it("uses the last usable provider version while a new public context is syncing", async () => {

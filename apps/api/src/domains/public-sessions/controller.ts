@@ -91,6 +91,18 @@ export function createPublicSessionsController(dependencies: PublicSessionsContr
     }
   });
 
+  controller.post("/public/sessions/:publicSessionId/start-failed", async (context) => {
+    const token = readBearerToken(context);
+    if (!token) return context.json(unauthorizedError(), 401);
+    try {
+      return context.json({
+        publicSession: await service.failStart(context.req.param("publicSessionId"), token),
+      });
+    } catch (error) {
+      return handleError(context, error);
+    }
+  });
+
   controller.post(
     "/public/sessions/:publicSessionId/end",
     bodyLimit({

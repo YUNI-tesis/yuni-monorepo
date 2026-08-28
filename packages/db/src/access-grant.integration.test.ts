@@ -104,4 +104,53 @@ integration("access grant repository integration", () => {
       await db.user.deleteMany({ where: { id: { in: [participant.id, owner.id] } } });
     }
   });
+
+  it("revokes an unreferenced grant before its activation cohort closes", async () => {
+    if (!db) throw new Error("TEST_DATABASE_URL is required");
+    const suffix = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const owner = await db.user.create({
+      data: {
+        email: `mature-grant-owner-${suffix}@integration.yuni.test`,
+        passwordHash: "integration-only",
+        name: "Mature grant owner",
+      },
+    });
+
+    try {
+      const avatar = await db.avatarAgent.create({
+        data: {
+          ownerId: owner.id,
+          name: "Mature grant avatar",
+          description: "Integration avatar",
+          instructions: "Respondé breve.",
+          context: "Contexto",
+          voiceConfig: { provider: "elevenlabs", voiceId: `voice-${suffix}` },
+          liveAvatarConfig: {
+            provider: "liveavatar",
+            avatarId: `live-${suffix}`,
+            mode: "lite",
+            sandbox: true,
+          },
+          status: "active",
+        },
+      });
+      const grant = await db.accessGrant.create({
+        data: {
+          avatarAgentId: avatar.id,
+          ownerId: owner.id,
+          participantEmail: `mature-${suffix}@integration.yuni.test`,
+          createdAt: new Date(),
+        },
+      });
+
+      const result = await createAccessGrantRepository(db).deleteForAvatar(owner.id, avatar.id, grant.id);
+      const persisted = await db.accessGrant.findUnique({ where: { id: grant.id } });
+
+      expect(result.outcome).toBe("revoked");
+      expect(persisted).toMatchObject({ id: grant.id, status: "revoked" });
+      expect(persisted?.revokedAt).toBeInstanceOf(Date);
+    } finally {
+      await db.user.delete({ where: { id: owner.id } });
+    }
+  });
 });

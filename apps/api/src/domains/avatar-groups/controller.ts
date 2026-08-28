@@ -4,6 +4,7 @@ import {
   EndGroupVoiceSessionInputSchema,
   GroupProviderEventInputSchema,
   GroupVoiceParticipantFailureInputSchema,
+  GroupVoiceParticipantStartedInputSchema,
   GroupVoiceTurnInputSchema,
   InterruptGroupVoiceSessionInputSchema,
   NotFoundError,
@@ -144,6 +145,26 @@ export function createAvatarGroupsController(dependencies: AvatarGroupsControlle
           context.req.param("avatarId")
         ),
       });
+    } catch (error) {
+      return groupError(context, error);
+    }
+  });
+
+  controller.post("/group-voice-sessions/:sessionId/participants/:avatarId/started", async (context) => {
+    const currentUser = context.get("currentUser");
+    const parsed = GroupVoiceParticipantStartedInputSchema.safeParse(
+      await context.req.json().catch(() => ({}))
+    );
+    if (!parsed.success) return context.json(validationError(parsed.error.issues), 400);
+    try {
+      return context.json(
+        await service.confirmParticipantStarted(
+          currentUser.id,
+          context.req.param("sessionId"),
+          context.req.param("avatarId"),
+          parsed.data
+        )
+      );
     } catch (error) {
       return groupError(context, error);
     }

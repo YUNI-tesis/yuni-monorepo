@@ -6,6 +6,7 @@ import {
   EndVoiceSessionInputSchema,
   GroupProviderEventInputSchema,
   GroupVoiceParticipantFailureInputSchema,
+  GroupVoiceParticipantStartedInputSchema,
   GroupVoiceTurnInputSchema,
   InteractionLimitsSchema,
   CreateShareLinkInputSchema,
@@ -263,6 +264,15 @@ describe("@yuni/domain", () => {
       GroupVoiceParticipantFailureInputSchema.parse({
         sourceEventId: "participant:error:2",
         reason: "arbitrary provider message",
+      })
+    ).toThrow();
+    expect(
+      GroupVoiceParticipantStartedInputSchema.parse({ participantAttemptId: "realtime-attempt-1" })
+    ).toEqual({ participantAttemptId: "realtime-attempt-1" });
+    expect(() =>
+      GroupVoiceParticipantStartedInputSchema.parse({
+        participantAttemptId: "realtime-attempt-1",
+        extra: true,
       })
     ).toThrow();
   });

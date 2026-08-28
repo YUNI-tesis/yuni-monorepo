@@ -45,6 +45,42 @@ integration("group floor repository integration", () => {
     ).resolves.toBe(1);
   });
 
+  it("records participant activation only after an idempotent client confirmation", async () => {
+    const fixture = await createFixture("client-activation", 2, false);
+    const participantAttemptId = fixture.participantAttemptIds[0]!;
+
+    await expect(
+      db!.realtimeSession.findUnique({ where: { id: participantAttemptId } })
+    ).resolves.toMatchObject({ status: "connecting", activatedAt: null });
+    await expect(
+      fixture.repository.confirmParticipantStarted(
+        fixture.userId,
+        fixture.sessionId,
+        fixture.avatarIds[0]!,
+        participantAttemptId
+      )
+    ).resolves.toBe(true);
+    await expect(
+      fixture.repository.confirmParticipantStarted(
+        fixture.userId,
+        fixture.sessionId,
+        fixture.avatarIds[0]!,
+        participantAttemptId
+      )
+    ).resolves.toBe(true);
+    await expect(
+      db!.realtimeSession.findUnique({ where: { id: participantAttemptId } })
+    ).resolves.toMatchObject({ status: "active", activatedAt: expect.any(Date) });
+    await expect(
+      fixture.repository.confirmParticipantStarted(
+        "another-owner",
+        fixture.sessionId,
+        fixture.avatarIds[0]!,
+        participantAttemptId
+      )
+    ).resolves.toBe(false);
+  });
+
   it("persists rogue speech without changing the valid owner", async () => {
     const fixture = await createFixture("rogue", 2);
     const queued = await createQueuedRound(fixture, [fixture.avatarIds[0]!]);
@@ -824,7 +860,7 @@ integration("group floor repository integration", () => {
   });
 });
 
-async function createFixture(label: string, avatarCount: number) {
+async function createFixture(label: string, avatarCount: number, confirmParticipants = true) {
   if (!db) throw new Error("TEST_DATABASE_URL is required");
   const suffix = `${label}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const user = await db.user.create({
@@ -877,6 +913,14 @@ async function createFixture(label: string, avatarCount: number) {
       null,
       `ciphertext-${participant.id}`
     );
+    if (confirmParticipants) {
+      await repository.confirmParticipantStarted(
+        user.id,
+        session.id,
+        participant.avatarAgentId,
+        participantAttemptId
+      );
+    }
   }
   await repository.markSessionActive(session.id);
   return {

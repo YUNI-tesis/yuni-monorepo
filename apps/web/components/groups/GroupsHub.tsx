@@ -266,16 +266,10 @@ function AvatarSelectionOption({
   onToggle: (checked: boolean) => void;
 }) {
   const [failedThumbnailUrl, setFailedThumbnailUrl] = useState<string | null>(null);
-  const showThumbnail = Boolean(
-    avatar.thumbnailUrl && failedThumbnailUrl !== avatar.thumbnailUrl
-  );
+  const showThumbnail = Boolean(avatar.thumbnailUrl && failedThumbnailUrl !== avatar.thumbnailUrl);
 
   return (
-    <label
-      className={styles.avatarOption}
-      data-selected={selectionOrder !== null}
-      data-disabled={disabled}
-    >
+    <label className={styles.avatarOption} data-selected={selectionOrder !== null} data-disabled={disabled}>
       <input
         className={styles.avatarOptionInput}
         type="checkbox"
@@ -286,11 +280,7 @@ function AvatarSelectionOption({
 
       <span className={styles.optionArtwork} aria-hidden="true">
         {showThumbnail && avatar.thumbnailUrl ? (
-          <img
-            src={avatar.thumbnailUrl}
-            alt=""
-            onError={() => setFailedThumbnailUrl(avatar.thumbnailUrl)}
-          />
+          <img src={avatar.thumbnailUrl} alt="" onError={() => setFailedThumbnailUrl(avatar.thumbnailUrl)} />
         ) : (
           <span>{initials(avatar.name)}</span>
         )}

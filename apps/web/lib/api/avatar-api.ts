@@ -137,6 +137,15 @@ export type EndedApiVoiceSession = {
   endedAt: string | null;
 };
 
+export type FailedApiVoiceSession =
+  | { id: string; status: "errored" }
+  | {
+      id: string;
+      conversationId: string | null;
+      status: "ended";
+      endedAt: string | null;
+    };
+
 export type VoiceSessionTranscriptEntry = {
   role: "user" | "assistant";
   content: string;
@@ -320,6 +329,23 @@ export function startVoiceSession(avatarId: string) {
   return apiRequest<{ voiceSession: ApiVoiceSession }>(`/avatars/${avatarId}/voice-sessions`, {
     method: "POST",
   });
+}
+
+export function confirmVoiceSessionStarted(realtimeSessionId: string) {
+  return apiRequest<{ voiceSession: EndedApiVoiceSession }>(
+    `/voice-sessions/${encodeURIComponent(realtimeSessionId)}/started`,
+    { method: "POST" }
+  );
+}
+
+export function failVoiceSessionStart(realtimeSessionId: string, options: { keepalive?: boolean } = {}) {
+  return apiRequest<{ voiceSession: FailedApiVoiceSession }>(
+    `/voice-sessions/${encodeURIComponent(realtimeSessionId)}/start-failed`,
+    {
+      method: "POST",
+      ...(options.keepalive !== undefined ? { keepalive: options.keepalive } : {}),
+    }
+  );
 }
 
 export function endVoiceSession(

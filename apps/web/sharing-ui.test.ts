@@ -11,6 +11,7 @@ import {
   identifyPublicVisitor,
   startPublicSession,
   endPublicSession,
+  failPublicSessionStart,
   normalizePublicTranscript,
   listAccessGrants,
   listShareLinks,
@@ -327,6 +328,7 @@ describe("sharing API client", () => {
     await identifyPublicVisitor("demo link", "person@example.com");
     await startPublicSession("demo link", "identity-token");
     await confirmPublicSessionStarted("session-1", "session-token");
+    await failPublicSessionStart("session-1", "session-token", { keepalive: true });
     await endPublicSession("session-1", "session-token", [{ role: "user", content: "Hola" }], {
       keepalive: true,
     });
@@ -335,6 +337,7 @@ describe("sharing API client", () => {
       ["/api/public/links/demo%20link/identify", "POST"],
       ["/api/public/links/demo%20link/sessions", "POST"],
       ["/api/public/sessions/session-1/started", "POST"],
+      ["/api/public/sessions/session-1/start-failed", "POST"],
       ["/api/public/sessions/session-1/end", "POST"],
     ]);
     expect(fetchMock.mock.calls[0]?.[1].body).toBe(
@@ -343,13 +346,17 @@ describe("sharing API client", () => {
     expect(fetchMock.mock.calls[1]?.[1].headers).toMatchObject({
       Authorization: "Bearer identity-token",
     });
+    expect(fetchMock.mock.calls[3]?.[1]).toMatchObject({
+      headers: { Authorization: "Bearer session-token" },
+      keepalive: true,
+    });
     expect(fetchMock.mock.calls[2]?.[1].headers).toMatchObject({
       Authorization: "Bearer session-token",
     });
-    expect(fetchMock.mock.calls[3]?.[1].headers).toMatchObject({
+    expect(fetchMock.mock.calls[4]?.[1].headers).toMatchObject({
       Authorization: "Bearer session-token",
     });
-    expect(fetchMock.mock.calls[3]?.[1].keepalive).toBe(true);
+    expect(fetchMock.mock.calls[4]?.[1].keepalive).toBe(true);
   });
 
   it("bounds public transcripts and removes technical metadata before sending", () => {

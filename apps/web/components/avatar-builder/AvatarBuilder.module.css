@@ -245,8 +245,7 @@
 
   .step[data-active="true"] .stepNumber {
     background:
-      linear-gradient(rgba(100, 195, 215, 0.16), rgba(100, 195, 215, 0.16)),
-      var(--yuni-color-surface-muted);
+      linear-gradient(rgba(100, 195, 215, 0.16), rgba(100, 195, 215, 0.16)), var(--yuni-color-surface-muted);
   }
 
   .stepText {

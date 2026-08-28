@@ -59,6 +59,8 @@ export type UseLiveAvatarSessionOptions = {
   onEnded?: () => void | Promise<void>;
   onStarted?: (realtimeSessionId: string) => void | Promise<void>;
   startSession?: (sessionKey: string) => Promise<{ voiceSession: LiveAvatarVoiceSession }>;
+  failStart?: (realtimeSessionId: string) => Promise<unknown>;
+  failStartOnUnload?: (realtimeSessionId: string) => void;
   endSession?: (realtimeSessionId: string, transcript: VoiceSessionTranscriptEntry[]) => Promise<unknown>;
   endSessionOnUnload?: (realtimeSessionId: string, transcript: VoiceSessionTranscriptEntry[]) => void;
   formatStartError?: (error: unknown, fallback: (error: unknown) => string) => string;
@@ -89,6 +91,8 @@ const initialState: LiveAvatarSessionState = {
   diagnostics: initialDiagnostics,
 };
 
+const START_CONFIRMATION_RETRY_DELAYS_MS = [150, 400] as const;
+
 export function useLiveAvatarSession(avatarId: string, options: UseLiveAvatarSessionOptions = {}) {
   const [state, setState] = useState<LiveAvatarSessionState>(initialState);
   const sessionRef = useRef<LiveAvatarSession | null>(null);
@@ -102,6 +106,9 @@ export function useLiveAvatarSession(avatarId: string, options: UseLiveAvatarSes
   const lifecycleActiveRef = useRef(true);
   const lifecycleEpochRef = useRef(0);
   const preservePendingEndOnTeardownRef = useRef(false);
+  const startFailurePendingRef = useRef(false);
+  const startConfirmedRef = useRef(false);
+  const stoppedBeforeStartConfirmationRef = useRef(false);
   const diagnosticsCleanupRef = useRef<(() => void) | null>(null);
   const interruptionResetTimeoutRef = useRef<number | null>(null);
 
@@ -109,35 +116,45 @@ export function useLiveAvatarSession(avatarId: string, options: UseLiveAvatarSes
     optionsRef.current = options;
   }, [options]);
 
-  const closeCurrentSession = useCallback(async (options: { includeTranscript: boolean }) => {
-    const currentSession = sessionRef.current;
-    const currentVoiceSession = voiceSessionRef.current;
+  const closeCurrentSession = useCallback(
+    async (options: { includeTranscript: boolean; reason?: "ended" | "start_failed" }) => {
+      const currentSession = sessionRef.current;
+      const currentVoiceSession = voiceSessionRef.current;
 
-    cleanupDiagnostics(diagnosticsCleanupRef);
-    clearInterruptionReset(interruptionResetTimeoutRef);
-    sessionRef.current = null;
+      if (options.reason === "start_failed") {
+        startFailurePendingRef.current = true;
+      }
 
-    const endRequest = currentVoiceSession
-      ? (optionsRef.current.endSession ?? endVoiceSession)(
-          currentVoiceSession.realtimeSessionId,
-          options.includeTranscript
-            ? transcriptRef.current.map(({ role, content, metadata }) => ({
-                role,
-                content,
-                ...(metadata ? { metadata } : {}),
-              }))
-            : []
-        )
-      : null;
-    if (currentSession) {
-      void stopLiveAvatarSessionSafely(currentSession);
-    }
+      cleanupDiagnostics(diagnosticsCleanupRef);
+      clearInterruptionReset(interruptionResetTimeoutRef);
+      sessionRef.current = null;
 
-    if (endRequest) {
-      await endRequest;
-      voiceSessionRef.current = null;
-    }
-  }, []);
+      const endRequest = currentVoiceSession
+        ? startFailurePendingRef.current && optionsRef.current.failStart
+          ? optionsRef.current.failStart(currentVoiceSession.realtimeSessionId)
+          : (optionsRef.current.endSession ?? endVoiceSession)(
+              currentVoiceSession.realtimeSessionId,
+              options.includeTranscript
+                ? transcriptRef.current.map(({ role, content, metadata }) => ({
+                    role,
+                    content,
+                    ...(metadata ? { metadata } : {}),
+                  }))
+                : []
+            )
+        : null;
+      if (currentSession) {
+        void stopLiveAvatarSessionSafely(currentSession);
+      }
+
+      if (endRequest) {
+        await endRequest;
+        voiceSessionRef.current = null;
+        startFailurePendingRef.current = false;
+      }
+    },
+    []
+  );
 
   const closeCurrentSessionOnUnload = useCallback((preservePendingEnd?: boolean) => {
     const currentSession = sessionRef.current;
@@ -152,7 +169,13 @@ export function useLiveAvatarSession(avatarId: string, options: UseLiveAvatarSes
       voiceSessionRef.current = null;
     }
 
-    if (currentVoiceSession && endSessionOnUnload) {
+    if (currentVoiceSession && startFailurePendingRef.current && optionsRef.current.failStartOnUnload) {
+      try {
+        optionsRef.current.failStartOnUnload(currentVoiceSession.realtimeSessionId);
+      } catch {
+        // Page teardown cannot surface a recoverable start-failure cleanup error.
+      }
+    } else if (currentVoiceSession && endSessionOnUnload) {
       try {
         endSessionOnUnload(
           currentVoiceSession.realtimeSessionId,
@@ -250,6 +273,8 @@ export function useLiveAvatarSession(avatarId: string, options: UseLiveAvatarSes
     transcriptRef.current = [];
     eventIdsRef.current = new Set<string>();
     endingRef.current = false;
+    startConfirmedRef.current = false;
+    stoppedBeforeStartConfirmationRef.current = false;
     setState({ ...initialState, status: "starting" });
 
     let liveAvatarSession: LiveAvatarSession | null = null;
@@ -286,13 +311,18 @@ export function useLiveAvatarSession(avatarId: string, options: UseLiveAvatarSes
           }
         },
         end,
+        hasConfirmedStart: () => startConfirmedRef.current,
         hasReachedExpiry: () => hasLiveAvatarSessionExpired(voiceSessionRef.current?.expiresAt),
         isCurrentSession: () => sessionRef.current === session,
+        markStoppedBeforeStartConfirmation: () => {
+          stoppedBeforeStartConfirmationRef.current = true;
+        },
         markInterrupted,
         setState,
       });
 
       await session.start();
+      throwIfSessionStoppedBeforeStartConfirmation(stoppedBeforeStartConfirmationRef.current);
       if (
         !isLiveAvatarLifecycleCurrent(
           lifecycleActiveRef.current,
@@ -304,6 +334,7 @@ export function useLiveAvatarSession(avatarId: string, options: UseLiveAvatarSes
       )
         return;
       await ensureVoiceChatStarted(session);
+      throwIfSessionStoppedBeforeStartConfirmation(stoppedBeforeStartConfirmationRef.current);
       if (
         !isLiveAvatarLifecycleCurrent(
           lifecycleActiveRef.current,
@@ -314,7 +345,25 @@ export function useLiveAvatarSession(avatarId: string, options: UseLiveAvatarSes
         voiceSessionRef.current !== voiceSession
       )
         return;
-      await optionsRef.current.onStarted?.(voiceSession.realtimeSessionId);
+      const onStarted = optionsRef.current.onStarted;
+      if (onStarted) {
+        const confirmed = await confirmLiveAvatarSessionStartedWithRetry(
+          onStarted,
+          voiceSession.realtimeSessionId,
+          {
+            isCurrent: () =>
+              isLiveAvatarLifecycleCurrent(
+                lifecycleActiveRef.current,
+                lifecycleEpochRef.current,
+                lifecycleEpoch
+              ) &&
+              sessionRef.current === session &&
+              voiceSessionRef.current === voiceSession,
+          }
+        );
+        if (!confirmed) return;
+      }
+      throwIfSessionStoppedBeforeStartConfirmation(stoppedBeforeStartConfirmationRef.current);
       if (
         !isLiveAvatarLifecycleCurrent(
           lifecycleActiveRef.current,
@@ -325,6 +374,7 @@ export function useLiveAvatarSession(avatarId: string, options: UseLiveAvatarSes
         voiceSessionRef.current !== voiceSession
       )
         return;
+      startConfirmedRef.current = true;
       diagnosticsCleanupRef.current = startMicrophoneLevelProbe(session, setState);
 
       setState((current) => ({
@@ -348,7 +398,7 @@ export function useLiveAvatarSession(avatarId: string, options: UseLiveAvatarSes
       if (voiceSessionRef.current || sessionRef.current) {
         endingRef.current = true;
         try {
-          await closeCurrentSession({ includeTranscript: false });
+          await closeCurrentSession({ includeTranscript: false, reason: "start_failed" });
         } catch (error) {
           closeError = error;
         }
@@ -440,14 +490,21 @@ export function useLiveAvatarSession(avatarId: string, options: UseLiveAvatarSes
       }
 
       if (endingRef.current) {
-        if (voiceSessionRef.current && optionsRef.current.endSessionOnUnload) {
+        if (
+          voiceSessionRef.current &&
+          (optionsRef.current.endSessionOnUnload ||
+            (startFailurePendingRef.current && optionsRef.current.failStartOnUnload))
+        ) {
           closeCurrentSessionOnUnload(preservePendingEnd);
         }
         return;
       }
 
       endingRef.current = true;
-      if (optionsRef.current.endSessionOnUnload) {
+      if (
+        optionsRef.current.endSessionOnUnload ||
+        (startFailurePendingRef.current && optionsRef.current.failStartOnUnload)
+      ) {
         closeCurrentSessionOnUnload(preservePendingEnd);
         return;
       }
@@ -635,8 +692,10 @@ type RegisterSessionEventsOptions = {
   appendTranscript: (entry: LiveAvatarTranscriptEntry) => void;
   attachCurrentMediaElement: () => void;
   end: () => Promise<void>;
+  hasConfirmedStart: () => boolean;
   hasReachedExpiry: () => boolean;
   isCurrentSession: () => boolean;
+  markStoppedBeforeStartConfirmation: () => void;
   markInterrupted: () => void;
   setState: Dispatch<SetStateAction<LiveAvatarSessionState>>;
 };
@@ -735,11 +794,21 @@ function registerSessionEvents(session: LiveAvatarSession, options: RegisterSess
   session.on(AgentEventsEnum.SESSION_STOPPED, (event) => {
     if (!options.isCurrentSession()) return;
     markEvent(options, event.event_type);
+    if (!options.hasConfirmedStart()) {
+      options.markStoppedBeforeStartConfirmation();
+      return;
+    }
     if (options.hasReachedExpiry()) {
       options.setState((current) => ({ ...current, endedByLimit: true }));
     }
     void options.end();
   });
+}
+
+function throwIfSessionStoppedBeforeStartConfirmation(stopped: boolean) {
+  if (stopped) {
+    throw new Error("Live Avatar session stopped before start confirmation");
+  }
 }
 
 export function hasLiveAvatarSessionExpired(expiresAt: string | null | undefined, now = Date.now()) {
@@ -750,6 +819,48 @@ export function hasLiveAvatarSessionExpired(expiresAt: string | null | undefined
 
 export function isLiveAvatarLifecycleCurrent(active: boolean, currentEpoch: number, capturedEpoch: number) {
   return active && currentEpoch === capturedEpoch;
+}
+
+export async function confirmLiveAvatarSessionStartedWithRetry(
+  confirm: (realtimeSessionId: string) => void | Promise<void>,
+  realtimeSessionId: string,
+  options: {
+    isCurrent?: () => boolean;
+    wait?: (delayMs: number) => Promise<void>;
+  } = {}
+) {
+  const isCurrent = options.isCurrent ?? (() => true);
+  const wait = options.wait ?? waitForStartConfirmationRetry;
+
+  for (let attempt = 0; attempt <= START_CONFIRMATION_RETRY_DELAYS_MS.length; attempt += 1) {
+    if (!isCurrent()) return false;
+
+    try {
+      await confirm(realtimeSessionId);
+      return true;
+    } catch (error) {
+      const retryDelay = START_CONFIRMATION_RETRY_DELAYS_MS[attempt];
+      if (retryDelay === undefined || !isRetryableStartConfirmationError(error)) {
+        throw error;
+      }
+      await wait(retryDelay);
+    }
+  }
+
+  return false;
+}
+
+function isRetryableStartConfirmationError(error: unknown) {
+  if (error instanceof ApiClientError) {
+    return [408, 425, 429].includes(error.status) || error.status >= 500;
+  }
+
+  // Fetch rejects with TypeError when no HTTP response was received.
+  return error instanceof TypeError;
+}
+
+function waitForStartConfirmationRetry(delayMs: number) {
+  return new Promise<void>((resolve) => window.setTimeout(resolve, delayMs));
 }
 
 function markEvent(

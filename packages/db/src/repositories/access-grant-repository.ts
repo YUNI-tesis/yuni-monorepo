@@ -93,28 +93,15 @@ export function createAccessGrantRepository(db: Db) {
         const current = grants[0];
         if (!current) throw new OwnershipError();
 
-        const [conversationCount, realtimeSessionCount, groupConversationCount, groupMembershipCount] =
-          await Promise.all([
-            transaction.conversation.count({ where: { accessGrantId } }),
-            transaction.realtimeSession.count({ where: { accessGrantId } }),
-            transaction.conversationAvatar.count({ where: { accessGrantId } }),
-            transaction.avatarGroupMember.count({ where: { accessGrantId } }),
-          ]);
+        const accessGrant = await transaction.accessGrant.update({
+          where: { id: accessGrantId },
+          data: {
+            status: "revoked",
+            revokedAt: current.revokedAt ?? new Date(),
+          },
+        });
 
-        if (conversationCount + realtimeSessionCount + groupConversationCount + groupMembershipCount > 0) {
-          const accessGrant = await transaction.accessGrant.update({
-            where: { id: accessGrantId },
-            data: {
-              status: "revoked",
-              revokedAt: current.revokedAt ?? new Date(),
-            },
-          });
-
-          return { outcome: "revoked" as const, accessGrant };
-        }
-
-        const accessGrant = await transaction.accessGrant.delete({ where: { id: accessGrantId } });
-        return { outcome: "deleted" as const, accessGrant };
+        return { outcome: "revoked" as const, accessGrant };
       });
     },
 
