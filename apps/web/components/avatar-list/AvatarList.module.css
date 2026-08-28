@@ -42,9 +42,72 @@
 }
 
 @media (max-width: 520px) {
-  .filterBar {
+  .mobileHeader :global(.yuni-page-header) {
     display: grid;
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: var(--yuni-space-3);
+    margin-bottom: 0;
+  }
+
+  .mobileHeader :global(.yuni-page-header__content) {
+    gap: 0;
+  }
+
+  .mobileHeader :global(.yuni-page-header__eyebrow),
+  .mobileHeader :global(.yuni-page-header__description) {
+    display: none;
+  }
+
+  .mobileHeader :global(.yuni-page-header__title) {
+    font-size: 2rem;
+  }
+
+  .mobileHeader :global(.yuni-cluster) {
+    flex-wrap: nowrap;
+  }
+
+  .mobileHeader :global(.yuni-button) {
+    width: 48px;
+    min-height: 48px;
+    border-radius: 50%;
+    padding: 0;
+  }
+
+  .mobileHeader :global(.yuni-button > span) {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .filterBar {
+    display: flex;
+    flex-wrap: nowrap;
+    max-width: 100%;
+    margin-top: 0;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    padding-bottom: var(--yuni-space-1);
+    scrollbar-width: none;
+    scroll-snap-type: x proximity;
+  }
+
+  .filterBar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .filterButton {
+    flex: 0 0 auto;
+    padding: 0 var(--yuni-space-3);
+    scroll-snap-align: start;
+  }
+
+  .avatarGrid {
+    gap: 0;
   }
 }
 

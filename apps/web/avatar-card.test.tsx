@@ -53,10 +53,17 @@ describe("AvatarCard", () => {
   it("adds ownership and lifecycle metadata in the catalog variant", () => {
     const html = renderCard(createAvatar({ thumbnailUrl: null }), "catalog");
 
+    expect(html).toContain('data-mobile-layout="compact"');
     expect(html).toContain(">Propio<");
     expect(html).toContain(">Activo<");
     expect(html).toContain(">AC<");
     expect(html).not.toContain("<img");
+  });
+
+  it("keeps the Dashboard card layout unchanged", () => {
+    const html = renderCard(createAvatar(), "dashboard");
+
+    expect(html).not.toContain("data-mobile-layout");
   });
 
   it("keeps long identity content available while the layout clamps it visually", () => {
