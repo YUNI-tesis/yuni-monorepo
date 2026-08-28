@@ -19,23 +19,35 @@ export function DashboardHeader({
   onDaysChange: (days: ApiDashboardDays) => void;
   onNavigate: (path: string) => void;
 }) {
+  const eyebrow = `Actividad · ${formatDashboardPeriod(
+    summary.period.from,
+    summary.period.to,
+    summary.period.timeZone
+  )}`;
+  const description = "Quién participa, cuánto usa tus avatares, quién vuelve y qué requiere una acción.";
+
   return (
     <div className={styles.headerStack}>
-      <PageHeader
-        eyebrow={`Actividad · ${formatDashboardPeriod(summary.period.from, summary.period.to, summary.period.timeZone)}`}
-        title="Cómo están usando tus avatares"
-        description="Quién participa, cuánto usa tus avatares, quién vuelve y qué requiere una acción."
-        actions={
-          <div className={styles.actions}>
-            <Button icon={<YuniIcon name="add" />} onClick={() => onNavigate("/avatars/new")}>
-              Crear avatar
-            </Button>
-            <Button variant="secondary" onClick={() => onNavigate("/avatars")}>
-              Mis avatares
-            </Button>
-          </div>
-        }
-      />
+      <div className={styles.desktopHeader}>
+        <PageHeader
+          eyebrow={eyebrow}
+          title="Cómo están usando tus avatares"
+          description={description}
+          actions={
+            <div className={styles.actions}>
+              <Button icon={<YuniIcon name="add" />} onClick={() => onNavigate("/avatars/new")}>
+                Crear avatar
+              </Button>
+              <Button variant="secondary" onClick={() => onNavigate("/avatars")}>
+                Mis avatares
+              </Button>
+            </div>
+          }
+        />
+      </div>
+      <div className={styles.mobileHeader}>
+        <PageHeader eyebrow={eyebrow} title="Dashboard" description={description} />
+      </div>
       <div className={styles.periodRow}>
         <span>Período</span>
         <div className={styles.periodSelector} role="group" aria-label="Seleccionar período del dashboard">

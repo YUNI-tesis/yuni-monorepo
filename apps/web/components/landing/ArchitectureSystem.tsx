@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "motion/react";
-import React, { type CSSProperties, useState } from "react";
+import React, { type CSSProperties, useRef, useState } from "react";
 import styles from "./ArchitectureSystem.module.css";
 
 type ArchitectureNodeId = "user" | "web" | "core" | "data" | "orchestrator" | "live";
@@ -110,7 +110,7 @@ const architectureNodes: readonly ArchitectureNode[] = [
     description: "Inicia la interacción y recibe voz, rostro y video.",
     icon: "person",
     grid: nodeGrid.user,
-    accent: "#71d0de",
+    accent: "var(--landing-accent)",
   }),
   positionedNode({
     id: "web",
@@ -119,7 +119,7 @@ const architectureNodes: readonly ArchitectureNode[] = [
     description: "Permite configurar avatares, compartir accesos e iniciar conversaciones.",
     icon: "browser",
     grid: nodeGrid.web,
-    accent: "#71d0de",
+    accent: "var(--landing-accent)",
   }),
   positionedNode({
     id: "core",
@@ -128,7 +128,7 @@ const architectureNodes: readonly ArchitectureNode[] = [
     description: "Autentica, valida permisos y coordina sesiones y servicios externos.",
     icon: "core",
     grid: nodeGrid.core,
-    accent: "#e5a0f5",
+    accent: "var(--landing-primary-bright)",
     portGap: 30,
     portAlign: 60,
     featured: true,
@@ -140,7 +140,7 @@ const architectureNodes: readonly ArchitectureNode[] = [
     description: "Guarda usuarios, avatares, sesiones, mensajes y transcripciones.",
     icon: "database",
     grid: nodeGrid.data,
-    accent: "#71d0de",
+    accent: "var(--landing-accent)",
   }),
   positionedNode({
     id: "orchestrator",
@@ -149,7 +149,7 @@ const architectureNodes: readonly ArchitectureNode[] = [
     description: "Solo en conversaciones grupales, decide qué avatar interviene y en qué orden.",
     icon: "direction",
     grid: nodeGrid.orchestrator,
-    accent: "#c776e4",
+    accent: "var(--landing-primary)",
     portAlign: 65,
     compact: true,
   }),
@@ -161,7 +161,7 @@ const architectureNodes: readonly ArchitectureNode[] = [
       "ElevenLabs genera la respuesta y la voz; LiveAvatar suma rostro, gestos y video en tiempo real.",
     icon: "avatar",
     grid: nodeGrid.live,
-    accent: "#f09a87",
+    accent: "var(--landing-coral)",
     portAlign: 45,
   }),
 ] as const;
@@ -400,7 +400,9 @@ function ArchitectureIcon({ name }: { name: ArchitectureIconName }) {
 export function ArchitectureSystem({ reducedMotion }: { reducedMotion: boolean }) {
   const [hoveredNodeId, setHoveredNodeId] = useState<ArchitectureNodeId | null>(null);
   const [focusedNodeId, setFocusedNodeId] = useState<ArchitectureNodeId | null>(null);
-  const activeNodeId = hoveredNodeId ?? focusedNodeId;
+  const [selectedNodeId, setSelectedNodeId] = useState<ArchitectureNodeId | null>(null);
+  const lastPointerTypeRef = useRef<string | null>(null);
+  const activeNodeId = hoveredNodeId ?? focusedNodeId ?? selectedNodeId;
   const activeNode = architectureNodes.find((node) => node.id === activeNodeId);
   const connectedNodeIds = activeNodeId
     ? new Set(
@@ -449,22 +451,22 @@ export function ArchitectureSystem({ reducedMotion }: { reducedMotion: boolean }
           >
             <defs>
               <linearGradient id="architecture-platform" x1="0" y1="0" x2="1" y2="1">
-                <stop offset="0" stopColor="#21162c" />
-                <stop offset="0.48" stopColor="#130b1c" />
-                <stop offset="1" stopColor="#0d0815" />
+                <stop offset="0" stopColor="var(--landing-platform-high)" />
+                <stop offset="0.48" stopColor="var(--landing-platform-mid)" />
+                <stop offset="1" stopColor="var(--landing-platform-low)" />
               </linearGradient>
               <linearGradient id="architecture-platform-front" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0" stopColor="#12091b" />
-                <stop offset="1" stopColor="#06030b" />
+                <stop offset="0" stopColor="var(--landing-platform-front-high)" />
+                <stop offset="1" stopColor="var(--landing-platform-front-low)" />
               </linearGradient>
               <linearGradient id="architecture-platform-side" x1="0" y1="0" x2="1" y2="1">
-                <stop offset="0" stopColor="#0c0712" />
-                <stop offset="1" stopColor="#050208" />
+                <stop offset="0" stopColor="var(--landing-platform-side-high)" />
+                <stop offset="1" stopColor="var(--landing-platform-side-low)" />
               </linearGradient>
               <linearGradient id="architecture-rim" x1="0" y1="0" x2="1" y2="0">
-                <stop offset="0" stopColor="#71d0de" stopOpacity="0.55" />
-                <stop offset="0.52" stopColor="#c776e4" stopOpacity="0.32" />
-                <stop offset="1" stopColor="#f09a87" stopOpacity="0.5" />
+                <stop offset="0" stopColor="var(--landing-accent)" stopOpacity="0.55" />
+                <stop offset="0.52" stopColor="var(--landing-primary)" stopOpacity="0.32" />
+                <stop offset="1" stopColor="var(--landing-coral)" stopOpacity="0.5" />
               </linearGradient>
               <filter id="architecture-glow" x="-30%" y="-30%" width="160%" height="160%">
                 <feGaussianBlur stdDeviation="5" />
@@ -558,16 +560,38 @@ export function ArchitectureSystem({ reducedMotion }: { reducedMotion: boolean }
                   type="button"
                   className={`${styles.node} ${node.featured ? styles.featuredNode : ""} ${node.compact ? styles.compactNode : ""} ${node.wide ? styles.wideNode : ""}`}
                   aria-controls="architecture-system-readout"
-                  aria-expanded={activeNodeId === node.id}
+                  aria-pressed={selectedNodeId === node.id}
                   data-active={activeNodeId === node.id ? "true" : undefined}
                   data-muted={
                     connectedNodeIds !== null && !connectedNodeIds.has(node.id) ? "true" : undefined
                   }
-                  onMouseDown={(event) => event.preventDefault()}
-                  onPointerEnter={() => setHoveredNodeId(node.id)}
-                  onPointerLeave={() =>
-                    setHoveredNodeId((currentNodeId) => (currentNodeId === node.id ? null : currentNodeId))
-                  }
+                  onPointerDown={(event) => {
+                    lastPointerTypeRef.current = event.pointerType;
+                    if (event.pointerType === "mouse") event.preventDefault();
+                  }}
+                  onPointerEnter={(event) => {
+                    if (event.pointerType === "mouse") setHoveredNodeId(node.id);
+                  }}
+                  onPointerLeave={(event) => {
+                    if (event.pointerType !== "mouse") return;
+                    setHoveredNodeId((currentNodeId) => (currentNodeId === node.id ? null : currentNodeId));
+                  }}
+                  onPointerCancel={() => {
+                    lastPointerTypeRef.current = null;
+                  }}
+                  onClick={(event) => {
+                    const pointerType = lastPointerTypeRef.current;
+                    const keyboardOrAssistiveClick = event.detail === 0;
+                    lastPointerTypeRef.current = null;
+
+                    if (!keyboardOrAssistiveClick && pointerType === "mouse") return;
+
+                    setSelectedNodeId((currentNodeId) => (currentNodeId === node.id ? null : node.id));
+                    if (pointerType === "touch" || pointerType === "pen") event.currentTarget.blur();
+                  }}
+                  onKeyDown={() => {
+                    lastPointerTypeRef.current = null;
+                  }}
                   onFocus={() => setFocusedNodeId(node.id)}
                   onBlur={() =>
                     setFocusedNodeId((currentNodeId) => (currentNodeId === node.id ? null : currentNodeId))

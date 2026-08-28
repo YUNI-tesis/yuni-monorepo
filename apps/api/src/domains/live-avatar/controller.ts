@@ -1,6 +1,6 @@
-import { Hono, type Context } from "hono";
-import { badGatewayError, serviceUnavailableError, unauthorizedError } from "../../utils/errors";
-import { getSessionToken, verifySessionToken } from "../auth/session";
+import { Hono } from "hono";
+import type { CreatorSessionEnv } from "../auth/middleware";
+import { badGatewayError, serviceUnavailableError } from "../../utils/errors";
 import {
   createLiveAvatarService,
   LiveAvatarProviderServiceError,
@@ -11,27 +11,11 @@ import {
 
 export type LiveAvatarControllerDependencies = LiveAvatarServiceDependencies;
 
-async function getCurrentSession(context: Context) {
-  const token = getSessionToken(context);
-
-  if (!token) {
-    return null;
-  }
-
-  return verifySessionToken(token);
-}
-
 export function createLiveAvatarController(dependencies: LiveAvatarControllerDependencies) {
-  const liveAvatar = new Hono();
+  const liveAvatar = new Hono<CreatorSessionEnv>();
   const service = createLiveAvatarService(dependencies);
 
   liveAvatar.get("/live-avatar/avatars", async (context) => {
-    const session = await getCurrentSession(context);
-
-    if (!session) {
-      return context.json(unauthorizedError(), 401);
-    }
-
     try {
       return context.json({ avatars: await service.listAvatars() });
     } catch (error) {

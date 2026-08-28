@@ -7,10 +7,9 @@ import {
   notFoundError,
   rateLimitedError,
   serviceUnavailableError,
-  unauthorizedError,
   validationError,
 } from "../../utils/errors";
-import { getSessionToken, verifySessionToken } from "../auth/session";
+import type { CreatorSessionEnv } from "../auth/middleware";
 import {
   createVoiceSessionsService,
   ExternalSessionLifecycleConfigurationError,
@@ -32,29 +31,15 @@ export type VoiceSessionsControllerDependencies = VoiceSessionsServiceDependenci
   resolveClientIp?: (context: Context) => string;
 };
 
-async function getCurrentSession(context: Context) {
-  const token = getSessionToken(context);
-
-  if (!token) {
-    return null;
-  }
-
-  return verifySessionToken(token);
-}
-
 export function createVoiceSessionsController(dependencies: VoiceSessionsControllerDependencies) {
-  const controller = new Hono();
+  const controller = new Hono<CreatorSessionEnv>();
   const service = createVoiceSessionsService(dependencies);
 
   controller.post("/avatars/:avatarId/agent-provider/sync", async (context) => {
-    const session = await getCurrentSession(context);
-
-    if (!session) {
-      return context.json(unauthorizedError(), 401);
-    }
+    const currentUser = context.get("currentUser");
 
     try {
-      await service.syncAgentProvider(session.userId, context.req.param("avatarId"));
+      await service.syncAgentProvider(currentUser.id, context.req.param("avatarId"));
 
       return context.json({ sync: { status: "ready" as const } });
     } catch (error) {
@@ -63,15 +48,11 @@ export function createVoiceSessionsController(dependencies: VoiceSessionsControl
   });
 
   controller.post("/avatars/:avatarId/voice-sessions", async (context) => {
-    const session = await getCurrentSession(context);
-
-    if (!session) {
-      return context.json(unauthorizedError(), 401);
-    }
+    const currentUser = context.get("currentUser");
 
     try {
       const voiceSession = await service.startVoiceSession(
-        session.userId,
+        currentUser.id,
         context.req.param("avatarId"),
         dependencies.resolveClientIp?.(context) ?? "unknown"
       );
@@ -83,12 +64,11 @@ export function createVoiceSessionsController(dependencies: VoiceSessionsControl
   });
 
   controller.post("/voice-sessions/:realtimeSessionId/started", async (context) => {
-    const session = await getCurrentSession(context);
-    if (!session) return context.json(unauthorizedError(), 401);
+    const currentUser = context.get("currentUser");
 
     try {
       const voiceSession = await service.confirmVoiceSessionStarted(
-        session.userId,
+        currentUser.id,
         context.req.param("realtimeSessionId")
       );
       return context.json({ voiceSession });
@@ -98,12 +78,11 @@ export function createVoiceSessionsController(dependencies: VoiceSessionsControl
   });
 
   controller.post("/voice-sessions/:realtimeSessionId/start-failed", async (context) => {
-    const session = await getCurrentSession(context);
-    if (!session) return context.json(unauthorizedError(), 401);
+    const currentUser = context.get("currentUser");
 
     try {
       const voiceSession = await service.failVoiceSessionStart(
-        session.userId,
+        currentUser.id,
         context.req.param("realtimeSessionId")
       );
       return context.json({ voiceSession });
@@ -120,11 +99,7 @@ export function createVoiceSessionsController(dependencies: VoiceSessionsControl
         context.json(validationError([], "El transcript supera el tamaño permitido."), 413),
     }),
     async (context) => {
-      const session = await getCurrentSession(context);
-
-      if (!session) {
-        return context.json(unauthorizedError(), 401);
-      }
+      const currentUser = context.get("currentUser");
 
       const body: unknown = await context.req.json().catch(() => ({}));
       const parsed = EndVoiceSessionInputSchema.safeParse(body);
@@ -135,7 +110,7 @@ export function createVoiceSessionsController(dependencies: VoiceSessionsControl
 
       try {
         const voiceSession = await service.endVoiceSession(
-          session.userId,
+          currentUser.id,
           context.req.param("realtimeSessionId"),
           parsed.data
         );

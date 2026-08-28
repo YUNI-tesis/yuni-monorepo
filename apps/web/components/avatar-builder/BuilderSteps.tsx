@@ -7,18 +7,25 @@ export type BuilderStepsProps = {
 
 export function BuilderSteps({ currentStepIndex }: BuilderStepsProps) {
   return (
-    <div className={styles.steps} aria-label="Pasos de creacion">
+    <ol className={styles.steps} aria-label="Pasos de creación">
       {avatarBuilderSteps.map((step, index) => (
-        <span
+        <li
           className={styles.step}
           data-active={index === currentStepIndex}
           data-complete={index < currentStepIndex}
+          aria-current={index === currentStepIndex ? "step" : undefined}
           key={step}
         >
           <span className={styles.stepNumber}>{index + 1}</span>
-          {step}
-        </span>
+          <strong className={styles.stepText}>{getStepLabel(step)}</strong>
+        </li>
       ))}
-    </div>
+    </ol>
   );
+}
+
+function getStepLabel(step: (typeof avatarBuilderSteps)[number]) {
+  if (step === "Avatar") return "Avatar visual";
+  if (step === "Review") return "Revisión";
+  return step;
 }

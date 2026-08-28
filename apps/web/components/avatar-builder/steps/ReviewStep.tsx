@@ -5,10 +5,10 @@ import styles from "../AvatarBuilder.module.css";
 export function ReviewStep({ builder }: { builder: AvatarBuilderController }) {
   return (
     <section className={styles.panel}>
-      <StepHeading title="Review" description="Revisa la configuracion antes de crear el avatar." />
+      <StepHeading title="Revisión final" description="Confirmá la configuración antes de crear el avatar." />
       <dl className={styles.review}>
         <ReviewItem label="Nombre" value={builder.state.name || "Sin nombre"} />
-        <ReviewItem label="Descripcion" value={builder.state.description || "Sin descripcion"} />
+        <ReviewItem label="Descripción" value={builder.state.description || "Sin descripción"} />
         <ReviewItem
           label="Avatar visual"
           value={builder.selectedLiveAvatar?.displayName ?? "Sin seleccionar"}

@@ -1,7 +1,7 @@
 .card {
   --spotlight-x: 50%;
   --spotlight-y: 50%;
-  --spotlight-color: rgba(190, 106, 220, 0.2);
+  --spotlight-color: rgba(var(--landing-primary-glow-rgb), 0.2);
 
   position: relative;
   isolation: isolate;

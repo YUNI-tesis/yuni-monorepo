@@ -1,7 +1,7 @@
 import { createLogger } from "@yuni/observability";
-import { Hono, type Context } from "hono";
-import { validationError, unauthorizedError } from "../../utils/errors";
-import { getSessionToken, verifySessionToken } from "../auth/session";
+import { Hono } from "hono";
+import { validationError } from "../../utils/errors";
+import type { CreatorSessionEnv } from "../auth/middleware";
 import {
   CREATOR_DASHBOARD_PERIODS,
   createCreatorDashboardService,
@@ -14,12 +14,11 @@ const logger = createLogger("@yuni/api:creator-dashboard");
 export type CreatorDashboardControllerDependencies = CreatorDashboardServiceDependencies;
 
 export function createCreatorDashboardController(dependencies: CreatorDashboardControllerDependencies) {
-  const dashboard = new Hono();
+  const dashboard = new Hono<CreatorSessionEnv>();
   const service = createCreatorDashboardService(dependencies);
 
   dashboard.get("/dashboard/creator-summary", async (context) => {
-    const session = await getCurrentSession(context);
-    if (!session) return context.json(unauthorizedError(), 401);
+    const currentUser = context.get("currentUser");
 
     const options = parseOptions(context.req.query("days"), context.req.query("timeZone"));
     if (!options.ok) {
@@ -28,7 +27,7 @@ export function createCreatorDashboardController(dependencies: CreatorDashboardC
 
     const startedAt = performance.now();
     try {
-      const summary = await service.getSummary(session.userId, options.value);
+      const summary = await service.getSummary(currentUser.id, options.value);
       logger.info("Creator dashboard summary generated", {
         durationMs: Math.round(performance.now() - startedAt),
         days: options.value.days,
@@ -47,11 +46,6 @@ export function createCreatorDashboardController(dependencies: CreatorDashboardC
   });
 
   return dashboard;
-}
-
-async function getCurrentSession(context: Context) {
-  const token = getSessionToken(context);
-  return token ? verifySessionToken(token) : null;
 }
 
 function parseOptions(daysValue?: string, timeZoneValue?: string) {

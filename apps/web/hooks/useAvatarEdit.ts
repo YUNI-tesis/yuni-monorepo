@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { getAvatar, type ApiAvatar, type UpdateAvatarRequest } from "../lib/api/avatar-api";
 import { ApiClientError } from "../lib/api/http-client";
@@ -20,8 +19,6 @@ export type AvatarEditState = {
   voiceDisplayName: string;
   voiceDescription: string;
   instructions: string;
-  context: string;
-  files: File[];
 };
 
 export type AvatarEditField = keyof AvatarEditState;
@@ -63,8 +60,6 @@ export function createAvatarEditStateFromAvatar(avatar: ApiAvatar): AvatarEditSt
     voiceDisplayName: readString(voiceConfig.displayName, ""),
     voiceDescription: readString(voiceConfig.description, ""),
     instructions: avatar.instructions,
-    context: avatar.context,
-    files: [],
   };
 }
 
@@ -87,10 +82,6 @@ export function validateAvatarEditState(state: AvatarEditState): AvatarEditValid
     errors.instructions = "Las instrucciones son obligatorias.";
   }
 
-  if (state.context.length > 20_000) {
-    errors.context = "El contexto textual admite hasta 20.000 caracteres.";
-  }
-
   return errors;
 }
 
@@ -104,7 +95,6 @@ export function buildUpdateAvatarRequest(
     description: state.description.trim(),
     status: state.status,
     instructions: state.instructions.trim(),
-    context: state.context.trim(),
     voiceConfig: createVoiceConfig({
       voiceId: state.voiceId,
       selectedVoice: selectedVoice ?? null,
@@ -122,7 +112,6 @@ export function buildUpdateAvatarRequest(
 }
 
 export function useAvatarEdit(avatarId: string) {
-  const router = useRouter();
   const [loadState, setLoadState] = useState<AvatarEditLoadState>({
     status: "loading",
     avatar: null,
@@ -149,11 +138,6 @@ export function useAvatarEdit(avatarId: string) {
         }
       })
       .catch((caughtError) => {
-        if (caughtError instanceof ApiClientError && caughtError.status === 401) {
-          router.push("/auth/login");
-          return;
-        }
-
         if (!isMounted) {
           return;
         }
@@ -179,7 +163,7 @@ export function useAvatarEdit(avatarId: string) {
     return () => {
       isMounted = false;
     };
-  }, [avatarId, router]);
+  }, [avatarId]);
 
   function updateField<Field extends keyof AvatarEditState>(field: Field, value: AvatarEditState[Field]) {
     setLoadState((currentLoadState) => {

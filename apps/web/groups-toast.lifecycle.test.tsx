@@ -135,10 +135,19 @@ describe("group toast feedback", () => {
     );
     await waitFor(() => expect(screen.getByText("Todavía no tenés grupos")).toBeTruthy());
 
-    fireEvent.click(screen.getAllByRole("button", { name: "Crear grupo" })[0]!);
+    const headerCreateButton = screen.getAllByRole("button", { name: "Crear grupo" })[0]!;
+    expect(headerCreateButton.querySelector("svg")).toBeTruthy();
+    fireEvent.click(headerCreateButton);
     fireEvent.change(screen.getByLabelText("Nombre del grupo"), { target: { value: "Consejo" } });
-    fireEvent.click(screen.getByRole("checkbox", { name: /Ada/ }));
-    fireEvent.click(screen.getByRole("checkbox", { name: /Turing/ }));
+    const adaOption = screen.getByRole("checkbox", { name: /Ada/ });
+    const turingOption = screen.getByRole("checkbox", { name: /Turing/ });
+    fireEvent.click(adaOption);
+    fireEvent.click(turingOption);
+
+    expect(adaOption.closest("label")?.dataset.selected).toBe("true");
+    expect(adaOption.closest("label")?.textContent).toContain("1");
+    expect(turingOption.closest("label")?.dataset.selected).toBe("true");
+    expect(turingOption.closest("label")?.textContent).toContain("2");
     fireEvent.click(screen.getAllByRole("button", { name: "Crear grupo" }).at(-1)!);
 
     await waitFor(() => expect(screen.getByRole("status").textContent).toContain("Grupo creado"));

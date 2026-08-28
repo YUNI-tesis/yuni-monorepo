@@ -245,10 +245,6 @@ export function GroupInteractCall({ groupId }: { groupId: string }) {
         setLoadStatus("ready");
       })
       .catch((error) => {
-        if (error instanceof ApiClientError && error.status === 401) {
-          router.push("/auth/login");
-          return;
-        }
         if (mounted) {
           setCallError(error instanceof Error ? error.message : "No pudimos cargar el grupo.");
           setLoadStatus("error");
@@ -257,42 +253,35 @@ export function GroupInteractCall({ groupId }: { groupId: string }) {
     return () => {
       mounted = false;
     };
-  }, [groupId, router]);
+  }, [groupId]);
 
-  const loadConversation = useCallback(
-    async (conversationId: string) => {
+  const loadConversation = useCallback(async (conversationId: string) => {
+    setHistoryState((current) => ({
+      ...current,
+      selectedConversationId: conversationId,
+      detailStatus: "loading",
+      detail: null,
+      detailError: null,
+    }));
+    try {
+      const { conversation } = await getGroupConversation(conversationId);
       setHistoryState((current) => ({
         ...current,
         selectedConversationId: conversationId,
-        detailStatus: "loading",
-        detail: null,
+        detailStatus: "ready",
+        detail: conversation,
         detailError: null,
       }));
-      try {
-        const { conversation } = await getGroupConversation(conversationId);
-        setHistoryState((current) => ({
-          ...current,
-          selectedConversationId: conversationId,
-          detailStatus: "ready",
-          detail: conversation,
-          detailError: null,
-        }));
-      } catch (error) {
-        if (error instanceof ApiClientError && error.status === 401) {
-          router.push("/auth/login");
-          return;
-        }
-        setHistoryState((current) => ({
-          ...current,
-          selectedConversationId: conversationId,
-          detailStatus: "error",
-          detail: null,
-          detailError: error instanceof Error ? error.message : "No pudimos abrir este chat.",
-        }));
-      }
-    },
-    [router]
-  );
+    } catch (error) {
+      setHistoryState((current) => ({
+        ...current,
+        selectedConversationId: conversationId,
+        detailStatus: "error",
+        detail: null,
+        detailError: error instanceof Error ? error.message : "No pudimos abrir este chat.",
+      }));
+    }
+  }, []);
 
   const loadHistory = useCallback(
     async (options: { selectLatest?: boolean } = {}) => {
@@ -320,10 +309,6 @@ export function GroupInteractCall({ groupId }: { groupId: string }) {
           void loadConversation(groupConversations[0].id);
         }
       } catch (error) {
-        if (error instanceof ApiClientError && error.status === 401) {
-          router.push("/auth/login");
-          return;
-        }
         setHistoryState((current) => ({
           ...current,
           summariesStatus: "error",
@@ -331,7 +316,7 @@ export function GroupInteractCall({ groupId }: { groupId: string }) {
         }));
       }
     },
-    [groupId, loadConversation, router]
+    [groupId, loadConversation]
   );
 
   const clearTurnTimeout = useCallback(() => {
@@ -614,7 +599,6 @@ export function GroupInteractCall({ groupId }: { groupId: string }) {
             participantFailureDeliveriesRef.current.delete(delivery.sourceEventId);
             refreshPendingFailureCount();
             setCallError(error instanceof Error ? error.message : "No pudimos reconciliar al participante.");
-            if (error instanceof ApiClientError && error.status === 401) router.push("/auth/login");
             void endCallRef.current?.("user");
             return;
           }
@@ -629,14 +613,7 @@ export function GroupInteractCall({ groupId }: { groupId: string }) {
 
       schedule(PARTICIPANT_FAILURE_RETRY_DELAYS_MS[0]);
     },
-    [
-      applyAudioGate,
-      refreshPendingFailureCount,
-      releaseDisplayedFloor,
-      renewFloorLease,
-      router,
-      setServerPhase,
-    ]
+    [applyAudioGate, refreshPendingFailureCount, releaseDisplayedFloor, renewFloorLease, setServerPhase]
   );
 
   const handleDirective = useCallback(
@@ -1509,12 +1486,8 @@ export function GroupInteractCall({ groupId }: { groupId: string }) {
         return;
       }
       setPrivacyStorageKeys(storageKeys);
-    } catch (error) {
+    } catch {
       if (!isCurrentRequest()) return;
-      if (error instanceof ApiClientError && error.status === 401) {
-        router.push("/auth/login");
-        return;
-      }
       setPrivacyStorageKeys([]);
     }
     if (!isCurrentRequest()) return;
@@ -1772,7 +1745,6 @@ export function GroupInteractCall({ groupId }: { groupId: string }) {
             return;
           applyAudioGate(null);
           setCallError(error instanceof Error ? error.message : "La sesión grupal ya no está disponible.");
-          if (error instanceof ApiClientError && error.status === 401) router.push("/auth/login");
           void endCallRef.current?.("unload");
         })
         .finally(() => {
@@ -1800,7 +1772,7 @@ export function GroupInteractCall({ groupId }: { groupId: string }) {
       window.clearInterval(liveAvatarKeepAliveInterval);
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };
-  }, [applyAudioGate, callStatus, router, sendUserActivity]);
+  }, [applyAudioGate, callStatus, sendUserActivity]);
 
   useEffect(() => {
     const onPageHide = () => {

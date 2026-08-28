@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   getActivityConversation,
   listActivityParticipants,
@@ -11,7 +10,6 @@ import {
   type ApiActivityParticipant,
 } from "../lib/api/activity-api";
 import { mergeActivityConversationPages } from "../lib/avatar-activity";
-import { ApiClientError } from "../lib/api/http-client";
 
 type ParticipantState = {
   status: "loading" | "ready" | "not-found" | "error";
@@ -42,7 +40,6 @@ const emptyTranscript: TranscriptState = {
 };
 
 export function useParticipantActivity(avatarId: string, participantKey: string) {
-  const router = useRouter();
   const [participant, setParticipant] = useState<ParticipantState>({
     status: "loading",
     data: null,
@@ -58,17 +55,6 @@ export function useParticipantActivity(avatarId: string, participantKey: string)
   const [transcript, setTranscript] = useState<TranscriptState>(emptyTranscript);
   const transcriptRequestId = useRef(0);
 
-  const handleUnauthorized = useCallback(
-    (error: unknown) => {
-      if (error instanceof ApiClientError && error.status === 401) {
-        router.push("/auth/login");
-        return true;
-      }
-      return false;
-    },
-    [router]
-  );
-
   const loadParticipant = useCallback(async () => {
     setParticipant({ status: "loading", data: null, error: null });
 
@@ -81,14 +67,13 @@ export function useParticipantActivity(avatarId: string, participantKey: string)
           : { status: "not-found", data: null, error: "No encontramos este participante." }
       );
     } catch (error) {
-      if (handleUnauthorized(error)) return;
       setParticipant({
         status: "error",
         data: null,
         error: error instanceof Error ? error.message : "No pudimos cargar el participante.",
       });
     }
-  }, [participantKey, avatarId, handleUnauthorized]);
+  }, [participantKey, avatarId]);
 
   const loadConversations = useCallback(
     async (options: { cursor?: string; append?: boolean } = {}) => {
@@ -114,7 +99,6 @@ export function useParticipantActivity(avatarId: string, participantKey: string)
           isLoadingMore: false,
         }));
       } catch (error) {
-        if (handleUnauthorized(error)) return;
         setConversations((current) => ({
           ...current,
           status: options.append ? current.status : "error",
@@ -123,7 +107,7 @@ export function useParticipantActivity(avatarId: string, participantKey: string)
         }));
       }
     },
-    [participantKey, avatarId, handleUnauthorized]
+    [participantKey, avatarId]
   );
 
   useEffect(() => {
@@ -141,7 +125,6 @@ export function useParticipantActivity(avatarId: string, participantKey: string)
       setTranscript({ status: "ready", conversationId, data: response.conversation, error: null });
     } catch (error) {
       if (requestId !== transcriptRequestId.current) return;
-      if (handleUnauthorized(error)) return;
       setTranscript({
         status: "error",
         conversationId,

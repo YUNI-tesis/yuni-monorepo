@@ -694,7 +694,9 @@ describe("@yuni/api share links", () => {
 
     await createShareLink(app, cookie, avatarId, "public-demo");
 
-    const response = await app.request("/public/links/public-demo/avatar");
+    const response = await app.request("/public/links/public-demo/avatar", {
+      headers: { Cookie: "yuni_session=invalid-but-irrelevant" },
+    });
     const body = (await json(response)) as {
       shareLink: { slug: string; name: string; ownerId?: string };
       avatar: {
@@ -708,6 +710,7 @@ describe("@yuni/api share links", () => {
     };
 
     expect(response.status).toBe(200);
+    expect(response.headers.get("set-cookie")).toBeNull();
     expect(body).toEqual({
       shareLink: {
         slug: "public-demo",

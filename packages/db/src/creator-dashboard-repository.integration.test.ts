@@ -395,7 +395,7 @@ integration("creator dashboard repository integration", () => {
       };
       await repository.getSummaryData(owner.id, query);
       const durations: number[] = [];
-      for (let run = 0; run < 5; run += 1) {
+      for (let run = 0; run < 20; run += 1) {
         const startedAt = performance.now();
         const result = await repository.getSummaryData(owner.id, query);
         durations.push(performance.now() - startedAt);
@@ -408,7 +408,7 @@ integration("creator dashboard repository integration", () => {
     } finally {
       await db.user.delete({ where: { id: owner.id } });
     }
-  }, 20_000);
+  }, 30_000);
 
   function createAvatar(ownerId: string, name: string) {
     return db!.avatarAgent.create({

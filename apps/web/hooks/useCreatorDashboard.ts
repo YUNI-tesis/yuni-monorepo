@@ -1,13 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   getCreatorDashboardSummary,
   type ApiCreatorDashboardSummary,
   type ApiDashboardDays,
 } from "../lib/api/dashboard-api";
-import { ApiClientError } from "../lib/api/http-client";
 
 export type CreatorDashboardState =
   | { status: "loading"; data: null; error: null }
@@ -20,7 +18,6 @@ type InternalCreatorDashboardState = {
 };
 
 export function useCreatorDashboard(days: ApiDashboardDays) {
-  const router = useRouter();
   const [requestKey, setRequestKey] = useState(0);
   const [timeZone] = useState(() => {
     try {
@@ -52,10 +49,6 @@ export function useCreatorDashboard(days: ApiDashboardDays) {
       })
       .catch((error: unknown) => {
         if (controller.signal.aborted) return;
-        if (error instanceof ApiClientError && error.status === 401) {
-          router.push("/auth/login");
-          return;
-        }
 
         setState({
           requestedDays: days,
@@ -68,7 +61,7 @@ export function useCreatorDashboard(days: ApiDashboardDays) {
       });
 
     return () => controller.abort();
-  }, [days, requestKey, router, timeZone]);
+  }, [days, requestKey, timeZone]);
 
   const reload = useCallback(() => setRequestKey((key) => key + 1), []);
 

@@ -1,8 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { ApiClientError } from "../lib/api/http-client";
 import { getElevenLabsVoiceOptions, type ApiElevenLabsVoiceOption } from "../lib/api/voice-provider-api";
 import { currentVoiceOptionName, type VoiceOption } from "../lib/voice-config";
 
@@ -43,7 +41,6 @@ export function useElevenLabsVoiceOptions(
     includeCurrentFallback = false,
     enabled = true,
   } = options;
-  const router = useRouter();
   const [state, setState] = useState<ElevenLabsVoiceOptionsState>({
     status: "loading",
     options: [],
@@ -76,12 +73,7 @@ export function useElevenLabsVoiceOptions(
           error: null,
         });
       })
-      .catch((caughtError) => {
-        if (caughtError instanceof ApiClientError && caughtError.status === 401) {
-          router.push("/auth/login");
-          return;
-        }
-
+      .catch(() => {
         if (!isMounted) {
           return;
         }
@@ -96,7 +88,7 @@ export function useElevenLabsVoiceOptions(
     return () => {
       isMounted = false;
     };
-  }, [enabled, router]);
+  }, [enabled]);
 
   return useMemo(() => {
     if (!enabled) {
