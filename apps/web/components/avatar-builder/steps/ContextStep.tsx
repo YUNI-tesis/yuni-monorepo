@@ -9,13 +9,20 @@ export function ContextStep({ builder }: { builder: AvatarBuilderController }) {
     <section className={styles.panel}>
       <StepHeading
         title="Contexto"
-        description="Agregá información breve y documentos que el avatar podrá consultar en las conversaciones."
+        description="Sumá información y documentos que el avatar podrá consultar al responder."
       />
-      <FormField label="Contexto textual" htmlFor="avatar-context">
+      <FormField
+        label="Contexto textual"
+        htmlFor="avatar-context"
+        hint="Podés ampliar o actualizar este contenido más adelante desde la pestaña Contexto."
+        error={builder.errors.context}
+      >
         <Textarea
           id="avatar-context"
+          className={styles.contextInput}
           value={builder.state.context}
-          placeholder="Contexto inicial de prueba, informacion del producto, tono esperado..."
+          invalid={Boolean(builder.errors.context)}
+          placeholder="Información del producto, preguntas frecuentes, criterios de atención..."
           onChange={(event) => builder.updateField("context", event.currentTarget.value)}
           maxLength={20_000}
         />

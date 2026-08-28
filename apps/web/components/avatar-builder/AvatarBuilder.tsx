@@ -99,7 +99,7 @@ export function AvatarBuilder() {
       <PageHeader
         eyebrow="Mis avatares"
         title="Crear avatar"
-        description="Configura la identidad, voz y contexto base para probarlo despues en conversaciones."
+        description="Configurá su identidad, apariencia, voz y conocimiento antes de empezar a conversar."
       />
 
       <Card padding="lg" className={styles.root}>
@@ -117,15 +117,22 @@ export function AvatarBuilder() {
         </div>
 
         <div className={styles.actions}>
-          <Button variant="secondary" onClick={builder.goBack} disabled={!builder.canGoBack || isSubmitting}>
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={builder.goBack}
+            disabled={!builder.canGoBack || isSubmitting}
+          >
             Volver
           </Button>
           {builder.isLastStep ? (
-            <Button onClick={saveAvatar} loading={isSubmitting}>
+            <Button type="button" onClick={saveAvatar} loading={isSubmitting}>
               Guardar avatar
             </Button>
           ) : (
-            <Button onClick={builder.goNext}>Continuar</Button>
+            <Button type="button" onClick={builder.goNext}>
+              Continuar
+            </Button>
           )}
         </div>
       </Card>
