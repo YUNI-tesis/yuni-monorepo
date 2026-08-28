@@ -19,8 +19,6 @@ export type AvatarEditState = {
   voiceDisplayName: string;
   voiceDescription: string;
   instructions: string;
-  context: string;
-  files: File[];
 };
 
 export type AvatarEditField = keyof AvatarEditState;
@@ -62,8 +60,6 @@ export function createAvatarEditStateFromAvatar(avatar: ApiAvatar): AvatarEditSt
     voiceDisplayName: readString(voiceConfig.displayName, ""),
     voiceDescription: readString(voiceConfig.description, ""),
     instructions: avatar.instructions,
-    context: avatar.context,
-    files: [],
   };
 }
 
@@ -86,10 +82,6 @@ export function validateAvatarEditState(state: AvatarEditState): AvatarEditValid
     errors.instructions = "Las instrucciones son obligatorias.";
   }
 
-  if (state.context.length > 20_000) {
-    errors.context = "El contexto textual admite hasta 20.000 caracteres.";
-  }
-
   return errors;
 }
 
@@ -103,7 +95,6 @@ export function buildUpdateAvatarRequest(
     description: state.description.trim(),
     status: state.status,
     instructions: state.instructions.trim(),
-    context: state.context.trim(),
     voiceConfig: createVoiceConfig({
       voiceId: state.voiceId,
       selectedVoice: selectedVoice ?? null,

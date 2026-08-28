@@ -2,8 +2,8 @@
 
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
-import { Button, ErrorState, LoadingState, PageHeader, useToast } from "@yuni/ui";
-import { type ApiAvatar, updateAvatar, uploadAvatarDocument } from "../../lib/api/avatar-api";
+import { Button, ErrorState, LoadingState, PageHeader, YuniIcon, useToast } from "@yuni/ui";
+import { updateAvatar } from "../../lib/api/avatar-api";
 import { ApiClientError } from "../../lib/api/http-client";
 import { buildUpdateAvatarRequest, useAvatarEdit } from "../../hooks/useAvatarEdit";
 import { useElevenLabsVoiceOptions } from "../../hooks/useElevenLabsVoiceOptions";
@@ -28,7 +28,6 @@ export function AvatarEdit({ avatarId }: { avatarId: string }) {
     includeCurrentFallback: true,
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const uploadedFiles = useRef(new Set<string>());
   const saveToastId = useRef<string | null>(null);
 
   if (edit.loadState.status === "loading") {
@@ -75,14 +74,19 @@ export function AvatarEdit({ avatarId }: { avatarId: string }) {
     }
     setIsSubmitting(true);
 
-    let savedAvatar: ApiAvatar;
     try {
       const { avatar: updatedAvatar } = await updateAvatar(
         avatarId,
         buildUpdateAvatarRequest(editableState, selectedLiveAvatar, selectedVoice)
       );
-      savedAvatar = updatedAvatar;
       invalidateAvatarListCache();
+
+      saveToastId.current = toast.success(`${updatedAvatar.name} se actualizó correctamente.`, {
+        title: "Cambios guardados",
+        dedupeKey: `avatar:${updatedAvatar.id}:updated`,
+      });
+      router.push(`/avatars/${updatedAvatar.id}`);
+      router.refresh();
     } catch (caughtError) {
       const message =
         caughtError instanceof ApiClientError || caughtError instanceof Error
@@ -95,46 +99,24 @@ export function AvatarEdit({ avatarId }: { avatarId: string }) {
       setIsSubmitting(false);
       return;
     }
-
-    try {
-      for (const file of editableState.files) {
-        const key = `${file.name}:${file.size}:${file.lastModified}`;
-        if (uploadedFiles.current.has(key)) continue;
-        await uploadAvatarDocument(savedAvatar.id, file);
-        uploadedFiles.current.add(key);
-      }
-    } catch {
-      saveToastId.current = toast.warning(
-        "Los cambios ya están guardados, pero quedaron documentos sin subir. Volvé a guardar para reintentarlo.",
-        {
-          title: "Cambios guardados, con documentos pendientes",
-          dedupeKey: `avatar:${savedAvatar.id}:documents:error`,
-        }
-      );
-      setIsSubmitting(false);
-      return;
-    }
-
-    saveToastId.current = toast.success(`${savedAvatar.name} se actualizó correctamente.`, {
-      title: "Cambios guardados",
-      dedupeKey: `avatar:${savedAvatar.id}:updated`,
-    });
-    router.push(`/avatars/${savedAvatar.id}`);
-    router.refresh();
     setIsSubmitting(false);
   }
 
   return (
     <div className={styles.root}>
+      <Button
+        className={styles.backButton}
+        variant="ghost"
+        icon={<YuniIcon name="arrowLeft" />}
+        onClick={() => router.push(`/avatars/${avatar.id}`)}
+      >
+        Volver al perfil
+      </Button>
+
       <PageHeader
         eyebrow="Mis avatares"
         title="Editar avatar"
-        description={avatar.description || avatar.name}
-        actions={
-          <Button variant="secondary" onClick={() => router.push(`/avatars/${avatar.id}`)}>
-            Volver al perfil
-          </Button>
-        }
+        description={`Actualizá la identidad, la presencia y la personalidad de ${avatar.name}.`}
       />
 
       <AvatarEditForm
