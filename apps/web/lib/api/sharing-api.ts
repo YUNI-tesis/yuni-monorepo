@@ -130,20 +130,20 @@ export function updateAccessGrant(
 }
 
 export function deleteAccessGrant(avatarId: string, accessGrantId: string) {
-  return apiRequest<{ ok: true; outcome: "deleted" | "revoked" }>(
-    `/avatars/${avatarId}/access-grants/${accessGrantId}`,
-    {
-      method: "DELETE",
-    }
-  );
+  return apiRequest<{ ok: true; outcome: "revoked" }>(`/avatars/${avatarId}/access-grants/${accessGrantId}`, {
+    method: "DELETE",
+  });
 }
 
 export function getPublicSharedAvatar(slug: string) {
-  return apiRequest<ApiPublicSharedAvatar>(`/public/links/${encodeURIComponent(slug)}/avatar`);
+  return apiRequest<ApiPublicSharedAvatar>(`/public/links/${encodeURIComponent(slug)}/avatar`, {
+    auth: "none",
+  });
 }
 
 export function identifyPublicVisitor(slug: string, email: string) {
   return apiRequest<{ identity: ApiPublicIdentity }>(`/public/links/${encodeURIComponent(slug)}/identify`, {
+    auth: "none",
     method: "POST",
     body: JSON.stringify({ email, consent: true }),
   });
@@ -151,6 +151,7 @@ export function identifyPublicVisitor(slug: string, email: string) {
 
 export function startPublicSession(slug: string, identityToken: string) {
   return apiRequest<ApiPublicSessionStart>(`/public/links/${encodeURIComponent(slug)}/sessions`, {
+    auth: "public-token",
     method: "POST",
     headers: { Authorization: `Bearer ${identityToken}` },
   });
@@ -160,10 +161,27 @@ export function confirmPublicSessionStarted(publicSessionId: string, publicSessi
   return apiRequest<{ publicSession: { id: string; status: "active" } }>(
     `/public/sessions/${encodeURIComponent(publicSessionId)}/started`,
     {
+      auth: "public-token",
       method: "POST",
       headers: { Authorization: `Bearer ${publicSessionToken}` },
     }
   );
+}
+
+export function failPublicSessionStart(
+  publicSessionId: string,
+  publicSessionToken: string,
+  options: { keepalive?: boolean } = {}
+) {
+  return apiRequest<{
+    publicSession:
+      | { id: string; status: "errored" }
+      | { id: string; status: "ended"; endedAt: string | null };
+  }>(`/public/sessions/${encodeURIComponent(publicSessionId)}/start-failed`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${publicSessionToken}` },
+    ...(options.keepalive !== undefined ? { keepalive: options.keepalive } : {}),
+  });
 }
 
 export function endPublicSession(
@@ -179,6 +197,7 @@ export function endPublicSession(
   return apiRequest<{ publicSession: { id: string; status: string; endedAt: string | null } }>(
     `/public/sessions/${encodeURIComponent(publicSessionId)}/end`,
     {
+      auth: "public-token",
       method: "POST",
       headers: { Authorization: `Bearer ${publicSessionToken}` },
       body: JSON.stringify({

@@ -5,16 +5,17 @@ import { useRouter } from "next/navigation";
 import {
   Button,
   Card,
-  Checkbox,
   Dialog,
   EmptyState,
   ErrorState,
   Input,
   LoadingState,
   PageHeader,
+  YuniIcon,
   useToast,
 } from "@yuni/ui";
 import { useAvatarList } from "../../hooks/useAvatarList";
+import type { ApiAvatarSummary } from "../../lib/api/avatar-api";
 import {
   createAvatarGroup,
   deleteAvatarGroup,
@@ -22,7 +23,6 @@ import {
   updateAvatarGroup,
   type ApiAvatarGroup,
 } from "../../lib/api/avatar-group-api";
-import { ApiClientError } from "../../lib/api/http-client";
 import catalogStyles from "../catalog/CatalogGrid.module.css";
 import { GroupCard } from "./GroupCard";
 import styles from "./GroupsHub.module.css";
@@ -50,10 +50,6 @@ export function GroupsHub() {
       setPageError(null);
       setGroupStatus("ready");
     } catch (error) {
-      if (error instanceof ApiClientError && error.status === 401) {
-        router.push("/auth/login");
-        return;
-      }
       setPageError(error instanceof Error ? error.message : "No pudimos cargar tus grupos.");
       setGroupStatus("error");
     }
@@ -140,12 +136,18 @@ export function GroupsHub() {
 
   return (
     <div className={catalogStyles.layout}>
-      <PageHeader
-        eyebrow="Mis grupos"
-        title="Mis grupos"
-        description="Administrá grupos de dos o tres avatares y conversá con todos en una misma llamada."
-        actions={<Button onClick={openCreate}>Crear grupo</Button>}
-      />
+      <div className={styles.mobileHeader}>
+        <PageHeader
+          eyebrow="Mis grupos"
+          title="Mis grupos"
+          description="Administrá grupos de dos o tres avatares y conversá con todos en una misma llamada."
+          actions={
+            <Button icon={<YuniIcon name="add" />} onClick={openCreate}>
+              Crear grupo
+            </Button>
+          }
+        />
+      </div>
 
       {groupStatus === "loading" ? (
         <LoadingState title="Cargando grupos" description="Estamos preparando tu lista." />
@@ -160,7 +162,11 @@ export function GroupsHub() {
           <EmptyState
             title="Todavía no tenés grupos"
             description="Creá un grupo con dos o tres avatares para iniciar una conversación coordinada."
-            action={<Button onClick={openCreate}>Crear grupo</Button>}
+            action={
+              <Button icon={<YuniIcon name="add" />} onClick={openCreate}>
+                Crear grupo
+              </Button>
+            }
           />
         </Card>
       ) : (
@@ -204,7 +210,12 @@ export function GroupsHub() {
           </label>
           <fieldset>
             <legend>Participantes</legend>
-            <p className={styles.formHint}>Seleccionados: {selected.length} de 3</p>
+            <div className={styles.selectorSummary}>
+              <p className={styles.formHint}>Elegí dos o tres avatares</p>
+              <span className={styles.selectionCount} aria-live="polite">
+                {selected.length} de 3
+              </span>
+            </div>
             {avatarList.status === "loading" ? (
               <p className="yuni-text-muted">Cargando avatares disponibles…</p>
             ) : avatarList.status === "error" ? (
@@ -220,32 +231,70 @@ export function GroupsHub() {
               </div>
             ) : (
               <div className={styles.avatarOptions}>
-                {eligibleAvatars.map((avatar) => (
-                  <div key={avatar.id} className={styles.avatarOption}>
-                    <Checkbox
-                      label={
-                        <span className={styles.avatarOptionLabel}>
-                          <span className={styles.optionInitial} aria-hidden="true">
-                            {initials(avatar.name)}
-                          </span>
-                          <span>
-                            <strong>{avatar.name}</strong>
-                            <small>{avatar.access.type === "shared" ? "Compartido" : "Propio"}</small>
-                          </span>
-                        </span>
-                      }
-                      checked={selected.includes(avatar.id)}
-                      disabled={!selected.includes(avatar.id) && selected.length >= 3}
-                      onChange={(event) => toggleAvatar(avatar.id, event.target.checked)}
+                {eligibleAvatars.map((avatar) => {
+                  const selectionIndex = selected.indexOf(avatar.id);
+                  const isSelected = selectionIndex >= 0;
+
+                  return (
+                    <AvatarSelectionOption
+                      key={avatar.id}
+                      avatar={avatar}
+                      selectionOrder={isSelected ? selectionIndex + 1 : null}
+                      disabled={!isSelected && selected.length >= 3}
+                      onToggle={(checked) => toggleAvatar(avatar.id, checked)}
                     />
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </fieldset>
         </div>
       </Dialog>
     </div>
+  );
+}
+
+function AvatarSelectionOption({
+  avatar,
+  selectionOrder,
+  disabled,
+  onToggle,
+}: {
+  avatar: Pick<ApiAvatarSummary, "id" | "name" | "thumbnailUrl" | "access">;
+  selectionOrder: number | null;
+  disabled: boolean;
+  onToggle: (checked: boolean) => void;
+}) {
+  const [failedThumbnailUrl, setFailedThumbnailUrl] = useState<string | null>(null);
+  const showThumbnail = Boolean(avatar.thumbnailUrl && failedThumbnailUrl !== avatar.thumbnailUrl);
+
+  return (
+    <label className={styles.avatarOption} data-selected={selectionOrder !== null} data-disabled={disabled}>
+      <input
+        className={styles.avatarOptionInput}
+        type="checkbox"
+        checked={selectionOrder !== null}
+        disabled={disabled}
+        onChange={(event) => onToggle(event.target.checked)}
+      />
+
+      <span className={styles.optionArtwork} aria-hidden="true">
+        {showThumbnail && avatar.thumbnailUrl ? (
+          <img src={avatar.thumbnailUrl} alt="" onError={() => setFailedThumbnailUrl(avatar.thumbnailUrl)} />
+        ) : (
+          <span>{initials(avatar.name)}</span>
+        )}
+      </span>
+
+      <span className={styles.avatarOptionCopy}>
+        <strong>{avatar.name}</strong>
+        <small>{avatar.access.type === "shared" ? "Compartido conmigo" : "Propio"}</small>
+      </span>
+
+      <span className={styles.selectionMark} aria-hidden="true">
+        {selectionOrder ?? ""}
+      </span>
+    </label>
   );
 }
 

@@ -1,71 +1,81 @@
-import { Hono, type Context } from "hono";
-import { validationError, unauthorizedError } from "../../utils/errors";
-import { getSessionToken, verifySessionToken } from "../auth/session";
+import { createLogger } from "@yuni/observability";
+import { Hono } from "hono";
+import { validationError } from "../../utils/errors";
+import type { CreatorSessionEnv } from "../auth/middleware";
 import {
+  CREATOR_DASHBOARD_PERIODS,
   createCreatorDashboardService,
-  type CreatorDashboardRange,
+  type CreatorDashboardDays,
   type CreatorDashboardServiceDependencies,
 } from "./service";
+import { normalizeTimeZoneForPostgres } from "./time-zone";
 
-const MAX_RANGE_DAYS = 366;
-const DAY_MS = 24 * 60 * 60 * 1_000;
+const logger = createLogger("@yuni/api:creator-dashboard");
 
 export type CreatorDashboardControllerDependencies = CreatorDashboardServiceDependencies;
 
 export function createCreatorDashboardController(dependencies: CreatorDashboardControllerDependencies) {
-  const dashboard = new Hono();
+  const dashboard = new Hono<CreatorSessionEnv>();
   const service = createCreatorDashboardService(dependencies);
 
   dashboard.get("/dashboard/creator-summary", async (context) => {
-    const session = await getCurrentSession(context);
-    if (!session) return context.json(unauthorizedError(), 401);
+    const currentUser = context.get("currentUser");
 
-    const range = parseRange(context.req.query("from"), context.req.query("to"));
-    if (!range.ok) {
-      return context.json(validationError([{ message: range.message }]), 400);
+    const options = parseOptions(context.req.query("days"), context.req.query("timeZone"));
+    if (!options.ok) {
+      return context.json(validationError([{ message: options.message }]), 400);
     }
 
-    return context.json(await service.getSummary(session.userId, range.value));
+    const startedAt = performance.now();
+    try {
+      const summary = await service.getSummary(currentUser.id, options.value);
+      logger.info("Creator dashboard summary generated", {
+        durationMs: Math.round(performance.now() - startedAt),
+        days: options.value.days,
+        timeZone: options.value.timeZone,
+      });
+      return context.json(summary);
+    } catch (error) {
+      logger.error("Creator dashboard summary generation failed", {
+        durationMs: Math.round(performance.now() - startedAt),
+        days: options.value.days,
+        timeZone: options.value.timeZone,
+        error,
+      });
+      throw error;
+    }
   });
 
   return dashboard;
 }
 
-async function getCurrentSession(context: Context) {
-  const token = getSessionToken(context);
-  return token ? verifySessionToken(token) : null;
+function parseOptions(daysValue?: string, timeZoneValue?: string) {
+  const normalizedDays = daysValue ?? "30";
+  if (!CREATOR_DASHBOARD_PERIODS.some((days) => String(days) === normalizedDays)) {
+    return { ok: false as const, message: "days must be one of 7, 30 or 90" };
+  }
+  const days = Number(normalizedDays) as CreatorDashboardDays;
+
+  const requestedTimeZone = timeZoneValue ?? "UTC";
+  if (requestedTimeZone.length > 100) {
+    return { ok: false as const, message: "timeZone must be a valid IANA time zone" };
+  }
+  const timeZone = normalizeTimeZoneForPostgres(requestedTimeZone);
+  if (!isValidTimeZone(timeZone)) {
+    return { ok: false as const, message: "timeZone must be a valid IANA time zone" };
+  }
+
+  return {
+    ok: true as const,
+    value: { days, timeZone },
+  };
 }
 
-function parseRange(fromValue?: string, toValue?: string) {
-  if (fromValue === undefined && toValue === undefined) {
-    return { ok: true as const, value: undefined };
+function isValidTimeZone(timeZone: string) {
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone }).format();
+    return true;
+  } catch {
+    return false;
   }
-
-  if (!fromValue || !toValue) {
-    return { ok: false as const, message: "from and to must be provided together" };
-  }
-
-  const from = parseDateBoundary(fromValue, false);
-  const to = parseDateBoundary(toValue, true);
-  if (!from || !to) {
-    return { ok: false as const, message: "from and to must be valid ISO dates" };
-  }
-
-  const duration = to.getTime() - from.getTime();
-  if (duration <= 0 || duration > MAX_RANGE_DAYS * DAY_MS) {
-    return {
-      ok: false as const,
-      message: `date range must be between 1 and ${MAX_RANGE_DAYS} days`,
-    };
-  }
-
-  return { ok: true as const, value: { from, to } satisfies CreatorDashboardRange };
-}
-
-function parseDateBoundary(value: string, inclusiveDateOnlyEnd: boolean) {
-  const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(value);
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return null;
-  if (dateOnly && !parsed.toISOString().startsWith(value)) return null;
-  return dateOnly && inclusiveDateOnlyEnd ? new Date(parsed.getTime() + DAY_MS) : parsed;
 }

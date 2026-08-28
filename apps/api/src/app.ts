@@ -25,9 +25,14 @@ import { S3ObjectStorage } from "@yuni/storage";
 import { ElevenLabsAgentProvider } from "@yuni/voice";
 import { createOpenAiConversationTitleGenerator, createOpenAiGroupOrchestrator } from "@yuni/ai";
 import { createLogger } from "@yuni/observability";
-import { createAuthController, type AuthControllerDependencies } from "./domains/auth/controller.js";
+import {
+  createAuthController,
+  createCurrentUserController,
+  type AuthControllerDependencies,
+} from "./domains/auth/controller.js";
 import { passwordService } from "./domains/auth/password.js";
 import { createAuthRepository } from "./domains/auth/repository.js";
+import { createCreatorSessionMiddleware, type CreatorSessionEnv } from "./domains/auth/middleware.js";
 import { createAvatarsController, type AvatarsControllerDependencies } from "./domains/avatars/controller.js";
 import { createAvatarsRepository } from "./domains/avatars/repository.js";
 import {
@@ -48,6 +53,7 @@ import {
   type VoiceProvidersControllerDependencies,
 } from "./domains/voice-providers/controller.js";
 import {
+  createPublicShareLinksController,
   createShareLinksController,
   type ShareLinksControllerDependencies,
 } from "./domains/share/controller.js";
@@ -264,39 +270,47 @@ export function createApp(dependencies: AppDependencies = defaultDependencies) {
   );
 
   app.route("/", createAuthController(dependencies.auth));
-  app.route("/", createAvatarsController(dependencies.avatars));
-  if (dependencies.conversations) {
-    app.route("/", createConversationsController(dependencies.conversations));
-  }
-  app.route("/", createLiveAvatarController(dependencies.liveAvatar));
-  if (dependencies.voiceSessions) {
-    app.route("/", createVoiceSessionsController(dependencies.voiceSessions));
-  }
-
-  if (dependencies.voiceProviders) {
-    app.route("/", createVoiceProvidersController(dependencies.voiceProviders));
-  }
   if (dependencies.share) {
-    app.route("/", createShareLinksController(dependencies.share));
-  }
-  if (dependencies.accessGrants) {
-    app.route("/", createAccessGrantsController(dependencies.accessGrants));
-  }
-  if (dependencies.activity) {
-    app.route("/", createAvatarActivityController(dependencies.activity));
-  }
-  if (dependencies.dashboard) {
-    app.route("/", createCreatorDashboardController(dependencies.dashboard));
+    app.route("/", createPublicShareLinksController(dependencies.share));
   }
   if (dependencies.publicSessions) {
     app.route("/", createPublicSessionsController(dependencies.publicSessions));
   }
+
+  const privateApi = new Hono<CreatorSessionEnv>();
+  privateApi.use("*", createCreatorSessionMiddleware(dependencies.auth.repository));
+  privateApi.route("/", createCurrentUserController());
+  privateApi.route("/", createAvatarsController(dependencies.avatars));
+  if (dependencies.conversations) {
+    privateApi.route("/", createConversationsController(dependencies.conversations));
+  }
+  privateApi.route("/", createLiveAvatarController(dependencies.liveAvatar));
+  if (dependencies.voiceSessions) {
+    privateApi.route("/", createVoiceSessionsController(dependencies.voiceSessions));
+  }
+
+  if (dependencies.voiceProviders) {
+    privateApi.route("/", createVoiceProvidersController(dependencies.voiceProviders));
+  }
+  if (dependencies.share) {
+    privateApi.route("/", createShareLinksController(dependencies.share));
+  }
+  if (dependencies.accessGrants) {
+    privateApi.route("/", createAccessGrantsController(dependencies.accessGrants));
+  }
+  if (dependencies.activity) {
+    privateApi.route("/", createAvatarActivityController(dependencies.activity));
+  }
+  if (dependencies.dashboard) {
+    privateApi.route("/", createCreatorDashboardController(dependencies.dashboard));
+  }
   if (dependencies.context) {
-    app.route("/", createAvatarContextController(dependencies.context));
+    privateApi.route("/", createAvatarContextController(dependencies.context));
   }
   if (dependencies.avatarGroups) {
-    app.route("/", createAvatarGroupsController(dependencies.avatarGroups));
+    privateApi.route("/", createAvatarGroupsController(dependencies.avatarGroups));
   }
+  app.route("/", privateApi);
 
   return app;
 }
@@ -318,7 +332,7 @@ export function startExternalSessionMaintenance(intervalMs = 15_000) {
     if (running) return;
     running = true;
     try {
-      await Promise.all([publicService?.cleanupExpired(), voiceService?.cleanupExpiredShared()]);
+      await Promise.all([publicService?.cleanupExpired(), voiceService?.cleanupExternalSessions()]);
     } catch (error) {
       logger.error("External session maintenance failed", {
         error: error instanceof Error ? error.message : "Unknown cleanup error",

@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createAvatarConversation,
+  confirmVoiceSessionStarted,
   endVoiceSession,
+  failVoiceSessionStart,
   getAvatarInteractionContext,
   getConversation,
   getLatestAvatarConversation,
@@ -61,12 +63,24 @@ describe("interact API helpers", () => {
     );
   });
 
-  it("starts and ends voice sessions", async () => {
+  it("starts, confirms, fails and ends voice sessions", async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(
         new Response(JSON.stringify({ voiceSession: { realtimeSessionId: "realtime-1" } }), {
           status: 201,
+          headers: { "Content-Type": "application/json" },
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ voiceSession: { id: "realtime-1", status: "active" } }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ voiceSession: { id: "realtime-1", status: "errored" } }), {
+          status: 200,
           headers: { "Content-Type": "application/json" },
         })
       )
@@ -79,6 +93,8 @@ describe("interact API helpers", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     await startVoiceSession("avatar-1");
+    await confirmVoiceSessionStarted("realtime-1");
+    await failVoiceSessionStart("realtime-1", { keepalive: true });
     await endVoiceSession("realtime-1", [{ role: "user", content: "Hola" }]);
 
     expect(fetchMock).toHaveBeenNthCalledWith(
@@ -88,6 +104,16 @@ describe("interact API helpers", () => {
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
+      "/api/voice-sessions/realtime-1/started",
+      expect.objectContaining({ method: "POST", credentials: "include" })
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      "/api/voice-sessions/realtime-1/start-failed",
+      expect.objectContaining({ method: "POST", credentials: "include", keepalive: true })
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      4,
       "/api/voice-sessions/realtime-1/end",
       expect.objectContaining({
         method: "POST",

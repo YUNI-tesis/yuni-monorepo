@@ -1,37 +1,21 @@
-import { Hono, type Context } from "hono";
+import { Hono } from "hono";
 import {
   ElevenLabsProviderError,
   ElevenLabsProviderTimeoutError,
   ElevenLabsProviderUnavailableError,
   type ElevenLabsAgentProvider,
 } from "@yuni/voice";
-import { badGatewayError, serviceUnavailableError, unauthorizedError } from "../../utils/errors";
-import { getSessionToken, verifySessionToken } from "../auth/session";
+import { badGatewayError, serviceUnavailableError } from "../../utils/errors";
+import type { CreatorSessionEnv } from "../auth/middleware";
 
 export type VoiceProvidersControllerDependencies = {
   elevenLabsVoiceProvider: Pick<ElevenLabsAgentProvider, "listVoices">;
 };
 
-async function getCurrentSession(context: Context) {
-  const token = getSessionToken(context);
-
-  if (!token) {
-    return null;
-  }
-
-  return verifySessionToken(token);
-}
-
 export function createVoiceProvidersController(dependencies: VoiceProvidersControllerDependencies) {
-  const voiceProviders = new Hono();
+  const voiceProviders = new Hono<CreatorSessionEnv>();
 
   voiceProviders.get("/voice-providers/elevenlabs/voices", async (context) => {
-    const session = await getCurrentSession(context);
-
-    if (!session) {
-      return context.json(unauthorizedError(), 401);
-    }
-
     try {
       return context.json({ voices: await dependencies.elevenLabsVoiceProvider.listVoices() });
     } catch (error) {

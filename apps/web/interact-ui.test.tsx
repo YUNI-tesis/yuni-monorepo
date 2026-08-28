@@ -16,6 +16,7 @@ import {
 } from "./components/interact/InteractCall";
 import { CallParticipantStage } from "./components/interact/CallExperience";
 import {
+  confirmLiveAvatarSessionStartedWithRetry,
   dismissLiveAvatarSessionError,
   formatVoiceSessionEndError,
   formatVoiceSessionStartError,
@@ -357,6 +358,37 @@ describe("Interact contextual UI", () => {
     expect(isLiveAvatarLifecycleCurrent(true, 3, 3)).toBe(true);
     expect(isLiveAvatarLifecycleCurrent(false, 3, 3)).toBe(false);
     expect(isLiveAvatarLifecycleCurrent(true, 4, 3)).toBe(false);
+  });
+
+  it("retries a transient activation confirmation without dropping the live session", async () => {
+    const confirm = vi
+      .fn<(realtimeSessionId: string) => Promise<void>>()
+      .mockRejectedValueOnce(new TypeError("Failed to fetch"))
+      .mockResolvedValueOnce(undefined);
+    const wait = vi.fn(async () => undefined);
+
+    await expect(confirmLiveAvatarSessionStartedWithRetry(confirm, "realtime-1", { wait })).resolves.toBe(
+      true
+    );
+
+    expect(confirm).toHaveBeenCalledTimes(2);
+    expect(confirm).toHaveBeenNthCalledWith(1, "realtime-1");
+    expect(confirm).toHaveBeenNthCalledWith(2, "realtime-1");
+    expect(wait).toHaveBeenCalledOnce();
+    expect(wait).toHaveBeenCalledWith(150);
+  });
+
+  it("does not retry a non-transient activation confirmation failure", async () => {
+    const error = new ApiClientError("Not found", 404, "NOT_FOUND");
+    const confirm = vi.fn<(realtimeSessionId: string) => Promise<void>>().mockRejectedValue(error);
+    const wait = vi.fn(async () => undefined);
+
+    await expect(confirmLiveAvatarSessionStartedWithRetry(confirm, "realtime-1", { wait })).rejects.toBe(
+      error
+    );
+
+    expect(confirm).toHaveBeenCalledOnce();
+    expect(wait).not.toHaveBeenCalled();
   });
 
   it("renders history side panel content with literal chat details", () => {

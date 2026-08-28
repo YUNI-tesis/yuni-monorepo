@@ -82,10 +82,7 @@ function createAvatarRecord(
   };
 }
 
-function createTestDependencies(
-  initialUsers: UserWithPassword[] = [],
-  usedAccessGrantIds: Set<string> = new Set()
-): AppDependencies {
+function createTestDependencies(initialUsers: UserWithPassword[] = []): AppDependencies {
   const users = new Map(initialUsers.map((user) => [user.email, user]));
   const avatars = new Map<string, AvatarAgentRecord>();
   const shareLinks = new Map<string, ShareLinkRecord>();
@@ -403,18 +400,13 @@ function createTestDependencies(
           if (!grant || grant.ownerId !== ownerId || grant.avatarAgentId !== avatarAgentId) {
             throw new OwnershipError();
           }
-          if (usedAccessGrantIds.has(accessGrantId)) {
-            const accessGrant: AccessGrantRecord = {
-              ...grant,
-              status: "revoked",
-              revokedAt: grant.revokedAt ?? new Date("2026-05-17T00:00:00.000Z"),
-            };
-            accessGrants.set(accessGrantId, accessGrant);
-            return { outcome: "revoked" as const, accessGrant };
-          }
-
-          accessGrants.delete(accessGrantId);
-          return { outcome: "deleted" as const, accessGrant: grant };
+          const accessGrant: AccessGrantRecord = {
+            ...grant,
+            status: "revoked",
+            revokedAt: grant.revokedAt ?? new Date("2026-05-17T00:00:00.000Z"),
+          };
+          accessGrants.set(accessGrantId, accessGrant);
+          return { outcome: "revoked" as const, accessGrant };
         },
         linkActiveForUser,
       },
@@ -702,7 +694,9 @@ describe("@yuni/api share links", () => {
 
     await createShareLink(app, cookie, avatarId, "public-demo");
 
-    const response = await app.request("/public/links/public-demo/avatar");
+    const response = await app.request("/public/links/public-demo/avatar", {
+      headers: { Cookie: "yuni_session=invalid-but-irrelevant" },
+    });
     const body = (await json(response)) as {
       shareLink: { slug: string; name: string; ownerId?: string };
       avatar: {
@@ -716,6 +710,7 @@ describe("@yuni/api share links", () => {
     };
 
     expect(response.status).toBe(200);
+    expect(response.headers.get("set-cookie")).toBeNull();
     expect(body).toEqual({
       shareLink: {
         slug: "public-demo",
@@ -974,12 +969,9 @@ describe("@yuni/api access grants", () => {
     ]);
   });
 
-  it("revokes instead of deleting a grant that already has conversation activity", async () => {
+  it("revokes instead of deleting an issued grant", async () => {
     const app = createApp(
-      createTestDependencies(
-        [createUser(), createUser({ id: "user-2", email: "guest@yuni.local" })],
-        new Set(["access-grant-1"])
-      )
+      createTestDependencies([createUser(), createUser({ id: "user-2", email: "guest@yuni.local" })])
     );
     const ownerCookie = await login(app);
     const avatarId = await createAvatar(app, ownerCookie);

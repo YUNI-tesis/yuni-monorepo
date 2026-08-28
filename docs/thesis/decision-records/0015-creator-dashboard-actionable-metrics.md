@@ -2,7 +2,7 @@
 
 ## Status
 
-accepted
+superseded
 
 ## Related plans
 
@@ -13,6 +13,8 @@ accepted
 2026-08-16
 
 ## Context
+
+> Reemplazado por [ADR 0024](0024-objective-dashboard-activity-methodology.md), que corrige la fuente temporal, incorpora activación real de voz, zona horaria local, orígenes y cohortes.
 
 El dashboard inicial mostraba cantidad de avatares y estados de sincronización. Esos datos describían
 inventario técnico, pero no permitían al creador saber si sus participantes usaban los avatares,

@@ -90,7 +90,6 @@ describe("avatar edit", () => {
       description: "Avatar de prueba",
       status: "active",
       instructions: "Responde claro.",
-      context: "Contexto base",
       liveAvatarId: "demo-guide",
       liveAvatarDisplayName: "Guia cercano",
       liveAvatarThumbnailUrl: "https://cdn.yuni.test/demo-guide.png",
@@ -98,8 +97,8 @@ describe("avatar edit", () => {
       voiceId: "voice-1",
       voiceDisplayName: "Agustin",
       voiceDescription: "Relaxed, warm and approachable.",
-      files: [],
     });
+    expect(createAvatarEditStateFromAvatar(avatar)).not.toHaveProperty("context");
   });
 
   it("validates required edit fields", () => {
@@ -139,6 +138,7 @@ describe("avatar edit", () => {
       },
     });
     expect(payload).not.toHaveProperty("ownerId");
+    expect(payload).not.toHaveProperty("context");
   });
 
   it("keeps current voice option when provider catalog does not contain it", () => {
@@ -178,7 +178,7 @@ describe("avatar edit", () => {
     });
   });
 
-  it("explains each avatar status with an accessible tooltip", () => {
+  it("explains each avatar status with accessible, visible descriptions", () => {
     const html = renderToStaticMarkup(
       createElement(AvatarStatusSelector, {
         status: "active",

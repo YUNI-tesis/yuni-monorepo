@@ -18,7 +18,10 @@ export function VoiceStep({
 
   return (
     <section className={styles.panel}>
-      <StepHeading title="Voz" description="Selecciona la voz para las respuestas habladas." />
+      <StepHeading
+        title="Voz"
+        description="Escuchá las muestras y elegí el tono que mejor represente al avatar."
+      />
       {voiceOptions.status === "loading" ? (
         <LoadingState title="Cargando voces" description="Estamos preparando el catálogo disponible." />
       ) : null}

@@ -5,7 +5,9 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Badge, Button, ErrorState, LoadingState, YuniIcon, useToast, type BadgeTone } from "@yuni/ui";
 import { useLiveAvatarSession, type LiveAvatarDiagnostics } from "../../hooks/useLiveAvatarSession";
 import {
+  confirmVoiceSessionStarted,
   endVoiceSessionOnUnload,
+  failVoiceSessionStart,
   getAvatarInteractionContext,
   getConversation,
   listAvatarConversations,
@@ -83,48 +85,40 @@ export function InteractCall({ avatarId }: { avatarId: string }) {
   const [rememberPrivacyChoice, setRememberPrivacyChoice] = useState(false);
   const [privacyStorageKey, setPrivacyStorageKey] = useState<string | null>(null);
 
-  const loadConversation = useCallback(
-    async (conversationId: string) => {
-      setHistoryState((current) => ({
-        ...current,
-        selectedConversationId: conversationId,
-        detailStatus: "loading",
-        detailError: null,
-      }));
+  const loadConversation = useCallback(async (conversationId: string) => {
+    setHistoryState((current) => ({
+      ...current,
+      selectedConversationId: conversationId,
+      detailStatus: "loading",
+      detailError: null,
+    }));
 
-      try {
-        const { conversation } = await getConversation(conversationId);
+    try {
+      const { conversation } = await getConversation(conversationId);
 
-        setHistoryState((current) =>
-          current.selectedConversationId === conversationId
-            ? {
-                ...current,
-                detailStatus: "ready",
-                detail: conversation,
-                detailError: null,
-              }
-            : current
-        );
-      } catch (error) {
-        if (error instanceof ApiClientError && error.status === 401) {
-          router.push("/auth/login");
-          return;
-        }
-
-        setHistoryState((current) =>
-          current.selectedConversationId === conversationId
-            ? {
-                ...current,
-                detailStatus: "error",
-                detail: null,
-                detailError: toUserFacingApiError(error, "No pudimos abrir este chat."),
-              }
-            : current
-        );
-      }
-    },
-    [router]
-  );
+      setHistoryState((current) =>
+        current.selectedConversationId === conversationId
+          ? {
+              ...current,
+              detailStatus: "ready",
+              detail: conversation,
+              detailError: null,
+            }
+          : current
+      );
+    } catch (error) {
+      setHistoryState((current) =>
+        current.selectedConversationId === conversationId
+          ? {
+              ...current,
+              detailStatus: "error",
+              detail: null,
+              detailError: toUserFacingApiError(error, "No pudimos abrir este chat."),
+            }
+          : current
+      );
+    }
+  }, []);
 
   const loadHistory = useCallback(
     async (options: { selectLatest?: boolean } = {}) => {
@@ -157,11 +151,6 @@ export function InteractCall({ avatarId }: { avatarId: string }) {
           void loadConversation(conversations[0].id);
         }
       } catch (error) {
-        if (error instanceof ApiClientError && error.status === 401) {
-          router.push("/auth/login");
-          return;
-        }
-
         setHistoryState((current) => ({
           ...current,
           summariesStatus: "error",
@@ -169,10 +158,17 @@ export function InteractCall({ avatarId }: { avatarId: string }) {
         }));
       }
     },
-    [avatarId, loadConversation, router]
+    [avatarId, loadConversation]
   );
 
   const call = useLiveAvatarSession(avatarId, {
+    onStarted: async (realtimeSessionId) => {
+      await confirmVoiceSessionStarted(realtimeSessionId);
+    },
+    failStart: (realtimeSessionId) => failVoiceSessionStart(realtimeSessionId),
+    failStartOnUnload: (realtimeSessionId) => {
+      void failVoiceSessionStart(realtimeSessionId, { keepalive: true }).catch(() => undefined);
+    },
     onEnded: () => loadHistory({ selectLatest: false }),
     endSessionOnUnload: (realtimeSessionId, transcript) => {
       endVoiceSessionOnUnload(realtimeSessionId, transcript);
@@ -238,11 +234,6 @@ export function InteractCall({ avatarId }: { avatarId: string }) {
         }
       })
       .catch((error) => {
-        if (error instanceof ApiClientError && error.status === 401) {
-          router.push("/auth/login");
-          return;
-        }
-
         if (isMounted) {
           setAvatarState({
             status: error instanceof ApiClientError && error.status === 404 ? "not-found" : "error",
@@ -255,7 +246,7 @@ export function InteractCall({ avatarId }: { avatarId: string }) {
     return () => {
       isMounted = false;
     };
-  }, [avatarId, router]);
+  }, [avatarId]);
 
   if (avatarState.status === "loading") {
     return <LoadingState title="Cargando llamada" description="Estamos preparando el avatar." />;
@@ -315,13 +306,8 @@ export function InteractCall({ avatarId }: { avatarId: string }) {
       setPrivacyStorageKey(storageKey);
       setRememberPrivacyChoice(false);
       privacyDialog.current?.showModal();
-    } catch (error) {
+    } catch {
       if (!isCurrentRequest()) return;
-      if (error instanceof ApiClientError && error.status === 401) {
-        router.push("/auth/login");
-        return;
-      }
-
       setPrivacyStorageKey(null);
       setRememberPrivacyChoice(false);
       privacyDialog.current?.showModal();

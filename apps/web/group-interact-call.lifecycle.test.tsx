@@ -14,6 +14,7 @@ let screen: typeof import("@testing-library/react").screen;
 let within: typeof import("@testing-library/react").within;
 
 const apiMocks = vi.hoisted(() => ({
+  confirmGroupParticipantStarted: vi.fn(),
   endGroupVoiceSession: vi.fn(),
   getAvatarGroup: vi.fn(),
   getGroupConversation: vi.fn(),
@@ -277,6 +278,7 @@ describe("GroupInteractCall lifecycle", () => {
         participants,
       },
     });
+    apiMocks.confirmGroupParticipantStarted.mockResolvedValue({ ok: true });
     apiMocks.getGroupScribeToken.mockResolvedValue({
       scribe: { token: "scribe-token", expiresInSeconds: 600 },
     });
@@ -357,6 +359,10 @@ describe("GroupInteractCall lifecycle", () => {
     const videos = [...container.querySelectorAll("video")];
     expect(videos).toHaveLength(2);
     expect(videos.every((video) => video.muted)).toBe(true);
+    expect(apiMocks.confirmGroupParticipantStarted.mock.calls).toEqual([
+      ["group-session-1", "avatar-1", "attempt-1"],
+      ["group-session-1", "avatar-2", "attempt-2"],
+    ]);
 
     for (const instance of liveAvatarMocks.instances) {
       instance.publishData.mockClear();

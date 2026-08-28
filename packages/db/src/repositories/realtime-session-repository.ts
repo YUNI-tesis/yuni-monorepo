@@ -34,22 +34,39 @@ export function createRealtimeSessionRepository(db: Db) {
       });
     },
 
-    markActive(id: string, providerSessionId?: string, providerSessionTokenCiphertext?: string) {
+    markPrepared(id: string, providerSessionId?: string, providerSessionTokenCiphertext?: string) {
       return withTransaction(db, async (transaction) => {
+        const preparedAt = new Date();
         const transition = await transaction.realtimeSession.updateMany({
           where: {
             id,
             status: "connecting",
-            OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+            OR: [{ expiresAt: null }, { expiresAt: { gt: preparedAt } }],
           },
           data: {
-            status: "active",
             ...(providerSessionId ? { providerSessionId } : {}),
             ...(providerSessionTokenCiphertext ? { providerSessionTokenCiphertext } : {}),
           },
         });
         if (transition.count === 0) return null;
         return transaction.realtimeSession.findUnique({ where: { id } });
+      });
+    },
+
+    markActive(id: string) {
+      return withTransaction(db, async (transaction) => {
+        const activatedAt = new Date();
+        const transition = await transaction.realtimeSession.updateMany({
+          where: {
+            id,
+            status: "connecting",
+            OR: [{ expiresAt: null }, { expiresAt: { gt: activatedAt } }],
+          },
+          data: { status: "active", activatedAt },
+        });
+        const session = await transaction.realtimeSession.findUnique({ where: { id } });
+        if (transition.count === 1) return session;
+        return session?.status === "active" && session.activatedAt ? session : null;
       });
     },
 
@@ -165,6 +182,36 @@ export function createRealtimeSessionRepository(db: Db) {
           });
         }
         return transition.count === 1;
+      });
+    },
+
+    failUnconfirmedOwnerStart(id: string, conversationId: string | null, errorMessage: string) {
+      return withTransaction(db, async (transaction) => {
+        const transition = await transaction.realtimeSession.updateMany({
+          where: {
+            id,
+            conversationId,
+            accessGrantId: null,
+            publicSessionId: null,
+            groupVoiceParticipant: { is: null },
+            status: "connecting",
+          },
+          data: {
+            status: "errored",
+            endedAt: new Date(),
+            errorMessage,
+          },
+        });
+        if (transition.count === 0) return false;
+
+        if (conversationId) {
+          await transaction.conversation.updateMany({
+            where: { id: conversationId, status: "active" },
+            data: { status: "ended" },
+          });
+        }
+
+        return true;
       });
     },
   };

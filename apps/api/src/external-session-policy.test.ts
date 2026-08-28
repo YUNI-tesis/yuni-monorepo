@@ -22,7 +22,7 @@ function repository(overrides: Record<string, unknown> = {}) {
   return {
     reservePublicSession: vi.fn(async () => null),
     reserveSharedSession: vi.fn(async () => null),
-    listSharedForProviderStop: vi.fn(async () => []),
+    listPrivateForProviderStop: vi.fn(async () => []),
     listExpiredSharedForCleanup: vi.fn(async () => []),
     ...overrides,
   };
@@ -322,7 +322,186 @@ describe("technical sliding window", () => {
   });
 });
 
-describe("shared external session lifecycle", () => {
+describe("private external session lifecycle", () => {
+  it("persists an owner provider token so server-side cleanup remains possible", async () => {
+    const markPrepared = vi.fn(async (id: string, providerSessionId?: string, ciphertext?: string) => ({
+      id,
+      conversationId: "conversation-1",
+      providerSessionId: providerSessionId ?? null,
+      providerSessionTokenCiphertext: ciphertext ?? null,
+      status: "connecting",
+      endedAt: null,
+    }));
+    const voice = createVoiceSessionsService({
+      backgroundSyncEnabled: true,
+      avatarsRepository: {
+        findAccessibleForUser: vi.fn(async () => ({
+          type: "owner" as const,
+          avatar: {
+            id: "avatar-1",
+            name: "Tutor",
+            description: "",
+            instructions: "",
+            context: "",
+            voiceConfig: { provider: "elevenlabs", voiceId: "voice-1", speakingRate: 1 },
+            liveAvatarConfig: {
+              provider: "liveavatar",
+              avatarId: "live-avatar-1",
+              mode: "lite",
+              sandbox: true,
+            },
+            providerAgentId: "agent-1",
+            providerSyncStatus: "synced" as const,
+            providerLastUsableAt: now,
+            status: "active" as const,
+          },
+        })),
+      },
+      conversationsRepository: {
+        createPrivateForParticipant: vi.fn(async () => ({ id: "conversation-1" })),
+      },
+      realtimeSessionsRepository: {
+        create: vi.fn(async () => ({ id: "realtime-1" })),
+        markPrepared,
+      },
+      liveAvatarProvider: {
+        createLiteSessionToken: vi.fn(async () => ({
+          sessionToken: "provider-token",
+          sessionId: "provider-session-1",
+        })),
+      },
+      externalSessions: {
+        providerTokenProtector: {
+          encrypt: vi.fn((token: string) => `encrypted:${token}`),
+        },
+      },
+    } as never);
+
+    await expect(voice.startVoiceSession("owner-1", "avatar-1")).resolves.toMatchObject({
+      realtimeSessionId: "realtime-1",
+    });
+    expect(markPrepared).toHaveBeenCalledWith("realtime-1", "provider-session-1", "encrypted:provider-token");
+  });
+
+  it("fails and stops an owner session that never confirms startup", async () => {
+    const failUnconfirmedOwnerStart = vi.fn(async () => true);
+    const stopSession = vi.fn(async () => undefined);
+    const policyRepository = repository({
+      listPrivateForProviderStop: vi.fn(async () => [
+        {
+          id: "realtime-1",
+          conversationId: "conversation-1",
+          status: "connecting",
+          accessGrantId: null,
+          providerSessionTokenCiphertext: "encrypted:provider-token",
+        },
+      ]),
+    });
+    const voice = createVoiceSessionsService({
+      realtimeSessionsRepository: {
+        failUnconfirmedOwnerStart,
+        markProviderStopped: vi.fn(async () => ({ count: 1 })),
+        expireSharedIfActive: vi.fn(async () => true),
+      },
+      liveAvatarProvider: { stopSession },
+      externalSessions: {
+        policyRepository,
+        providerTokenProtector: {
+          decrypt: vi.fn((token: string) => token.replace("encrypted:", "")),
+        },
+      },
+    } as never);
+
+    await expect(voice.cleanupExternalSessions(now)).resolves.toBe(0);
+    await vi.waitFor(() =>
+      expect(failUnconfirmedOwnerStart).toHaveBeenCalledWith(
+        "realtime-1",
+        "conversation-1",
+        "External voice session start failed"
+      )
+    );
+    await vi.waitFor(() => expect(stopSession).toHaveBeenCalledWith("provider-token"));
+  });
+
+  it("does not stop an owner session that activates while stale startup cleanup is claiming it", async () => {
+    const failUnconfirmedOwnerStart = vi.fn(async () => false);
+    const stopSession = vi.fn(async () => undefined);
+    const voice = createVoiceSessionsService({
+      realtimeSessionsRepository: {
+        failUnconfirmedOwnerStart,
+        markProviderStopped: vi.fn(async () => ({ count: 1 })),
+        expireSharedIfActive: vi.fn(async () => true),
+      },
+      liveAvatarProvider: { stopSession },
+      externalSessions: {
+        policyRepository: repository({
+          listPrivateForProviderStop: vi.fn(async () => [
+            {
+              id: "realtime-1",
+              conversationId: "conversation-1",
+              status: "connecting",
+              accessGrantId: null,
+              providerSessionTokenCiphertext: "encrypted:provider-token",
+            },
+          ]),
+        }),
+        providerTokenProtector: {
+          decrypt: vi.fn((token: string) => token.replace("encrypted:", "")),
+        },
+      },
+    } as never);
+
+    await expect(voice.cleanupExternalSessions(now)).resolves.toBe(0);
+    await vi.waitFor(() => expect(failUnconfirmedOwnerStart).toHaveBeenCalledOnce());
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(stopSession).not.toHaveBeenCalled();
+  });
+
+  it("returns the concurrent ended state when start-failed loses its transition", async () => {
+    const connecting = {
+      id: "realtime-1",
+      avatarAgentId: "avatar-1",
+      conversationId: "conversation-1",
+      status: "connecting",
+      endedAt: null,
+      providerStoppedAt: null,
+      providerSessionTokenCiphertext: "encrypted:provider-token",
+      conversation: { id: "conversation-1", status: "active" },
+    };
+    const ended = {
+      ...connecting,
+      status: "ended",
+      endedAt: now,
+      conversation: { id: "conversation-1", status: "ended" },
+    };
+    const findPrivateForParticipant = vi.fn().mockResolvedValueOnce(connecting).mockResolvedValueOnce(ended);
+    const markConversationEnded = vi.fn(async () => undefined);
+    const stopSession = vi.fn(async () => undefined);
+    const voice = createVoiceSessionsService({
+      conversationsRepository: { markEnded: markConversationEnded },
+      realtimeSessionsRepository: {
+        findPrivateForParticipant,
+        markErrored: vi.fn(async () => false),
+        markProviderStopped: vi.fn(async () => ({ count: 1 })),
+      },
+      liveAvatarProvider: { stopSession },
+      externalSessions: {
+        providerTokenProtector: {
+          decrypt: vi.fn((token: string) => token.replace("encrypted:", "")),
+        },
+      },
+    } as never);
+
+    await expect(voice.failVoiceSessionStart("owner-1", "realtime-1")).resolves.toEqual({
+      id: "realtime-1",
+      conversationId: "conversation-1",
+      status: "ended",
+      endedAt: now.toISOString(),
+    });
+    expect(markConversationEnded).not.toHaveBeenCalled();
+    expect(stopSession).toHaveBeenCalledWith("provider-token");
+  });
+
   it("persists the shared transcript before stopping the provider", async () => {
     const order: string[] = [];
     const stopSession = vi.fn(async () => {
@@ -385,7 +564,7 @@ describe("shared external session lifecycle", () => {
       status: "ended",
       endedAt: now,
     }));
-    const markActive = vi.fn(async (id: string) => ({
+    const markPrepared = vi.fn(async (id: string) => ({
       id,
       conversationId: "conversation-1",
       providerSessionId: "provider-session-1",
@@ -475,7 +654,7 @@ describe("shared external session lifecycle", () => {
           providerStoppedAt: now,
           providerSessionTokenCiphertext: null,
         })),
-        markActive,
+        markPrepared,
         markEnded: markRealtimeEnded,
         finalizePrivate,
         markErrored: vi.fn(),
@@ -513,7 +692,7 @@ describe("shared external session lifecycle", () => {
       sessionToken: "provider-token",
       expiresAt: expiresAt.toISOString(),
     });
-    expect(markActive).toHaveBeenCalledWith("realtime-1", "provider-session-1", "encrypted:provider-token");
+    expect(markPrepared).toHaveBeenCalledWith("realtime-1", "provider-session-1", "encrypted:provider-token");
     expect(reserveShared).toHaveBeenCalledWith(
       expect.objectContaining({
         targetId: "grant-1",
@@ -589,7 +768,7 @@ describe("shared external session lifecycle", () => {
         markEnded: vi.fn(async () => undefined),
       },
       realtimeSessionsRepository: {
-        markActive: vi.fn().mockRejectedValue(new Error("temporary activation failure")),
+        markPrepared: vi.fn().mockRejectedValue(new Error("temporary activation failure")),
         markErrored,
         markProviderStopped: vi.fn(async () => ({ count: 0 })),
         expireSharedIfActive: vi.fn(async () => true),
@@ -662,7 +841,7 @@ describe("shared external session lifecycle", () => {
       },
       conversationsRepository: { markEnded: vi.fn(async () => undefined) },
       realtimeSessionsRepository: {
-        markActive: vi.fn(async () => null),
+        markPrepared: vi.fn(async () => null),
         markErrored,
         markProviderStopped: vi.fn(async () => ({ count: 1 })),
         expireSharedIfActive: vi.fn(async () => true),
@@ -708,7 +887,7 @@ describe("shared external session lifecycle", () => {
     const markProviderStopped = vi.fn(async () => ({ count: 1 }));
     const expireSharedIfActive = vi.fn(async () => true);
     const policyRepository = repository({
-      listSharedForProviderStop: vi.fn(async () => [
+      listPrivateForProviderStop: vi.fn(async () => [
         {
           id: "realtime-1",
           status: "active",
@@ -736,7 +915,7 @@ describe("shared external session lifecycle", () => {
       },
     } as never);
 
-    await expect(voice.cleanupExpiredShared(now)).resolves.toBe(1);
+    await expect(voice.cleanupExternalSessions(now)).resolves.toBe(1);
     await vi.waitFor(() => expect(stopSession).toHaveBeenCalledWith("provider-token"));
     expect(markProviderStopped).not.toHaveBeenCalled();
     expect(policyRepository.listExpiredSharedForCleanup).toHaveBeenCalledWith(
@@ -745,7 +924,7 @@ describe("shared external session lifecycle", () => {
     );
     expect(expireSharedIfActive).toHaveBeenCalledWith("realtime-1", "conversation-1");
 
-    await expect(voice.cleanupExpiredShared(now)).resolves.toBe(1);
+    await expect(voice.cleanupExternalSessions(now)).resolves.toBe(1);
     await vi.waitFor(() => expect(stopSession).toHaveBeenCalledTimes(2));
     await vi.waitFor(() => expect(markProviderStopped).toHaveBeenCalledWith("realtime-1"));
   });
@@ -757,7 +936,7 @@ describe("shared external session lifecycle", () => {
     });
     const expireSharedIfActive = vi.fn(async () => true);
     const policyRepository = repository({
-      listSharedForProviderStop: vi.fn(async () => [
+      listPrivateForProviderStop: vi.fn(async () => [
         {
           id: "realtime-1",
           status: "active",
@@ -785,10 +964,10 @@ describe("shared external session lifecycle", () => {
       },
     } as never);
 
-    const cleanup = voice.cleanupExpiredShared(now);
+    const cleanup = voice.cleanupExternalSessions(now);
     await vi.waitFor(() => expect(expireSharedIfActive).toHaveBeenCalledWith("realtime-1", "conversation-1"));
     await expect(cleanup).resolves.toBe(1);
-    await expect(voice.cleanupExpiredShared(now)).resolves.toBe(1);
+    await expect(voice.cleanupExternalSessions(now)).resolves.toBe(1);
     releaseStop();
   });
 
@@ -805,11 +984,11 @@ describe("shared external session lifecycle", () => {
       realtimeSessionsRepository: { expireSharedIfActive },
     } as never);
 
-    await expect(voice.cleanupExpiredShared(now)).rejects.toBeInstanceOf(
+    await expect(voice.cleanupExternalSessions(now)).rejects.toBeInstanceOf(
       ExternalSessionLifecycleConfigurationError
     );
     expect(expireSharedIfActive).not.toHaveBeenCalled();
-    expect(policyRepository.listSharedForProviderStop).not.toHaveBeenCalled();
+    expect(policyRepository.listPrivateForProviderStop).not.toHaveBeenCalled();
   });
 
   it("closes an expired shared realtime session even when its conversation was deleted", async () => {
@@ -826,7 +1005,7 @@ describe("shared external session lifecycle", () => {
       },
     } as never);
 
-    await expect(voice.cleanupExpiredShared(now)).resolves.toBe(1);
+    await expect(voice.cleanupExternalSessions(now)).resolves.toBe(1);
     expect(expireSharedIfActive).toHaveBeenCalledWith("realtime-1", null);
   });
 
@@ -849,8 +1028,8 @@ describe("shared external session lifecycle", () => {
       },
     } as never);
 
-    await expect(voice.cleanupExpiredShared(now)).resolves.toBe(0);
-    await expect(voice.cleanupExpiredShared(now)).resolves.toBe(1);
+    await expect(voice.cleanupExternalSessions(now)).resolves.toBe(0);
+    await expect(voice.cleanupExternalSessions(now)).resolves.toBe(1);
   });
 
   it("advances past provider stops that keep failing", async () => {
@@ -870,13 +1049,13 @@ describe("shared external session lifecycle", () => {
         providerSessionTokenCiphertext: "encrypted:provider-token-2",
       },
     };
-    const listSharedForProviderStop = vi.fn(async (_now: Date, _limit: number, afterId?: string) =>
+    const listPrivateForProviderStop = vi.fn(async (_now: Date, _limit: number, afterId?: string) =>
       afterId === "realtime-1" ? [sessions.second] : [sessions.first]
     );
     const stopSession = vi.fn().mockRejectedValue(new Error("permanent provider failure"));
     const voice = createVoiceSessionsService({
       externalSessions: {
-        policyRepository: repository({ listSharedForProviderStop }),
+        policyRepository: repository({ listPrivateForProviderStop }),
         providerTokenProtector: {
           encrypt: vi.fn((token: string) => token),
           decrypt: vi.fn((token: string) => token.replace("encrypted:", "")),
@@ -889,13 +1068,13 @@ describe("shared external session lifecycle", () => {
       },
     } as never);
 
-    await voice.cleanupExpiredShared(now);
+    await voice.cleanupExternalSessions(now);
     await vi.waitFor(() => expect(stopSession).toHaveBeenCalledTimes(1));
     await new Promise<void>((resolve) => setImmediate(resolve));
-    await voice.cleanupExpiredShared(now);
+    await voice.cleanupExternalSessions(now);
     await vi.waitFor(() => expect(stopSession).toHaveBeenCalledTimes(2));
 
-    expect(listSharedForProviderStop).toHaveBeenNthCalledWith(2, now, 50, "realtime-1");
+    expect(listPrivateForProviderStop).toHaveBeenNthCalledWith(2, now, 50, "realtime-1");
     expect(stopSession).toHaveBeenNthCalledWith(1, "provider-token-1");
     expect(stopSession).toHaveBeenNthCalledWith(2, "provider-token-2");
   });

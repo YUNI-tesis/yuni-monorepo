@@ -16,7 +16,6 @@ const avatarMocks = vi.hoisted(() => ({
 }));
 const avatarState = vi.hoisted(() => ({
   builderFiles: [] as File[],
-  editFiles: [] as File[],
 }));
 
 vi.mock("next/navigation", () => ({
@@ -63,7 +62,6 @@ vi.mock("./hooks/useAvatarEdit", () => ({
       error: null,
       avatar: { id: "avatar-edit", name: "Ada", description: "Asistente" },
       state: {
-        files: avatarState.editFiles,
         liveAvatarId: "live-1",
         voiceId: "voice-1",
         voiceDisplayName: "Voz",
@@ -120,7 +118,6 @@ describe("avatar toast feedback", () => {
     avatarMocks.validateEdit.mockReturnValue(true);
     avatarMocks.uploadAvatarDocument.mockResolvedValue({});
     avatarState.builderFiles = [];
-    avatarState.editFiles = [];
   });
 
   afterEach(() => cleanup());
@@ -216,49 +213,6 @@ describe("avatar toast feedback", () => {
     fireEvent.click(screen.getByRole("button", { name: "Guardar cambios test" }));
 
     await waitFor(() => expect(screen.getByRole("status").textContent).toContain("Cambios guardados"));
-    expect(avatarMocks.push).toHaveBeenCalledWith("/avatars/avatar-edit");
-  });
-
-  it("reports pending documents without claiming avatar changes were lost", async () => {
-    avatarState.editFiles = [new File(["contexto"], "contexto.txt", { type: "text/plain" })];
-    avatarMocks.updateAvatar.mockResolvedValue({ avatar: { id: "avatar-edit", name: "Ada" } });
-    avatarMocks.uploadAvatarDocument.mockRejectedValue(new Error("No se pudo subir"));
-    render(
-      <ToastProvider>
-        <AvatarEdit avatarId="avatar-edit" />
-      </ToastProvider>
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "Guardar cambios test" }));
-
-    await waitFor(() =>
-      expect(screen.getByRole("status").textContent).toContain("Cambios guardados, con documentos pendientes")
-    );
-    expect(screen.queryByText("No pudimos guardar los cambios")).toBeNull();
-    expect(screen.getByRole("button", { name: "Guardar cambios test" })).toBeTruthy();
-    expect(avatarMocks.push).not.toHaveBeenCalled();
-  });
-
-  it("replaces a pending-document warning after a successful edit retry", async () => {
-    avatarState.editFiles = [new File(["contexto"], "contexto.txt", { type: "text/plain" })];
-    avatarMocks.updateAvatar.mockResolvedValue({ avatar: { id: "avatar-edit", name: "Ada" } });
-    avatarMocks.uploadAvatarDocument
-      .mockRejectedValueOnce(new Error("No se pudo subir"))
-      .mockResolvedValue({});
-    render(
-      <ToastProvider>
-        <AvatarEdit avatarId="avatar-edit" />
-      </ToastProvider>
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "Guardar cambios test" }));
-    await waitFor(() => expect(screen.getByRole("status").textContent).toContain("documentos pendientes"));
-
-    fireEvent.click(screen.getByRole("button", { name: "Guardar cambios test" }));
-
-    await waitFor(() => expect(screen.getByRole("status").textContent).toContain("Cambios guardados"));
-    expect(screen.queryByText("Cambios guardados, con documentos pendientes")).toBeNull();
-    expect(avatarMocks.updateAvatar).toHaveBeenCalledTimes(2);
     expect(avatarMocks.push).toHaveBeenCalledWith("/avatars/avatar-edit");
   });
 });

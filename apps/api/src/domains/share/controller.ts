@@ -1,7 +1,7 @@
 import { Hono, type Context } from "hono";
 import { CreateShareLinkInputSchema, NotFoundError, UpdateShareLinkInputSchema } from "@yuni/domain";
-import { conflictError, notFoundError, unauthorizedError, validationError } from "../../utils/errors";
-import { getSessionToken, verifySessionToken } from "../auth/session";
+import { conflictError, notFoundError, validationError } from "../../utils/errors";
+import type { CreatorSessionEnv } from "../auth/middleware";
 import {
   createShareLinksService,
   DuplicateShareSlugError,
@@ -16,17 +16,7 @@ function isEmptyObject(value: unknown) {
   );
 }
 
-async function getCurrentSession(context: Context) {
-  const token = getSessionToken(context);
-
-  if (!token) {
-    return null;
-  }
-
-  return verifySessionToken(token);
-}
-
-export function createShareLinksController(dependencies: ShareLinksControllerDependencies) {
+export function createPublicShareLinksController(dependencies: ShareLinksControllerDependencies) {
   const share = new Hono();
   const service = createShareLinksService(dependencies);
 
@@ -42,16 +32,19 @@ export function createShareLinksController(dependencies: ShareLinksControllerDep
     }
   });
 
-  share.get("/avatars/:avatarId/share-links", async (context) => {
-    const session = await getCurrentSession(context);
+  return share;
+}
 
-    if (!session) {
-      return context.json(unauthorizedError(), 401);
-    }
+export function createShareLinksController(dependencies: ShareLinksControllerDependencies) {
+  const share = new Hono<CreatorSessionEnv>();
+  const service = createShareLinksService(dependencies);
+
+  share.get("/avatars/:avatarId/share-links", async (context) => {
+    const currentUser = context.get("currentUser");
 
     try {
       return context.json({
-        shareLinks: await service.listShareLinks(session.userId, context.req.param("avatarId")),
+        shareLinks: await service.listShareLinks(currentUser.id, context.req.param("avatarId")),
       });
     } catch (error) {
       return handleShareError(error, context);
@@ -59,11 +52,7 @@ export function createShareLinksController(dependencies: ShareLinksControllerDep
   });
 
   share.post("/avatars/:avatarId/share-links", async (context) => {
-    const session = await getCurrentSession(context);
-
-    if (!session) {
-      return context.json(unauthorizedError(), 401);
-    }
+    const currentUser = context.get("currentUser");
 
     const body: unknown = await context.req.json().catch(() => null);
     const parsed = CreateShareLinkInputSchema.safeParse(body);
@@ -76,7 +65,7 @@ export function createShareLinksController(dependencies: ShareLinksControllerDep
       return context.json(
         {
           shareLink: await service.createShareLink(
-            session.userId,
+            currentUser.id,
             context.req.param("avatarId"),
             parsed.data
           ),
@@ -89,11 +78,7 @@ export function createShareLinksController(dependencies: ShareLinksControllerDep
   });
 
   share.patch("/avatars/:avatarId/share-links/:shareLinkId", async (context) => {
-    const session = await getCurrentSession(context);
-
-    if (!session) {
-      return context.json(unauthorizedError(), 401);
-    }
+    const currentUser = context.get("currentUser");
 
     const body: unknown = await context.req.json().catch(() => null);
 
@@ -113,7 +98,7 @@ export function createShareLinksController(dependencies: ShareLinksControllerDep
     try {
       return context.json({
         shareLink: await service.updateShareLink(
-          session.userId,
+          currentUser.id,
           context.req.param("avatarId"),
           context.req.param("shareLinkId"),
           parsed.data
@@ -125,15 +110,11 @@ export function createShareLinksController(dependencies: ShareLinksControllerDep
   });
 
   share.delete("/avatars/:avatarId/share-links/:shareLinkId", async (context) => {
-    const session = await getCurrentSession(context);
-
-    if (!session) {
-      return context.json(unauthorizedError(), 401);
-    }
+    const currentUser = context.get("currentUser");
 
     try {
       await service.deleteShareLink(
-        session.userId,
+        currentUser.id,
         context.req.param("avatarId"),
         context.req.param("shareLinkId")
       );

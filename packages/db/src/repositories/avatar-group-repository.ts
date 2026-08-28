@@ -460,7 +460,6 @@ export function createAvatarGroupRepository(db: Db) {
           await tx.realtimeSession.update({
             where: { id: participantAttemptId },
             data: {
-              status: "active",
               providerSessionId,
               providerSessionTokenCiphertext: token,
               errorMessage: null,
@@ -485,6 +484,45 @@ export function createAvatarGroupRepository(db: Db) {
           avatarAgentId: current?.avatarAgentId,
         });
         return false;
+      });
+    },
+
+    confirmParticipantStarted(
+      ownerId: string,
+      sessionId: string,
+      avatarId: string,
+      participantAttemptId: string
+    ) {
+      return db.$transaction(async (tx) => {
+        await lockGroupVoiceSessions(tx, [sessionId]);
+        const participant = await tx.groupVoiceParticipant.findFirst({
+          where: {
+            groupVoiceSessionId: sessionId,
+            avatarAgentId: avatarId,
+            realtimeSessionId: participantAttemptId,
+            status: "active",
+            groupVoiceSession: { ownerId, status: { in: ["connecting", "active"] } },
+          },
+          select: { id: true },
+        });
+        if (!participant) return false;
+
+        const activatedAt = new Date();
+        const transition = await tx.realtimeSession.updateMany({
+          where: {
+            id: participantAttemptId,
+            status: { in: ["connecting", "active"] },
+            activatedAt: null,
+          },
+          data: { status: "active", activatedAt },
+        });
+        if (transition.count === 1) return true;
+
+        const current = await tx.realtimeSession.findUnique({
+          where: { id: participantAttemptId },
+          select: { status: true, activatedAt: true },
+        });
+        return current?.status === "active" && current.activatedAt !== null;
       });
     },
 

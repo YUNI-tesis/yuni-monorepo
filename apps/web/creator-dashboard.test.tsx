@@ -2,93 +2,133 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CreatorDashboardContent } from "./app/dashboard/page";
-import { getCreatorDashboardSummary, type ApiCreatorDashboardSummary } from "./lib/api/dashboard-api";
+import { buildActivityTrendAxisTicks } from "./app/dashboard/components/ActivityTrend";
+import { formatSimpleRate } from "./app/dashboard/components/presentation";
+import {
+  getCreatorDashboardSummary,
+  type ApiCreatorDashboardSummary,
+  type ApiDashboardRateMetric,
+} from "./lib/api/dashboard-api";
 import {
   formatDashboardCountDelta,
   formatDashboardDuration,
   formatDashboardPeriod,
   formatDashboardRate,
+  formatDashboardRateDelta,
   getDashboardAttentionPath,
   getDashboardTranscriptPath,
 } from "./lib/creator-dashboard";
 
+const rate = (value: number, total: number, currentRate: number | null): ApiDashboardRateMetric => ({
+  value,
+  total,
+  rate: currentRate,
+  previousValue: 1,
+  previousTotal: 4,
+  previousRate: 25,
+  changePercentagePoints: currentRate === null ? null : currentRate - 25,
+});
+
 function createSummary(overrides: Partial<ApiCreatorDashboardSummary> = {}): ApiCreatorDashboardSummary {
   return {
     period: {
-      from: "2026-07-18T00:00:00.000Z",
-      to: "2026-08-17T00:00:00.000Z",
-      previousFrom: "2026-06-18T00:00:00.000Z",
-      previousTo: "2026-07-18T00:00:00.000Z",
+      days: 30,
+      timeZone: "America/Argentina/Buenos_Aires",
+      from: "2026-07-18T03:00:00.000Z",
+      to: "2026-08-17T03:00:00.000Z",
+      previousFrom: "2026-06-18T03:00:00.000Z",
+      previousTo: "2026-07-18T03:00:00.000Z",
     },
     hasOwnedAvatars: true,
     overview: {
       activeParticipants: { value: 4, previous: 2, changePercent: 100 },
-      conversations: { value: 7, previous: 5, changePercent: 40 },
-      recurringParticipants: {
-        value: 2,
-        total: 4,
-        rate: 50,
-        previousRate: 25,
-        changePercentagePoints: 25,
+      engagedConversations: { value: 7, previous: 5, changePercent: 40 },
+      returningParticipants: rate(2, 4, 50),
+      directAccessActivation: rate(3, 5, 60),
+    },
+    byOrigin: [
+      {
+        origin: "all",
+        activeParticipants: 4,
+        engagedConversations: 7,
+        returningParticipants: { value: 2, total: 4, rate: 50 },
+        conversationsPerParticipant: 1.8,
       },
-      completedSessions: {
-        value: 5,
-        total: 6,
-        rate: 83.3,
-        previousRate: 100,
-        changePercentagePoints: -16.7,
+      {
+        origin: "access_grant",
+        activeParticipants: 3,
+        engagedConversations: 5,
+        returningParticipants: { value: 1, total: 3, rate: 33.3 },
+        conversationsPerParticipant: 1.7,
       },
+      {
+        origin: "public_link",
+        activeParticipants: 2,
+        engagedConversations: 2,
+        returningParticipants: { value: 0, total: 2, rate: 0 },
+        conversationsPerParticipant: 1,
+      },
+    ],
+    trend: {
+      granularity: "day",
+      points: [
+        { date: "2026-08-14", dateTo: "2026-08-14", engagedConversations: 2, participants: 1 },
+        { date: "2026-08-15", dateTo: "2026-08-15", engagedConversations: 5, participants: 4 },
+      ],
+    },
+    interaction: {
+      conversationMix: { value: 3, total: 7, rate: 42.9 },
       medianVoiceDurationSeconds: 305,
       medianParticipantTurns: 4,
     },
-    trend: [
-      { date: "2026-08-14", conversations: 2, participants: 1 },
-      { date: "2026-08-15", conversations: 5, participants: 4 },
-    ],
+    voiceHealth: { errors: rate(1, 6, 16.7) },
     attention: {
       total: 2,
-      neverUsedAccesses: {
+      unusedDirectAccesses: {
         count: 1,
         items: [
           {
-            type: "never_used_access",
+            type: "unused_direct_access",
             id: "grant-1",
             avatarId: "avatar-1",
             avatarName: "Álgebra",
             participantKey: "p_person",
+            participantName: "Ana",
             participantEmail: "person@example.com",
             occurredAt: "2026-08-01T10:00:00.000Z",
           },
         ],
       },
       inactiveParticipants: { count: 0, items: [] },
-      erroredSessions: {
+      interruptedInteractions: {
         count: 1,
         items: [
           {
-            type: "errored_session",
+            type: "interrupted_interaction",
             id: "session-1",
             avatarId: "avatar-1",
             avatarName: "Álgebra",
             participantKey: "p_person",
+            participantName: "Ana",
             participantEmail: "person@example.com",
             conversationId: "conversation-1",
             occurredAt: "2026-08-15T10:00:00.000Z",
           },
         ],
       },
-      failedAvatars: { count: 0, items: [] },
+      unavailableAvatars: { count: 0, items: [] },
     },
     avatars: [
       {
         avatarId: "avatar-1",
         avatarName: "Álgebra",
+        status: "active",
+        health: "available",
         activeParticipants: 4,
-        conversations: 7,
-        recurringRate: 50,
-        medianVoiceDurationSeconds: 305,
+        engagedConversations: 7,
+        returningParticipants: { value: 2, total: 4, rate: 50 },
+        directAccessActivation: { value: 3, total: 5, rate: 60 },
         lastActivityAt: "2026-08-15T10:00:00.000Z",
-        attentionCount: 2,
       },
     ],
     recentActivity: [
@@ -97,18 +137,27 @@ function createSummary(overrides: Partial<ApiCreatorDashboardSummary> = {}): Api
         avatarId: "avatar-1",
         avatarName: "Álgebra",
         participantKey: "p_person",
+        participantName: "Ana",
         participantEmail: "person@example.com",
+        origin: "access_grant",
         mode: "voice",
-        status: "ended",
+        title: "Repaso de funciones",
         occurredAt: "2026-08-15T10:00:00.000Z",
       },
     ],
+    methodology: {
+      activityDefinition: "participant_message_or_activated_voice",
+      identity: "normalized_email",
+      activationWindowDays: 7,
+      inactivityDays: 14,
+      disclaimer: "Estas métricas describen actividad objetiva y no representan progreso académico.",
+    },
     ...overrides,
   };
 }
 
 describe("creator dashboard presentation", () => {
-  it("renders action-oriented metrics, attention, trends and transcript access", () => {
+  it("renders the four objective KPIs, actionable states and accessible exact trend data", () => {
     const html = renderToStaticMarkup(
       createElement(CreatorDashboardContent, {
         summary: createSummary(),
@@ -116,17 +165,21 @@ describe("creator dashboard presentation", () => {
       })
     );
 
-    expect(html).toContain("Cómo están usando tus avatares");
     expect(html).toContain("Participantes activos");
-    expect(html).toContain("Participantes recurrentes");
-    expect(html).toContain("Necesita atención");
-    expect(html).toContain("person@example.com");
-    expect(html).toContain("Actividad diaria");
-    expect(html).toContain("Ver datos exactos");
-    expect(html).toContain("Actividad por avatar");
-    expect(html).toContain("Ver transcript");
-    expect(html).not.toContain("Procesando");
-    expect(html).not.toContain("Avatares actualizados");
+    expect(html).toContain("Conversaciones con actividad");
+    expect(html).toContain("Participantes que volvieron");
+    expect(html).toContain("Accesos activados en 7 días");
+    expect(html).toContain("Por origen");
+    expect(html).toContain("Abrir Compartir");
+    expect(html).toContain("Ver conversación");
+    expect(html).toContain("Ver tabla exacta");
+    expect(html).toContain("Cómo se calculan estas métricas");
+    expect(html).toContain("no representan progreso académico");
+    expect(html).not.toContain("Profundidad típica");
+
+    const firstHotspot = html.match(/style="left:([^%]+)%;top:([^%]+)%"/);
+    expect(Number(firstHotspot?.[1])).toBeCloseTo(28.82, 2);
+    expect(Number(firstHotspot?.[2])).toBeCloseTo(71.33, 2);
   });
 
   it("renders a creator-specific empty state without fake zero-value insights", () => {
@@ -136,34 +189,84 @@ describe("creator dashboard presentation", () => {
         onNavigate: () => undefined,
       })
     );
-
     expect(html).toContain("Creá tu primer avatar");
     expect(html).not.toContain("Participantes activos");
   });
 });
 
 describe("creator dashboard helpers", () => {
-  it("formats comparisons and unavailable values explicitly", () => {
+  it("positions unique integer axis labels at their exact scale value", () => {
+    expect(buildActivityTrendAxisTicks(1)).toEqual([
+      { value: 1, fraction: 0 },
+      { value: 0, fraction: 1 },
+    ]);
+
+    const ticks = buildActivityTrendAxisTicks(3);
+    expect(ticks.map((tick) => tick.value)).toEqual([3, 2, 0]);
+    expect(ticks[0]?.fraction).toBe(0);
+    expect(ticks[1]?.fraction).toBeCloseTo(1 / 3);
+    expect(ticks[2]?.fraction).toBe(1);
+  });
+
+  it("formats comparisons, durations and local periods explicitly", () => {
     expect(formatDashboardCountDelta({ value: 3, previous: 0, changePercent: null })).toBe(
       "Sin base anterior"
     );
-    expect(formatDashboardCountDelta({ value: 1, previous: 2, changePercent: -50 })).toContain("-50%");
     expect(formatDashboardRate(null)).toBe("—");
-    expect(formatDashboardDuration(null)).toBe("—");
+    expect(
+      formatDashboardRateDelta({
+        value: 0,
+        total: 0,
+        rate: null,
+        previousValue: 0,
+        previousTotal: 0,
+        previousRate: null,
+        changePercentagePoints: null,
+      })
+    ).toBe("0 de 0 · sin datos suficientes · sin base anterior");
+    expect(
+      formatDashboardRateDelta({
+        value: 2,
+        total: 4,
+        rate: 50,
+        previousValue: 0,
+        previousTotal: 0,
+        previousRate: null,
+        changePercentagePoints: null,
+      })
+    ).toBe("2 de 4 · sin base anterior");
+    expect(formatSimpleRate({ value: 0, total: 0, rate: null })).toBe("0/0 · sin datos");
     expect(formatDashboardDuration(305)).toBe("5 min 05 s");
-    expect(formatDashboardPeriod("2026-07-18T00:00:00.000Z", "2026-08-17T00:00:00.000Z")).toBe(
-      "18 jul–16 ago"
-    );
+    expect(
+      formatDashboardPeriod(
+        "2026-07-18T03:00:00.000Z",
+        "2026-08-17T03:00:00.000Z",
+        "America/Argentina/Buenos_Aires"
+      )
+    ).toBe("18 jul–16 ago");
   });
 
-  it("builds deep links for attention and transcripts", () => {
+  it("builds a specific deep link for every action", () => {
     expect(
       getDashboardAttentionPath({
-        type: "errored_session",
+        type: "unused_direct_access",
+        id: "grant-1",
+        avatarId: "avatar 1",
+        avatarName: "Avatar",
+        participantKey: "p/person",
+        participantName: null,
+        participantEmail: "person@example.com",
+        occurredAt: null,
+      })
+    ).toBe("/avatars/avatar%201?tab=compartir");
+    expect(
+      getDashboardAttentionPath({
+        type: "interrupted_interaction",
         id: "session-1",
         avatarId: "avatar 1",
         avatarName: "Avatar",
         participantKey: "p/person",
+        participantName: null,
         participantEmail: "person@example.com",
         conversationId: "conversation 1",
         occurredAt: null,
@@ -178,7 +281,7 @@ describe("creator dashboard helpers", () => {
 describe("creator dashboard API client", () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  it("calls the aggregate endpoint with optional date filters", async () => {
+  it("sends period and browser time zone without custom from/to filters", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(JSON.stringify(createSummary()), {
         status: 200,
@@ -187,8 +290,10 @@ describe("creator dashboard API client", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    await getCreatorDashboardSummary({ from: "2026-08-01", to: "2026-08-15" });
+    await getCreatorDashboardSummary({ days: 90, timeZone: "America/Argentina/Buenos_Aires" });
 
-    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/dashboard/creator-summary?from=2026-08-01&to=2026-08-15");
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      "/api/dashboard/creator-summary?days=90&timeZone=America%2FArgentina%2FBuenos_Aires"
+    );
   });
 });

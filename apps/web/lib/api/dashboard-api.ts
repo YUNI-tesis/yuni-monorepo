@@ -1,5 +1,9 @@
 import { apiRequest } from "./http-client";
 
+export const DASHBOARD_PERIODS = [7, 30, 90] as const;
+export type ApiDashboardDays = (typeof DASHBOARD_PERIODS)[number];
+export type ApiDashboardOrigin = "all" | "access_grant" | "public_link";
+
 export type ApiDashboardCountMetric = {
   value: number;
   previous: number;
@@ -10,15 +14,23 @@ export type ApiDashboardRateMetric = {
   value: number;
   total: number;
   rate: number | null;
+  previousValue: number;
+  previousTotal: number;
   previousRate: number | null;
   changePercentagePoints: number | null;
 };
 
+export type ApiDashboardSimpleRate = {
+  value: number;
+  total: number;
+  rate: number | null;
+};
+
 export type ApiDashboardAttentionType =
-  | "never_used_access"
+  | "unused_direct_access"
   | "inactive_participant"
-  | "errored_session"
-  | "failed_avatar";
+  | "interrupted_interaction"
+  | "unavailable_avatar";
 
 export type ApiDashboardAttentionItem = {
   type: ApiDashboardAttentionType;
@@ -26,6 +38,7 @@ export type ApiDashboardAttentionItem = {
   avatarId: string;
   avatarName: string;
   participantKey: string | null;
+  participantName: string | null;
   participantEmail: string | null;
   conversationId?: string;
   occurredAt: string | null;
@@ -38,6 +51,8 @@ export type ApiDashboardAttentionGroup = {
 
 export type ApiCreatorDashboardSummary = {
   period: {
+    days: ApiDashboardDays;
+    timeZone: string;
     from: string;
     to: string;
     previousFrom: string;
@@ -46,50 +61,83 @@ export type ApiCreatorDashboardSummary = {
   hasOwnedAvatars: boolean;
   overview: {
     activeParticipants: ApiDashboardCountMetric;
-    conversations: ApiDashboardCountMetric;
-    recurringParticipants: ApiDashboardRateMetric;
-    completedSessions: ApiDashboardRateMetric;
+    engagedConversations: ApiDashboardCountMetric;
+    returningParticipants: ApiDashboardRateMetric;
+    directAccessActivation: ApiDashboardRateMetric;
+  };
+  byOrigin: Array<{
+    origin: ApiDashboardOrigin;
+    activeParticipants: number;
+    engagedConversations: number;
+    returningParticipants: ApiDashboardSimpleRate;
+    conversationsPerParticipant: number | null;
+  }>;
+  trend: {
+    granularity: "day" | "week";
+    points: Array<{
+      date: string;
+      dateTo: string;
+      engagedConversations: number;
+      participants: number;
+    }>;
+  };
+  interaction: {
+    conversationMix: ApiDashboardSimpleRate;
     medianVoiceDurationSeconds: number | null;
     medianParticipantTurns: number | null;
   };
-  trend: Array<{
-    date: string;
-    conversations: number;
-    participants: number;
-  }>;
+  voiceHealth: { errors: ApiDashboardRateMetric };
   attention: {
     total: number;
-    neverUsedAccesses: ApiDashboardAttentionGroup;
+    unusedDirectAccesses: ApiDashboardAttentionGroup;
     inactiveParticipants: ApiDashboardAttentionGroup;
-    erroredSessions: ApiDashboardAttentionGroup;
-    failedAvatars: ApiDashboardAttentionGroup;
+    interruptedInteractions: ApiDashboardAttentionGroup;
+    unavailableAvatars: ApiDashboardAttentionGroup;
   };
   avatars: Array<{
     avatarId: string;
     avatarName: string;
+    status: "draft" | "active" | "disabled";
+    health: "available" | "unavailable" | "disabled" | "draft" | "syncing" | "pending";
     activeParticipants: number;
-    conversations: number;
-    recurringRate: number | null;
-    medianVoiceDurationSeconds: number | null;
+    engagedConversations: number;
+    returningParticipants: ApiDashboardSimpleRate;
+    directAccessActivation: ApiDashboardSimpleRate;
     lastActivityAt: string | null;
-    attentionCount: number;
   }>;
   recentActivity: Array<{
     conversationId: string;
     avatarId: string;
     avatarName: string;
     participantKey: string;
+    participantName: string | null;
     participantEmail: string;
+    origin: Exclude<ApiDashboardOrigin, "all">;
     mode: "text" | "voice";
-    status: "active" | "ended";
+    title: string | null;
     occurredAt: string;
   }>;
+  methodology: {
+    activityDefinition: "participant_message_or_activated_voice";
+    identity: "normalized_email";
+    activationWindowDays: number;
+    inactivityDays: number;
+    disclaimer: string;
+  };
 };
 
-export function getCreatorDashboardSummary(options: { from?: string; to?: string } = {}) {
+export function getCreatorDashboardSummary(
+  options: {
+    days?: ApiDashboardDays;
+    timeZone?: string;
+    signal?: AbortSignal;
+  } = {}
+) {
   const query = new URLSearchParams();
-  if (options.from) query.set("from", options.from);
-  if (options.to) query.set("to", options.to);
-  const suffix = query.size > 0 ? `?${query}` : "";
-  return apiRequest<ApiCreatorDashboardSummary>(`/dashboard/creator-summary${suffix}`);
+  query.set("days", String(options.days ?? 30));
+  query.set("timeZone", options.timeZone ?? "UTC");
+  return apiRequest<ApiCreatorDashboardSummary>(
+    `/dashboard/creator-summary?${query}`,
+    options.signal ? { signal: options.signal } : {}
+  );
 }

@@ -1,7 +1,7 @@
 import { Hono, type Context } from "hono";
 import { NotFoundError } from "@yuni/domain";
-import { notFoundError, unauthorizedError, validationError } from "../../utils/errors";
-import { getSessionToken, verifySessionToken } from "../auth/session";
+import { notFoundError, validationError } from "../../utils/errors";
+import type { CreatorSessionEnv } from "../auth/middleware";
 import {
   createAvatarActivityService,
   InvalidActivityCursorError,
@@ -10,22 +10,16 @@ import {
 
 export type AvatarActivityControllerDependencies = AvatarActivityServiceDependencies;
 
-async function getCurrentSession(context: Context) {
-  const token = getSessionToken(context);
-  return token ? verifySessionToken(token) : null;
-}
-
 export function createAvatarActivityController(dependencies: AvatarActivityControllerDependencies) {
-  const activity = new Hono();
+  const activity = new Hono<CreatorSessionEnv>();
   const service = createAvatarActivityService(dependencies);
 
   activity.get("/avatars/:avatarId/activity/participants", async (context) => {
-    const session = await getCurrentSession(context);
-    if (!session) return context.json(unauthorizedError(), 401);
+    const currentUser = context.get("currentUser");
 
     try {
       return context.json({
-        participants: await service.listParticipants(session.userId, context.req.param("avatarId")),
+        participants: await service.listParticipants(currentUser.id, context.req.param("avatarId")),
       });
     } catch (error) {
       return handleActivityError(context, error);
@@ -33,8 +27,7 @@ export function createAvatarActivityController(dependencies: AvatarActivityContr
   });
 
   activity.get("/avatars/:avatarId/activity/participants/:participantKey/conversations", async (context) => {
-    const session = await getCurrentSession(context);
-    if (!session) return context.json(unauthorizedError(), 401);
+    const currentUser = context.get("currentUser");
 
     const parsedQuery = parseConversationsQuery(context.req.query("limit"), context.req.query("cursor"));
     if (!parsedQuery.ok) {
@@ -44,7 +37,7 @@ export function createAvatarActivityController(dependencies: AvatarActivityContr
     try {
       return context.json(
         await service.listConversations(
-          session.userId,
+          currentUser.id,
           context.req.param("avatarId"),
           context.req.param("participantKey"),
           parsedQuery.value
@@ -56,13 +49,12 @@ export function createAvatarActivityController(dependencies: AvatarActivityContr
   });
 
   activity.get("/avatars/:avatarId/activity/conversations/:conversationId", async (context) => {
-    const session = await getCurrentSession(context);
-    if (!session) return context.json(unauthorizedError(), 401);
+    const currentUser = context.get("currentUser");
 
     try {
       return context.json({
         conversation: await service.getConversation(
-          session.userId,
+          currentUser.id,
           context.req.param("avatarId"),
           context.req.param("conversationId")
         ),

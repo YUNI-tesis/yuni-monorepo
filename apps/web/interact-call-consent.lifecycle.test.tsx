@@ -12,6 +12,7 @@ let render: typeof import("@testing-library/react").render;
 let screen: typeof import("@testing-library/react").screen;
 
 const avatarApiMocks = vi.hoisted(() => ({
+  confirmVoiceSessionStarted: vi.fn(),
   getAvatarInteractionContext: vi.fn(),
   getConversation: vi.fn(),
   listAvatarConversations: vi.fn(),

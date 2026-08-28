@@ -328,6 +328,189 @@
   }
 }
 
+@media (max-width: 520px) {
+  .compactOnMobile {
+    grid-template-columns: 58px minmax(0, 1fr) auto auto;
+    grid-template-rows: auto auto;
+    align-items: center;
+    column-gap: var(--yuni-space-2);
+    row-gap: 3px;
+    min-height: 80px;
+    overflow: visible;
+    border-width: 0 0 1px;
+    border-radius: 0;
+    padding: 10px var(--yuni-space-1);
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .compactOnMobile:not(:has(.menu)) {
+    grid-template-columns: 58px minmax(0, 1fr) auto;
+  }
+
+  .compactOnMobile::before {
+    display: none;
+  }
+
+  .compactOnMobile:hover,
+  .compactOnMobile:focus-within {
+    border-color: var(--yuni-color-border);
+    background: var(--yuni-color-surface-soft);
+    box-shadow: none;
+  }
+
+  .compactOnMobile:focus-within {
+    z-index: calc(var(--yuni-z-dropdown) + 1);
+  }
+
+  .compactOnMobile .media {
+    display: contents;
+  }
+
+  .compactOnMobile .media::after {
+    display: none;
+  }
+
+  .compactOnMobile .artwork {
+    grid-column: 1;
+    grid-row: 1 / 3;
+    align-self: center;
+    width: 58px;
+    height: 58px;
+    border: 1px solid var(--yuni-color-border);
+    border-radius: 50%;
+  }
+
+  .compactOnMobile .fallback::before,
+  .compactOnMobile .fallback::after {
+    display: none;
+  }
+
+  .compactOnMobile .monogram {
+    font-size: 1.25rem;
+    letter-spacing: -0.04em;
+    text-shadow: none;
+  }
+
+  .compactOnMobile .identity {
+    position: static;
+    grid-column: 2;
+    grid-row: 1;
+    align-self: end;
+    gap: 2px;
+    pointer-events: none;
+  }
+
+  .compactOnMobile:not(:has(.status.danger)) .identity {
+    grid-row: 1 / 3;
+    align-self: center;
+  }
+
+  .compactOnMobile .title {
+    display: block;
+    overflow: hidden;
+    font-size: var(--yuni-font-md);
+    line-height: 1.25;
+    text-overflow: ellipsis;
+    text-wrap: nowrap;
+    white-space: nowrap;
+  }
+
+  .compactOnMobile .description {
+    display: block;
+    overflow: hidden;
+    color: var(--yuni-color-text-muted);
+    font-size: var(--yuni-font-sm);
+    line-height: 1.3;
+    opacity: 1;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .compactOnMobile .metadata {
+    display: none;
+  }
+
+  .compactOnMobile .status {
+    display: none;
+    position: static;
+    grid-column: 2;
+    grid-row: 2;
+    align-self: start;
+    max-width: 100%;
+    min-height: 0;
+    overflow: hidden;
+    border: 0;
+    padding: 0;
+    background: transparent;
+    color: var(--yuni-color-text-muted);
+    font-size: 0.7rem;
+    font-weight: 750;
+    line-height: 1.25;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .compactOnMobile .status.danger {
+    display: inline-flex;
+  }
+
+  .compactOnMobile .statusDot {
+    width: 6px;
+    height: 6px;
+    box-shadow: none;
+  }
+
+  .compactOnMobile .menu {
+    position: relative;
+    top: auto;
+    right: auto;
+    grid-column: 3;
+    grid-row: 1 / 3;
+    align-self: center;
+  }
+
+  .compactOnMobile .menu :global(.yuni-dropdown__summary--compact) {
+    border-color: transparent;
+    background: transparent;
+  }
+
+  .compactOnMobile .footer {
+    grid-column: 4;
+    grid-row: 1 / 3;
+    align-self: center;
+    border: 0;
+    padding: 0;
+    background: transparent;
+  }
+
+  .compactOnMobile:not(:has(.menu)) .footer {
+    grid-column: 3;
+  }
+
+  .compactOnMobile .primaryAction {
+    position: relative;
+    width: 44px;
+    min-height: 44px;
+    border-radius: 50%;
+    padding: 0;
+  }
+
+  .compactOnMobile .primaryAction > span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .compactOnMobile .footerNotice {
+    display: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .card,
   .image,

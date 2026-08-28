@@ -2,6 +2,7 @@ import {
   EndGroupVoiceSessionInputSchema,
   GroupProviderEventInputSchema,
   GroupVoiceParticipantFailureInputSchema,
+  GroupVoiceParticipantStartedInputSchema,
   GroupVoiceTurnInputSchema,
   InterruptGroupVoiceSessionInputSchema,
   LiveAvatarConfigSchema,
@@ -11,6 +12,7 @@ import {
   type EndGroupVoiceSessionInput,
   type GroupProviderEventInput,
   type GroupVoiceParticipantFailureInput,
+  type GroupVoiceParticipantStartedInput,
   type GroupVoiceTurnInput,
   type InterruptGroupVoiceSessionInput,
   type UpdateAvatarGroupInput,
@@ -311,6 +313,25 @@ export function createAvatarGroupsService(dependencies: AvatarGroupsServiceDepen
         throw new GroupVoiceSessionUnavailableError("El participante ya se está reconectando");
       }
       return initializeParticipant(session, claimed);
+    },
+
+    async confirmParticipantStarted(
+      userId: string,
+      sessionId: string,
+      avatarId: string,
+      input: GroupVoiceParticipantStartedInput
+    ) {
+      const parsed = GroupVoiceParticipantStartedInputSchema.parse(input);
+      const session = await requireSession(userId, sessionId);
+      assertLive(session);
+      const confirmed = await dependencies.repository.confirmParticipantStarted(
+        userId,
+        sessionId,
+        avatarId,
+        parsed.participantAttemptId
+      );
+      if (!confirmed) throw new NotFoundError("Intento de participante no encontrado");
+      return { ok: true as const };
     },
 
     async scribeToken(userId: string, sessionId: string) {

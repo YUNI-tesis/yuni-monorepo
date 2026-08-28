@@ -49,5 +49,6 @@ describe("GroupCard", () => {
     expect(html).toContain("Juana Balance · Juan Gutiérrez");
     expect(html).toContain('data-count="2"');
     expect(html).toContain('aria-label="Más acciones para Equipo docente"');
+    expect(html).not.toContain("data-mobile-layout");
   });
 });

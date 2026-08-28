@@ -27,7 +27,7 @@ export type AccessGrantsRepository = {
     ownerId: string,
     avatarAgentId: string,
     accessGrantId: string
-  ): Promise<{ outcome: "deleted" | "revoked"; accessGrant: AccessGrantRecord }>;
+  ): Promise<{ outcome: "revoked"; accessGrant: AccessGrantRecord }>;
   linkActiveForUser(userId: string, participantEmail: string): Promise<unknown>;
 };
 

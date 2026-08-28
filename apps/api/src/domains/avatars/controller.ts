@@ -1,23 +1,17 @@
-import { Hono, type Context } from "hono";
+import { Hono } from "hono";
 import {
   CreateAvatarAgentInputSchema,
   AvatarListScopeSchema,
   NotFoundError,
   UpdateAvatarAgentInputSchema,
 } from "@yuni/domain";
-import {
-  badGatewayError,
-  notFoundError,
-  serviceUnavailableError,
-  unauthorizedError,
-  validationError,
-} from "../../utils/errors";
+import { badGatewayError, notFoundError, serviceUnavailableError, validationError } from "../../utils/errors";
 import {
   ElevenLabsProviderError,
   ElevenLabsProviderTimeoutError,
   ElevenLabsProviderUnavailableError,
 } from "@yuni/voice";
-import { getSessionToken, verifySessionToken } from "../auth/session";
+import type { CreatorSessionEnv } from "../auth/middleware";
 import { AvatarVoiceNotFoundError, createAvatarsService, type AvatarsServiceDependencies } from "./service";
 
 export type AvatarsControllerDependencies = AvatarsServiceDependencies;
@@ -28,26 +22,12 @@ function isEmptyObject(value: unknown) {
   );
 }
 
-async function getCurrentSession(context: Context) {
-  const token = getSessionToken(context);
-
-  if (!token) {
-    return null;
-  }
-
-  return verifySessionToken(token);
-}
-
 export function createAvatarsController(dependencies: AvatarsControllerDependencies) {
-  const avatars = new Hono();
+  const avatars = new Hono<CreatorSessionEnv>();
   const service = createAvatarsService(dependencies);
 
   avatars.get("/avatars", async (context) => {
-    const session = await getCurrentSession(context);
-
-    if (!session) {
-      return context.json(unauthorizedError(), 401);
-    }
+    const currentUser = context.get("currentUser");
 
     const parsedScope = AvatarListScopeSchema.safeParse(context.req.query("scope") ?? "all");
 
@@ -56,16 +36,12 @@ export function createAvatarsController(dependencies: AvatarsControllerDependenc
     }
 
     return context.json({
-      avatars: await service.listAvatars(session.userId, parsedScope.data),
+      avatars: await service.listAvatars(currentUser.id, parsedScope.data),
     });
   });
 
   avatars.post("/avatars", async (context) => {
-    const session = await getCurrentSession(context);
-
-    if (!session) {
-      return context.json(unauthorizedError(), 401);
-    }
+    const currentUser = context.get("currentUser");
 
     const body: unknown = await context.req.json().catch(() => null);
     const parsed = CreateAvatarAgentInputSchema.safeParse(body);
@@ -75,7 +51,7 @@ export function createAvatarsController(dependencies: AvatarsControllerDependenc
     }
 
     try {
-      return context.json({ avatar: await service.createAvatar(session.userId, parsed.data) }, 201);
+      return context.json({ avatar: await service.createAvatar(currentUser.id, parsed.data) }, 201);
     } catch (error) {
       if (error instanceof AvatarVoiceNotFoundError) {
         return context.json(
@@ -104,14 +80,10 @@ export function createAvatarsController(dependencies: AvatarsControllerDependenc
   });
 
   avatars.get("/avatars/:avatarId", async (context) => {
-    const session = await getCurrentSession(context);
-
-    if (!session) {
-      return context.json(unauthorizedError(), 401);
-    }
+    const currentUser = context.get("currentUser");
 
     try {
-      const avatar = await service.getAvatar(session.userId, context.req.param("avatarId"));
+      const avatar = await service.getAvatar(currentUser.id, context.req.param("avatarId"));
 
       return context.json({ avatar });
     } catch (error) {
@@ -124,15 +96,11 @@ export function createAvatarsController(dependencies: AvatarsControllerDependenc
   });
 
   avatars.get("/avatars/:avatarId/interaction-context", async (context) => {
-    const session = await getCurrentSession(context);
-
-    if (!session) {
-      return context.json(unauthorizedError(), 401);
-    }
+    const currentUser = context.get("currentUser");
 
     try {
       const interactionContext = await service.getInteractionContext(
-        session.userId,
+        currentUser.id,
         context.req.param("avatarId")
       );
 
@@ -147,11 +115,7 @@ export function createAvatarsController(dependencies: AvatarsControllerDependenc
   });
 
   avatars.patch("/avatars/:avatarId", async (context) => {
-    const session = await getCurrentSession(context);
-
-    if (!session) {
-      return context.json(unauthorizedError(), 401);
-    }
+    const currentUser = context.get("currentUser");
 
     const body: unknown = await context.req.json().catch(() => null);
 
@@ -166,7 +130,7 @@ export function createAvatarsController(dependencies: AvatarsControllerDependenc
     }
 
     try {
-      const avatar = await service.updateAvatar(session.userId, context.req.param("avatarId"), parsed.data);
+      const avatar = await service.updateAvatar(currentUser.id, context.req.param("avatarId"), parsed.data);
 
       return context.json({ avatar });
     } catch (error) {
@@ -201,14 +165,10 @@ export function createAvatarsController(dependencies: AvatarsControllerDependenc
   });
 
   avatars.delete("/avatars/:avatarId", async (context) => {
-    const session = await getCurrentSession(context);
-
-    if (!session) {
-      return context.json(unauthorizedError(), 401);
-    }
+    const currentUser = context.get("currentUser");
 
     try {
-      await service.deleteAvatar(session.userId, context.req.param("avatarId"));
+      await service.deleteAvatar(currentUser.id, context.req.param("avatarId"));
 
       return context.json({ ok: true });
     } catch (error) {

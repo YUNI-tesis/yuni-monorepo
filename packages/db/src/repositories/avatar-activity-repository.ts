@@ -1,4 +1,4 @@
-import type { Prisma, PrismaClient } from "@prisma/client";
+import { Prisma, type PrismaClient } from "@prisma/client";
 import { OwnershipError } from "@yuni/domain";
 
 type Db = PrismaClient | Prisma.TransactionClient;
@@ -19,6 +19,7 @@ export function createAvatarActivityRepository(db: Db) {
       const [grants, activity] = await Promise.all([
         db.accessGrant.findMany({
           where: { ownerId, avatarAgentId },
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
           select: {
             participantEmail: true,
             participantUserId: true,
@@ -32,21 +33,44 @@ export function createAvatarActivityRepository(db: Db) {
           where: {
             avatarAgentId,
             participantEmail: { not: null },
-            NOT: { participantEmail: avatar.owner.email },
-            OR: [{ visibility: "public" }, { visibility: "private", accessGrantId: { not: null } }],
+            OR: [
+              { visibility: "public" },
+              { visibility: "private", accessGrant: { ownerId, avatarAgentId } },
+            ],
           },
           _count: { id: true },
           _max: { createdAt: true, lastMessageAt: true },
         }),
       ]);
 
+      const ownerEmail = normalizeParticipantEmail(avatar.owner.email);
       const emails = new Set<string>();
-      grants.forEach((grant) => emails.add(grant.participantEmail));
-      activity.forEach((item) => item.participantEmail && emails.add(item.participantEmail));
+      const rawEmails = new Set<string>();
+      const grantsByEmail = new Map<string, (typeof grants)[number]>();
+      for (const grant of grants) {
+        const email = normalizeParticipantEmail(grant.participantEmail);
+        if (!email || email === ownerEmail) continue;
+        emails.add(email);
+        rawEmails.add(grant.participantEmail);
+        const current = grantsByEmail.get(email);
+        if (!current || preferGrant(grant, current)) grantsByEmail.set(email, grant);
+      }
+
+      const activityByEmail = new Map<string, typeof activity>();
+      for (const record of activity) {
+        if (!record.participantEmail) continue;
+        const email = normalizeParticipantEmail(record.participantEmail);
+        if (!email || email === ownerEmail) continue;
+        emails.add(email);
+        rawEmails.add(record.participantEmail);
+        const records = activityByEmail.get(email);
+        if (records) records.push(record);
+        else activityByEmail.set(email, [record]);
+      }
       const linkedPublicSessions = await db.publicSession.findMany({
         where: {
           avatarAgentId,
-          participantEmail: { in: [...emails] },
+          participantEmail: { in: [...rawEmails] },
           participantUserId: { not: null },
         },
         select: {
@@ -57,14 +81,19 @@ export function createAvatarActivityRepository(db: Db) {
       const publicNames = new Map(
         linkedPublicSessions.flatMap((session) =>
           session.participantEmail
-            ? [[session.participantEmail, session.participantUser?.name ?? null] as const]
+            ? [
+                [
+                  normalizeParticipantEmail(session.participantEmail),
+                  session.participantUser?.name ?? null,
+                ] as const,
+              ]
             : []
         )
       );
 
       return [...emails].map((participantEmail) => {
-        const grant = grants.find((item) => item.participantEmail === participantEmail) ?? null;
-        const records = activity.filter((item) => item.participantEmail === participantEmail);
+        const grant = grantsByEmail.get(participantEmail) ?? null;
+        const records = activityByEmail.get(participantEmail) ?? [];
         const dates = records
           .flatMap((item) => [item._max.createdAt, item._max.lastMessageAt])
           .filter((value): value is Date => Boolean(value));
@@ -94,11 +123,15 @@ export function createAvatarActivityRepository(db: Db) {
       options: { limit: number; cursor?: string }
     ) {
       const avatar = await ensureOwnedAvatar(ownerId, avatarAgentId);
-      if (participantEmail === avatar.owner.email) throw new OwnershipError();
-      const participantExists = await hasParticipant(db, ownerId, avatarAgentId, participantEmail);
+      const normalizedEmail = normalizeParticipantEmail(participantEmail);
+      if (!normalizedEmail || normalizedEmail === normalizeParticipantEmail(avatar.owner.email)) {
+        throw new OwnershipError();
+      }
+      const participantExists = await hasParticipant(db, ownerId, avatarAgentId, normalizedEmail);
       if (!participantExists) throw new OwnershipError();
 
-      const where = participantConversationWhere(avatarAgentId, participantEmail);
+      const emailVariants = await listConversationEmailVariants(db, ownerId, avatarAgentId, normalizedEmail);
+      const where = participantConversationWhere(avatarAgentId, emailVariants, ownerId);
       if (options.cursor) {
         const cursor = await db.conversation.findFirst({
           where: { id: options.cursor, ...where },
@@ -129,7 +162,7 @@ export function createAvatarActivityRepository(db: Db) {
 
     async findConversation(ownerId: string, avatarAgentId: string, conversationId: string) {
       const avatar = await ensureOwnedAvatar(ownerId, avatarAgentId);
-      return db.conversation.findFirst({
+      const conversation = await db.conversation.findFirst({
         where: {
           id: conversationId,
           avatarAgentId,
@@ -154,28 +187,90 @@ export function createAvatarActivityRepository(db: Db) {
           },
         },
       });
+      if (
+        !conversation?.participantEmail ||
+        normalizeParticipantEmail(conversation.participantEmail) ===
+          normalizeParticipantEmail(avatar.owner.email)
+      ) {
+        return null;
+      }
+      return conversation;
     },
   };
 }
 
-function participantConversationWhere(avatarAgentId: string, participantEmail: string) {
+function participantConversationWhere(avatarAgentId: string, participantEmails: string[], ownerId: string) {
   return {
     avatarAgentId,
-    participantEmail,
-    OR: [{ visibility: "public" as const }, { visibility: "private" as const, accessGrantId: { not: null } }],
+    participantEmail: { in: participantEmails },
+    OR: [
+      { visibility: "public" as const },
+      { visibility: "private" as const, accessGrant: { ownerId, avatarAgentId } },
+    ],
   };
 }
 
 async function hasParticipant(db: Db, ownerId: string, avatarAgentId: string, participantEmail: string) {
-  const [grant, conversation] = await Promise.all([
-    db.accessGrant.findFirst({
-      where: { ownerId, avatarAgentId, participantEmail },
-      select: { id: true },
-    }),
-    db.conversation.findFirst({
-      where: participantConversationWhere(avatarAgentId, participantEmail),
-      select: { id: true },
-    }),
+  const [grants, conversations] = await Promise.all([
+    db.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+      SELECT access_grant."id"
+      FROM "AccessGrant" AS access_grant
+      WHERE access_grant."ownerId" = ${ownerId}
+        AND access_grant."avatarAgentId" = ${avatarAgentId}
+        AND LOWER(BTRIM(access_grant."participantEmail")) = ${participantEmail}
+      LIMIT 1
+    `),
+    db.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+      SELECT conversation."id"
+      FROM "Conversation" AS conversation
+      WHERE conversation."avatarAgentId" = ${avatarAgentId}
+        AND LOWER(BTRIM(conversation."participantEmail")) = ${participantEmail}
+        AND (
+          conversation."visibility" = 'public'::"ConversationVisibility"
+          OR EXISTS (
+            SELECT 1
+            FROM "AccessGrant" AS access_grant
+            WHERE access_grant."id" = conversation."accessGrantId"
+              AND access_grant."ownerId" = ${ownerId}
+              AND access_grant."avatarAgentId" = ${avatarAgentId}
+          )
+        )
+      LIMIT 1
+    `),
   ]);
-  return Boolean(grant || conversation);
+  return Boolean(grants[0] || conversations[0]);
+}
+
+async function listConversationEmailVariants(
+  db: Db,
+  ownerId: string,
+  avatarAgentId: string,
+  participantEmail: string
+) {
+  const rows = await db.$queryRaw<Array<{ participantEmail: string }>>(Prisma.sql`
+    SELECT DISTINCT conversation."participantEmail" AS "participantEmail"
+    FROM "Conversation" AS conversation
+    WHERE conversation."avatarAgentId" = ${avatarAgentId}
+      AND LOWER(BTRIM(conversation."participantEmail")) = ${participantEmail}
+      AND (
+        conversation."visibility" = 'public'::"ConversationVisibility"
+        OR EXISTS (
+          SELECT 1
+          FROM "AccessGrant" AS access_grant
+          WHERE access_grant."id" = conversation."accessGrantId"
+            AND access_grant."ownerId" = ${ownerId}
+            AND access_grant."avatarAgentId" = ${avatarAgentId}
+        )
+      )
+  `);
+  return rows.map((row) => row.participantEmail);
+}
+
+function normalizeParticipantEmail(value: string) {
+  return value.trim().toLowerCase();
+}
+
+function preferGrant<T extends { status: "active" | "revoked"; createdAt: Date }>(candidate: T, current: T) {
+  if (candidate.status !== current.status) return candidate.status === "active";
+  return candidate.createdAt > current.createdAt;
 }
