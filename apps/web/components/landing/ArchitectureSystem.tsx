@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "motion/react";
-import React, { type CSSProperties, useState } from "react";
+import React, { type CSSProperties, useRef, useState } from "react";
 import styles from "./ArchitectureSystem.module.css";
 
 type ArchitectureNodeId = "user" | "web" | "core" | "data" | "orchestrator" | "live";
@@ -400,7 +400,9 @@ function ArchitectureIcon({ name }: { name: ArchitectureIconName }) {
 export function ArchitectureSystem({ reducedMotion }: { reducedMotion: boolean }) {
   const [hoveredNodeId, setHoveredNodeId] = useState<ArchitectureNodeId | null>(null);
   const [focusedNodeId, setFocusedNodeId] = useState<ArchitectureNodeId | null>(null);
-  const activeNodeId = hoveredNodeId ?? focusedNodeId;
+  const [selectedNodeId, setSelectedNodeId] = useState<ArchitectureNodeId | null>(null);
+  const lastPointerTypeRef = useRef<string | null>(null);
+  const activeNodeId = hoveredNodeId ?? focusedNodeId ?? selectedNodeId;
   const activeNode = architectureNodes.find((node) => node.id === activeNodeId);
   const connectedNodeIds = activeNodeId
     ? new Set(
@@ -558,16 +560,38 @@ export function ArchitectureSystem({ reducedMotion }: { reducedMotion: boolean }
                   type="button"
                   className={`${styles.node} ${node.featured ? styles.featuredNode : ""} ${node.compact ? styles.compactNode : ""} ${node.wide ? styles.wideNode : ""}`}
                   aria-controls="architecture-system-readout"
-                  aria-expanded={activeNodeId === node.id}
+                  aria-pressed={selectedNodeId === node.id}
                   data-active={activeNodeId === node.id ? "true" : undefined}
                   data-muted={
                     connectedNodeIds !== null && !connectedNodeIds.has(node.id) ? "true" : undefined
                   }
-                  onMouseDown={(event) => event.preventDefault()}
-                  onPointerEnter={() => setHoveredNodeId(node.id)}
-                  onPointerLeave={() =>
-                    setHoveredNodeId((currentNodeId) => (currentNodeId === node.id ? null : currentNodeId))
-                  }
+                  onPointerDown={(event) => {
+                    lastPointerTypeRef.current = event.pointerType;
+                    if (event.pointerType === "mouse") event.preventDefault();
+                  }}
+                  onPointerEnter={(event) => {
+                    if (event.pointerType === "mouse") setHoveredNodeId(node.id);
+                  }}
+                  onPointerLeave={(event) => {
+                    if (event.pointerType !== "mouse") return;
+                    setHoveredNodeId((currentNodeId) => (currentNodeId === node.id ? null : currentNodeId));
+                  }}
+                  onPointerCancel={() => {
+                    lastPointerTypeRef.current = null;
+                  }}
+                  onClick={(event) => {
+                    const pointerType = lastPointerTypeRef.current;
+                    const keyboardOrAssistiveClick = event.detail === 0;
+                    lastPointerTypeRef.current = null;
+
+                    if (!keyboardOrAssistiveClick && pointerType === "mouse") return;
+
+                    setSelectedNodeId((currentNodeId) => (currentNodeId === node.id ? null : node.id));
+                    if (pointerType === "touch" || pointerType === "pen") event.currentTarget.blur();
+                  }}
+                  onKeyDown={() => {
+                    lastPointerTypeRef.current = null;
+                  }}
                   onFocus={() => setFocusedNodeId(node.id)}
                   onBlur={() =>
                     setFocusedNodeId((currentNodeId) => (currentNodeId === node.id ? null : currentNodeId))
