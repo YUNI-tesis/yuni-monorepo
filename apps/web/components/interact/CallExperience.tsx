@@ -68,10 +68,10 @@ export function CallExperienceShell({
   footer?: ReactNode;
 }) {
   return (
-    <div className={styles.focusLayout}>
+    <div className={styles.focusLayout} data-history-open={isHistoryOpen ? "true" : "false"}>
       <header className={styles.focusTopbar}>
-        <Button variant="ghost" icon={<YuniIcon name="arrowLeft" />} onClick={onBack}>
-          {backLabel}
+        <Button variant="ghost" icon={<YuniIcon name="arrowLeft" />} aria-label={backLabel} onClick={onBack}>
+          <span className={styles.topbarControlLabel}>{backLabel}</span>
         </Button>
 
         <div className={styles.focusTitle}>

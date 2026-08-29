@@ -152,7 +152,6 @@ export function GroupInteractCall({ groupId }: { groupId: string }) {
   const [audibleOwnerId, setAudibleOwnerId] = useState<string | null>(null);
   const [turnPhase, setTurnPhase] = useState<TurnPhase>("listening");
   const [isMuted, setIsMuted] = useState(false);
-  const [partialTranscript, setPartialTranscript] = useState("");
   const [, setTranscript] = useState<TranscriptEntry[]>([]);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [historyState, setHistoryState] = useState<GroupConversationHistoryState>(initialHistoryState);
@@ -506,7 +505,6 @@ export function GroupInteractCall({ groupId }: { groupId: string }) {
         pendingDirectiveRef.current = null;
         setTurnOwnerId((current) => (current === input.avatarId ? null : current));
       }
-      setPartialTranscript("");
       setCallStatus("degraded");
       setParticipants((current) => {
         const next: LocalParticipant[] = current.map((item) =>
@@ -683,7 +681,6 @@ export function GroupInteractCall({ groupId }: { groupId: string }) {
       applyAudioGate(null);
       setTurnOwnerId(directive.avatarId);
       setServerPhase("queued");
-      setPartialTranscript("");
       turnLedgerRef.current.set(directive.turnId, {
         turnId: directive.turnId,
         avatarId: directive.avatarId,
@@ -826,7 +823,6 @@ export function GroupInteractCall({ groupId }: { groupId: string }) {
       const callEpoch = callEpochRef.current;
       setServerPhase("deliberating");
       applyAudioGate(null);
-      setPartialTranscript("");
       orchestrationQueueRef.current = orchestrationQueueRef.current
         .then(async () => {
           const result = await submitGroupTurn(sessionId, input);
@@ -920,23 +916,9 @@ export function GroupInteractCall({ groupId }: { groupId: string }) {
         channelCount: 1,
       },
     });
-    const onPartialTranscript = (event: { text: string }) => {
-      if (callEpochRef.current !== callEpoch) return;
-      if (
-        floorAuthorizationRef.current !== null ||
-        turnPhaseRef.current !== "listening" ||
-        participantFailureDeliveriesRef.current.size > 0 ||
-        participantRetryInFlightRef.current.size > 0
-      ) {
-        setPartialTranscript("");
-        return;
-      }
-      setPartialTranscript(event.text);
-    };
     const onCommittedTranscript = (event: { text: string }) => {
       if (callEpochRef.current !== callEpoch) return;
       const content = event.text.trim();
-      setPartialTranscript("");
       if (
         !content ||
         floorAuthorizationRef.current !== null ||
@@ -954,11 +936,9 @@ export function GroupInteractCall({ groupId }: { groupId: string }) {
       setCallError(event.error || "La transcripción en vivo se interrumpió.");
       if (scribeRef.current === connection) closeScribe();
     };
-    connection.on(RealtimeEvents.PARTIAL_TRANSCRIPT, onPartialTranscript);
     connection.on(RealtimeEvents.COMMITTED_TRANSCRIPT, onCommittedTranscript);
     connection.on(RealtimeEvents.ERROR, onError);
     scribeCleanupRef.current = () => {
-      connection.off(RealtimeEvents.PARTIAL_TRANSCRIPT, onPartialTranscript);
       connection.off(RealtimeEvents.COMMITTED_TRANSCRIPT, onCommittedTranscript);
       connection.off(RealtimeEvents.ERROR, onError);
     };
@@ -1110,7 +1090,6 @@ export function GroupInteractCall({ groupId }: { groupId: string }) {
         applyAudioGate(avatarId);
         setActiveSpeakerId(avatarId);
         setServerPhase("speaking");
-        setPartialTranscript("");
         reportProviderEvent({
           sourceEventId,
           turnId: authorization.turnId,
@@ -1681,7 +1660,6 @@ export function GroupInteractCall({ groupId }: { groupId: string }) {
     } else {
       closeScribe();
       setIsMuted(true);
-      setPartialTranscript("");
     }
   }
 
@@ -1838,7 +1816,6 @@ export function GroupInteractCall({ groupId }: { groupId: string }) {
   const canStart =
     availableMemberIds.size >= 2 &&
     (callStatus === "idle" || callStatus === "ended" || callStatus === "error");
-  const turnOwnerName = displayedParticipants.find((item) => item.avatar.id === turnOwnerId)?.avatar.name;
 
   return (
     <CallExperienceShell
@@ -1857,11 +1834,12 @@ export function GroupInteractCall({ groupId }: { groupId: string }) {
         <Button
           variant="ghost"
           icon={<YuniIcon name="history" />}
+          aria-label="Historial"
           aria-controls="call-history-panel"
           aria-expanded={isHistoryOpen}
           onClick={toggleHistory}
         >
-          Historial
+          <span className={styles.topbarControlLabel}>Historial</span>
         </Button>
       }
       historyContent={
@@ -1957,30 +1935,18 @@ export function GroupInteractCall({ groupId }: { groupId: string }) {
           </>
         }
         dock={
-          <>
-            {partialTranscript ? (
-              <p className={styles.liveCaption} aria-live="polite">
-                Vos: {partialTranscript}
-              </p>
-            ) : null}
-            {isLive ? (
-              <p className={styles.turnIndicator} aria-live="polite">
-                {turnStatusLabel(turnPhase, turnOwnerName, isMuted)}
-              </p>
-            ) : null}
-            <InteractCallControls
-              status={callStatus}
-              isMuted={isMuted}
-              canStart={canStart}
-              isActive={isLive || callStatus === "starting"}
-              canToggleMute={canUserSpeak}
-              canInterrupt={false}
-              onStart={() => void requestGroupCallStart()}
-              onToggleMute={() => void toggleMute()}
-              onInterrupt={() => void interruptCurrentAvatar()}
-              onEnd={() => void endCall("user")}
-            />
-          </>
+          <InteractCallControls
+            status={callStatus}
+            isMuted={isMuted}
+            canStart={canStart}
+            isActive={isLive || callStatus === "starting"}
+            canToggleMute={canUserSpeak}
+            canInterrupt={false}
+            onStart={() => void requestGroupCallStart()}
+            onToggleMute={() => void toggleMute()}
+            onInterrupt={() => void interruptCurrentAvatar()}
+            onEnd={() => void endCall("user")}
+          />
         }
       />
     </CallExperienceShell>
@@ -2285,12 +2251,4 @@ function participantTurnLabel(input: {
   if (input.ownsTurn) return "Preparando respuesta";
   if (input.isLive && input.anotherAvatarHasTurn) return "Esperando turno";
   return input.isLive ? "Escuchando" : "Listo";
-}
-
-function turnStatusLabel(phase: TurnPhase, turnOwnerName: string | undefined, isMuted: boolean) {
-  if (phase === "speaking") return `${turnOwnerName ?? "El avatar"} está hablando · esperá a que termine`;
-  if (phase === "queued") return `${turnOwnerName ?? "El avatar"} está preparando su respuesta`;
-  if (phase === "deliberating") return "Analizando el pedido y consultando a los expertos…";
-  if (phase === "committing") return "Guardando la intervención…";
-  return isMuted ? "Tu turno · activá el micrófono para hablar" : "Tu turno · podés hablar";
 }
