@@ -12,25 +12,25 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
-    "@elevenlabs/client": "^1.20.0",
+    "@elevenlabs/client": "^1.23.0",
     "@fontsource-variable/manrope": "^5.3.0",
     "@fontsource-variable/syne": "^5.3.0",
     "@fontsource/audiowide": "^5.3.0",
-    "@heygen/liveavatar-web-sdk": "0.0.17",
+    "@heygen/liveavatar-web-sdk": "0.0.18",
     "@yuni/config": "workspace:*",
     "@yuni/ui": "workspace:*",
     "lenis": "^1.3.26",
-    "motion": "^13.1.0",
-    "next": "16.1.1",
+    "motion": "^13.1.1",
+    "next": "16.3.3",
     "ogl": "^1.0.11",
-    "react": "19.2.3",
-    "react-dom": "19.2.3"
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
   },
   "devDependencies": {
-    "@testing-library/react": "^16.3.2",
+    "@testing-library/react": "^16.3.3",
     "@types/jsdom": "^30.0.0",
-    "@types/react": "19.2.14",
-    "@types/react-dom": "19.2.3",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.5",
     "jsdom": "^26.1.0"
   }
 }

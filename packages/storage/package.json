@@ -15,8 +15,8 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.864.0",
-    "@aws-sdk/s3-request-presigner": "^3.864.0",
+    "@aws-sdk/client-s3": "^3.1120.0",
+    "@aws-sdk/s3-request-presigner": "^3.1120.0",
     "@yuni/config": "workspace:*",
     "@yuni/domain": "workspace:*",
     "@yuni/observability": "workspace:*"

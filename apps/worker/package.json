@@ -19,7 +19,7 @@
     "@yuni/observability": "workspace:*",
     "@yuni/storage": "workspace:*",
     "@yuni/voice": "workspace:*",
-    "tsx": "^4.21.0"
+    "tsx": "^4.23.12"
   },
   "devDependencies": {
     "@prisma/client": "^5.22.0"
