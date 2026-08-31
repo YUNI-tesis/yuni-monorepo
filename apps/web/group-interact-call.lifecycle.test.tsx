@@ -354,6 +354,31 @@ describe("GroupInteractCall lifecycle", () => {
     vi.useRealTimers();
   });
 
+  it("keeps the group header accessible without transcript or turn overlays", async () => {
+    const { container, unmount } = await renderActiveCall();
+    const historyButton = screen.getByRole("button", { name: "Historial" });
+
+    expect(screen.getByRole("button", { name: "Grupos" }).querySelector("svg")).toBeTruthy();
+    expect(historyButton.querySelector("svg")).toBeTruthy();
+    expect(historyButton.querySelector('[class*="topbarControlLabel"]')).toBeTruthy();
+    expect(container.querySelectorAll('[data-history-open="false"]')).toHaveLength(2);
+    expect(screen.queryByText(/^Tu turno · (podés hablar|activá el micrófono para hablar)$/)).toBeNull();
+
+    await act(async () => {
+      scribeMocks.connection?.emit("partial_transcript", { text: "Esto no se muestra" });
+      await flushAsyncWork();
+    });
+    expect(screen.queryByText(/^Vos: Esto no se muestra$/)).toBeNull();
+
+    await act(async () => {
+      fireEvent.click(historyButton);
+      await flushAsyncWork();
+    });
+    expect(container.querySelectorAll('[data-history-open="true"]')).toHaveLength(2);
+    expect(screen.getByRole("complementary", { name: "Historial" })).toBeTruthy();
+    unmount();
+  });
+
   it("runs the three independent liveness loops and removes them on unmount", async () => {
     const { container, unmount } = await renderActiveCall();
     const videos = [...container.querySelectorAll("video")];

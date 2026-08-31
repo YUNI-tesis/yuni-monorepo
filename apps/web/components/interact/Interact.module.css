@@ -94,8 +94,21 @@
 .stage {
   position: relative;
   display: grid;
+  height: calc(100dvh - 132px);
   min-width: 0;
   min-height: 0;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: var(--yuni-space-3);
+}
+
+.stage .participantGrid {
+  height: auto;
+  min-height: 0;
+}
+
+.stage .floatingDock {
+  position: static;
+  min-width: 0;
 }
 
 .participantGrid {
@@ -542,8 +555,7 @@
 .detailHeader span,
 .detailEmpty span,
 .panelState,
-.panelError span,
-.debugGrid span {
+.panelError span {
   color: var(--yuni-color-text-muted);
   line-height: 1.5;
 }
@@ -628,26 +640,6 @@
   gap: var(--yuni-space-3);
   border-color: rgba(255, 114, 114, 0.32);
   background: rgba(49, 14, 22, 0.52);
-}
-
-.debugPanel {
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 18px;
-  padding: var(--yuni-space-3) var(--yuni-space-4);
-  background: rgba(13, 17, 28, 0.82);
-}
-
-.debugPanel summary {
-  min-height: 44px;
-  cursor: pointer;
-  color: var(--yuni-color-text);
-  font-weight: 850;
-}
-
-.debugGrid {
-  display: grid;
-  gap: var(--yuni-space-2);
-  padding-top: var(--yuni-space-3);
 }
 
 .syncError {
@@ -741,6 +733,133 @@
 }
 
 @media (max-width: 560px) {
+  .focusLayout {
+    gap: var(--yuni-space-2);
+    padding: max(var(--yuni-space-2), env(safe-area-inset-top)) var(--yuni-space-2)
+      max(var(--yuni-space-2), env(safe-area-inset-bottom));
+  }
+
+  .focusLayout[data-history-open="false"] {
+    height: 100dvh;
+    min-height: 100dvh;
+    grid-template-rows: auto minmax(0, 1fr);
+    overflow: hidden;
+  }
+
+  .focusLayout .focusTopbar {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: var(--yuni-space-1);
+    border-radius: 14px;
+    padding: var(--yuni-space-1);
+  }
+
+  .focusLayout .focusTopbar > button,
+  .focusLayout .topbarActions button {
+    width: 44px;
+    min-width: 44px;
+    padding-right: 0;
+    padding-left: 0;
+  }
+
+  .focusLayout .topbarControlLabel {
+    display: none;
+  }
+
+  .focusLayout .focusTitle {
+    grid-row: 1;
+    grid-column: 2;
+    justify-items: center;
+    text-align: center;
+  }
+
+  .focusLayout .focusTitle > span,
+  .focusLayout .focusTitle p {
+    display: none;
+  }
+
+  .focusLayout .focusTitle h1 {
+    font-size: var(--yuni-font-md);
+  }
+
+  .focusLayout .topbarActions {
+    display: flex;
+    min-width: 0;
+    justify-content: flex-end;
+  }
+
+  .focusLayout[data-history-open="false"] .focusWorkspace {
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .focusLayout[data-history-open="false"] .stage {
+    height: 100%;
+  }
+
+  .stage .participantGrid,
+  .stage .participantGrid[data-count="2"] {
+    height: 100%;
+    min-height: 0;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: repeat(2, minmax(0, 1fr));
+    gap: var(--yuni-space-2);
+  }
+
+  .stage .participantGrid[data-count="1"] {
+    height: 100%;
+    min-height: 0;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  .stage .participantGrid[data-count="2"] {
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  .stage .participantGrid[data-count="3"] .participantTile:first-child {
+    grid-row: auto;
+    grid-column: 1 / -1;
+  }
+
+  .stage .participantGrid:not([data-count="1"]) .participantTile {
+    min-height: 0;
+  }
+
+  .stage .participantIdentity {
+    right: var(--yuni-space-3);
+    bottom: var(--yuni-space-3);
+    left: var(--yuni-space-3);
+    gap: var(--yuni-space-2);
+  }
+
+  .stage .participantIdentity strong {
+    font-size: var(--yuni-font-sm);
+  }
+
+  .stage .participantIdentity span {
+    padding: 4px 7px;
+  }
+
+  .stage .videoStatus {
+    top: var(--yuni-space-3);
+  }
+
+  .stage .floatingDock {
+    position: static;
+    margin-top: 0;
+    gap: var(--yuni-space-1);
+  }
+
+  .stage .callControls {
+    padding: 6px;
+  }
+
+  .stage .controlButton {
+    width: 48px;
+    height: 48px;
+    flex-basis: 48px;
+  }
+
   .focusTitle h1 {
     font-size: var(--yuni-font-lg);
   }
@@ -794,6 +913,11 @@
   .callControls {
     width: auto;
     border-radius: 999px;
+  }
+
+  .stage .participantGrid + .floatingDock {
+    position: static;
+    margin-top: 0;
   }
 
   .message {

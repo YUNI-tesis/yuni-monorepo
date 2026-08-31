@@ -9,12 +9,10 @@ import {
   getSharedCallConsentStorageKey,
   InteractCallControls,
   InteractConversationHistoryPanel,
-  InteractDebugPanel,
   readRememberedPrivacyChoice,
   rememberPrivacyChoiceForAvatar,
-  shouldShowInteractDiagnostics,
 } from "./components/interact/InteractCall";
-import { CallParticipantStage } from "./components/interact/CallExperience";
+import { CallExperienceShell, CallParticipantStage } from "./components/interact/CallExperience";
 import {
   confirmLiveAvatarSessionStartedWithRetry,
   dismissLiveAvatarSessionError,
@@ -174,6 +172,44 @@ describe("Interact contextual UI", () => {
     expect(html).not.toContain("controlLabel");
     expect(html).not.toContain("Historial");
     expect(html).not.toContain("Transcript");
+  });
+
+  it("exposes compact shell controls and history state without removing accessible labels", () => {
+    const closed = renderToStaticMarkup(
+      createElement(CallExperienceShell, {
+        backLabel: "Mis avatares",
+        onBack: vi.fn(),
+        eyebrow: "Llamada privada",
+        title: "Ada",
+        description: "Tutora de matemática",
+        actions: createElement("button", { "aria-label": "Historial" }, "Historial"),
+        isHistoryOpen: false,
+        onCloseHistory: vi.fn(),
+        historyContent: createElement("span", null, "Conversaciones"),
+        children: createElement("main", null, "Llamada"),
+      })
+    );
+    const open = renderToStaticMarkup(
+      createElement(CallExperienceShell, {
+        backLabel: "Grupos",
+        onBack: vi.fn(),
+        eyebrow: "Llamada grupal",
+        title: "Equipo",
+        actions: createElement("button", { "aria-label": "Historial" }, "Historial"),
+        isHistoryOpen: true,
+        onCloseHistory: vi.fn(),
+        historyContent: createElement("span", null, "Conversaciones"),
+        children: createElement("main", null, "Llamada"),
+      })
+    );
+
+    expect(closed.match(/data-history-open="false"/g)).toHaveLength(2);
+    expect(closed).toContain('aria-label="Mis avatares"');
+    expect(closed).toContain("topbarControlLabel");
+    expect(closed).not.toContain('id="call-history-panel"');
+    expect(open.match(/data-history-open="true"/g)).toHaveLength(2);
+    expect(open).toContain('aria-label="Grupos"');
+    expect(open).toContain('id="call-history-panel"');
   });
 
   it("uses the same adaptive stage for one or several participants", () => {
@@ -467,22 +503,5 @@ describe("Interact contextual UI", () => {
 
   it("falls back to avatar name for untitled chats", () => {
     expect(formatConversationTitle(null, "Tutor Demo")).toBe("Llamada con Tutor Demo");
-  });
-
-  it("keeps technical diagnostics out of normal UI", () => {
-    const html = renderToStaticMarkup(
-      createElement(InteractDebugPanel, {
-        isVisible: shouldShowInteractDiagnostics("test"),
-        diagnostics,
-        callStatus: "active",
-        providerSyncError: "provider failed",
-        onSendTextProbe: vi.fn(),
-      })
-    );
-
-    expect(shouldShowInteractDiagnostics("development")).toBe(true);
-    expect(shouldShowInteractDiagnostics("production")).toBe(false);
-    expect(html).not.toContain("Diagnostico tecnico");
-    expect(html).not.toContain("provider failed");
   });
 });

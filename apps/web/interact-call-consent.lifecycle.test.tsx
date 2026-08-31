@@ -120,9 +120,54 @@ describe("InteractCall shared consent lifecycle", () => {
         voiceAvailability: "ready",
       },
     });
+    avatarApiMocks.listAvatarConversations.mockResolvedValue({ conversations: [] });
   });
 
-  afterEach(() => cleanup());
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllEnvs();
+  });
+
+  it("keeps individual-call header actions accessible and removes technical diagnostics", async () => {
+    vi.stubEnv("NODE_ENV", "development");
+    avatarApiMocks.getAvatarInteractionContext.mockResolvedValueOnce({
+      interactionContext: {
+        avatar: {
+          id: "avatar-1",
+          name: "Ada",
+          description: "Matemática",
+          status: "active",
+        },
+        access: { type: "owner", canInteract: true },
+        contextStatus: "ready",
+        voiceAvailability: "ready",
+      },
+    });
+    const { container } = render(
+      <ToastProvider>
+        <InteractCall avatarId="avatar-1" />
+      </ToastProvider>
+    );
+    await act(flushAsyncWork);
+
+    const backButton = screen.getByRole("button", { name: "Mis avatares" });
+    const historyButton = screen.getByRole("button", { name: "Historial" });
+    const profileButton = screen.getByRole("button", { name: "Perfil" });
+    expect(backButton.querySelector("svg")).toBeTruthy();
+    expect(historyButton.querySelector("svg")).toBeTruthy();
+    expect(profileButton.querySelector("svg")).toBeTruthy();
+    expect(historyButton.querySelector('[class*="topbarControlLabel"]')).toBeTruthy();
+    expect(profileButton.querySelector('[class*="topbarControlLabel"]')).toBeTruthy();
+    expect(screen.queryByText("Diagnostico tecnico")).toBeNull();
+    expect(container.querySelectorAll('[data-history-open="false"]')).toHaveLength(2);
+
+    await act(async () => {
+      fireEvent.click(historyButton);
+      await flushAsyncWork();
+    });
+    expect(container.querySelectorAll('[data-history-open="true"]')).toHaveLength(2);
+    expect(screen.getByRole("complementary", { name: "Historial" })).toBeTruthy();
+  });
 
   it("does not start the individual runtime when getMe resolves after unmount", async () => {
     let resolveUser: (value: unknown) => void = () => undefined;
