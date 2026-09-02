@@ -1,4 +1,5 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
+import { enqueueActiveGroupProviderSyncForAvatar } from "@yuni/db";
 import { OwnershipError, type PresignDocumentUploadInput } from "@yuni/domain";
 
 export type AvatarContextRepository = ReturnType<typeof createAvatarContextRepository>;
@@ -55,6 +56,11 @@ export function createAvatarContextRepository(db: PrismaClient) {
             maxAttempts: 8,
           },
           update: {},
+        });
+        await enqueueActiveGroupProviderSyncForAvatar(tx, {
+          ownerId,
+          avatarId,
+          revision: `context:${fingerprint}:${updated.updatedAt.getTime()}`,
         });
         return updated;
       });
@@ -159,6 +165,11 @@ export function createAvatarContextRepository(db: PrismaClient) {
             maxAttempts: 8,
           },
         });
+        await enqueueActiveGroupProviderSyncForAvatar(tx, {
+          ownerId,
+          avatarId: document.avatarAgentId,
+          revision: `document:${documentId}:confirmed:${etag ?? "none"}`,
+        });
         return updated;
       });
     },
@@ -193,6 +204,11 @@ export function createAvatarContextRepository(db: PrismaClient) {
             maxAttempts: 8,
           },
         });
+        await enqueueActiveGroupProviderSyncForAvatar(tx, {
+          ownerId,
+          avatarId: document.avatarAgentId,
+          revision: `document:${documentId}:retry:${updated.updatedAt.getTime()}`,
+        });
         return updated;
       });
     },
@@ -225,6 +241,11 @@ export function createAvatarContextRepository(db: PrismaClient) {
             dedupeKey: `document-cleanup:${documentId}`,
             maxAttempts: 8,
           },
+        });
+        await enqueueActiveGroupProviderSyncForAvatar(tx, {
+          ownerId,
+          avatarId: document.avatarAgentId,
+          revision: `document:${documentId}:deleted:${updated.updatedAt.getTime()}`,
         });
         return updated;
       });

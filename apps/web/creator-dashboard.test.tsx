@@ -16,6 +16,7 @@ import {
   formatDashboardRate,
   formatDashboardRateDelta,
   getDashboardAttentionPath,
+  getDashboardResourceTranscriptPath,
   getDashboardTranscriptPath,
 } from "./lib/creator-dashboard";
 
@@ -192,6 +193,51 @@ describe("creator dashboard presentation", () => {
     expect(html).toContain("Creá tu primer avatar");
     expect(html).not.toContain("Participantes activos");
   });
+
+  it("renders group performance once and labels recent group activity as a resource", () => {
+    const summary = createSummary({
+      hasOwnedResources: true,
+      groups: [
+        {
+          groupId: "group-1",
+          groupName: "Consejo de tesis",
+          status: "active",
+          health: "available",
+          activeParticipants: 2,
+          engagedConversations: 1,
+          returningParticipants: { value: 1, total: 2, rate: 50 },
+          directAccessActivation: { value: 1, total: 1, rate: 100 },
+          lastActivityAt: "2026-08-15T10:00:00.000Z",
+        },
+      ],
+      recentActivity: [
+        {
+          conversationId: "group-conversation-1",
+          resource: { type: "group", id: "group-1", name: "Consejo de tesis" },
+          resourceKind: "group",
+          resourceId: "group-1",
+          resourceName: "Consejo de tesis",
+          groupId: "group-1",
+          groupName: "Consejo de tesis",
+          participantKey: "p_person",
+          participantName: "Ana",
+          participantEmail: "person@example.com",
+          origin: "access_grant",
+          mode: "voice",
+          title: "Consulta grupal",
+          occurredAt: "2026-08-15T10:00:00.000Z",
+        },
+      ],
+    });
+    const html = renderToStaticMarkup(
+      createElement(CreatorDashboardContent, { summary, onNavigate: () => undefined })
+    );
+
+    expect(html).toContain("Actividad por grupo");
+    expect(html.match(/Consejo de tesis/g)?.length).toBeGreaterThanOrEqual(2);
+    expect(html).toContain("Cada conversación grupal cuenta una sola vez");
+    expect(html).toContain("Grupo");
+  });
 });
 
 describe("creator dashboard helpers", () => {
@@ -274,6 +320,40 @@ describe("creator dashboard helpers", () => {
     ).toBe("/avatars/avatar%201/activity/p%2Fperson?conversation=conversation%201");
     expect(getDashboardTranscriptPath("avatar-1", "p_person", "conversation-1")).toBe(
       "/avatars/avatar-1/activity/p_person?conversation=conversation-1"
+    );
+    const groupResource = {
+      resource: { type: "group" as const, id: "group 1", name: "Consejo" },
+      resourceKind: "group" as const,
+      resourceId: "group 1",
+      resourceName: "Consejo",
+      groupId: "group 1",
+      groupName: "Consejo",
+    };
+    expect(
+      getDashboardAttentionPath({
+        ...groupResource,
+        type: "unused_direct_access",
+        id: "group-grant-1",
+        participantKey: "p/person",
+        participantName: null,
+        participantEmail: "person@example.com",
+        occurredAt: null,
+      })
+    ).toBe("/groups/group%201/share");
+    expect(
+      getDashboardAttentionPath({
+        ...groupResource,
+        type: "interrupted_interaction",
+        id: "group-session-1",
+        participantKey: "p/person",
+        participantName: null,
+        participantEmail: "person@example.com",
+        conversationId: "conversation 1",
+        occurredAt: null,
+      })
+    ).toBe("/groups/group%201/activity/p%2Fperson?conversation=conversation%201");
+    expect(getDashboardResourceTranscriptPath(groupResource, "p/person", "conversation 1")).toBe(
+      "/groups/group%201/activity/p%2Fperson?conversation=conversation%201"
     );
   });
 });

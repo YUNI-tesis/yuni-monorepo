@@ -24,7 +24,7 @@ export function getPrivatePageMaxWidth(pathname: string) {
     return "1180px";
   }
 
-  if (pathname.startsWith("/interact/") || pathname.startsWith("/groups/")) {
+  if (pathname.startsWith("/interact/") || isGroupCallPath(pathname)) {
     return "1440px";
   }
 
@@ -32,7 +32,11 @@ export function getPrivatePageMaxWidth(pathname: string) {
 }
 
 export function getPrivatePageLayoutVariant(pathname: string): PrivatePageLayoutVariant {
-  return pathname.startsWith("/interact/") || pathname.startsWith("/groups/") ? "focus" : "standard";
+  return pathname.startsWith("/interact/") || isGroupCallPath(pathname) ? "focus" : "standard";
+}
+
+function isGroupCallPath(pathname: string) {
+  return /^\/groups\/[^/]+\/?$/.test(pathname);
 }
 
 export function isPrivateNavItemActive(pathname: string, item: PrivateNavItem) {

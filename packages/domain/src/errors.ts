@@ -39,3 +39,17 @@ export class SelfAccessGrantError extends DomainError {
     this.name = "SelfAccessGrantError";
   }
 }
+
+export class GroupSharingIneligibleError extends DomainError {
+  constructor(message = "Only groups composed entirely of owned avatars can be shared") {
+    super(message);
+    this.name = "GroupSharingIneligibleError";
+  }
+}
+
+export class GroupSharingPreparationBusyError extends DomainError {
+  constructor(message = "El grupo ya se está preparando. Intentá nuevamente en unos segundos") {
+    super(message);
+    this.name = "GroupSharingPreparationBusyError";
+  }
+}

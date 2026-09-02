@@ -15,9 +15,15 @@ import {
   type GroupVoiceParticipantStartedInput,
   type GroupVoiceTurnInput,
   type InterruptGroupVoiceSessionInput,
+  type StartGroupVoiceSessionInput,
   type UpdateAvatarGroupInput,
 } from "@yuni/domain";
-import type { createAvatarGroupRepository, createMessageRepository } from "@yuni/db";
+import {
+  groupPublicSessionPrincipal,
+  GroupVoiceRosterUnavailableError,
+  type createAvatarGroupRepository,
+  type createMessageRepository,
+} from "@yuni/db";
 import type { AvatarProvider } from "@yuni/avatars";
 import type { ElevenLabsAgentProvider } from "@yuni/voice";
 import {
@@ -26,7 +32,10 @@ import {
   type GroupOrchestratorInput,
 } from "@yuni/ai";
 import { createLogger } from "@yuni/observability";
+import { readSafeHttpUrl } from "../../utils/safe-url";
 import type { ProviderTokenProtector } from "../public-sessions/provider-token-protector";
+import { groupInteractionAvailability, groupSharingEligibility } from "../group-sharing/availability";
+import { toInteractionLimits } from "../external-sessions/limits";
 
 type GroupRepository = ReturnType<typeof createAvatarGroupRepository>;
 type MessagesRepository = ReturnType<typeof createMessageRepository>;
@@ -41,6 +50,14 @@ export type AvatarGroupsServiceDependencies = {
   orchestrator: GroupConversationOrchestrator;
   providerTokenProtector: ProviderTokenProtector;
   maxMinutes?: number;
+  sharedMaxMinutes?: number;
+  accountSharingEnabled?: () => boolean;
+  publicSharingEnabled?: () => boolean;
+  groupActivityEnabled?: () => boolean;
+  externalCapacity?: {
+    maxConcurrentPerParticipant: number;
+    maxConcurrentPerAvatar: number;
+  };
 };
 
 const logger = createLogger("@yuni/api:group-orchestration");
@@ -57,8 +74,16 @@ export class GroupVoiceSessionUnavailableError extends Error {
   }
 }
 
+export class GroupAccountSharingDisabledError extends Error {}
+
 export function createAvatarGroupsService(dependencies: AvatarGroupsServiceDependencies) {
   const maxMinutes = dependencies.maxMinutes ?? 10;
+  const sharedMaxMinutes = dependencies.sharedMaxMinutes ?? 60;
+  const getSharingChannels = () => ({
+    account: dependencies.accountSharingEnabled?.() ?? true,
+    public: dependencies.publicSharingEnabled?.() ?? true,
+  });
+  const isGroupActivityEnabled = () => dependencies.groupActivityEnabled?.() ?? true;
 
   async function requireSession(userId: string, sessionId: string) {
     const session = await dependencies.repository.findVoiceSessionForOwner(userId, sessionId);
@@ -123,13 +148,18 @@ export function createAvatarGroupsService(dependencies: AvatarGroupsServiceDepen
       : never,
     participant: NonNullable<
       Awaited<ReturnType<GroupRepository["findVoiceSessionForOwner"]>>
-    >["participants"][number]
+    >["participants"][number],
+    options: { allowProviderSync: boolean }
   ) {
     const avatar = participant.avatarAgent;
     let realtimeSessionId = participant.realtimeSessionId ?? "";
     let providerSessionId: string | null = null;
+    let providerSessionToken: string | null = null;
     let encryptedProviderToken: string | null = null;
     let groupProviderReady = false;
+    let groupProviderSyncAttempted = false;
+    const expectedGroupProviderRevision = avatar.groupProviderSyncRevision;
+    const inlineGroupProviderRevision = `inline:${session.id}:${participant.id}:${participant.realtimeSessionId ?? "new"}`;
 
     try {
       const liveConfig = LiveAvatarConfigSchema.parse(avatar.liveAvatarConfig);
@@ -143,38 +173,62 @@ export function createAvatarGroupsService(dependencies: AvatarGroupsServiceDepen
           );
       realtimeSessionId = realtimeParticipant.realtimeSessionId ?? "";
       if (!realtimeSessionId) throw new Error("No pudimos preparar el intento del participante");
-      await dependencies.repository.updateGroupProvider(avatar.id, {
-        status: "syncing",
-        error: null,
-      });
-      const sync = await dependencies.elevenLabsAgentProvider.syncAvatarAgent({
-        id: avatar.id,
-        name: avatar.name,
-        description: avatar.description,
-        instructions: avatar.instructions,
-        context: avatar.context,
-        voiceConfig,
-        providerAgentId: avatar.groupProviderAgentId,
-        providerSyncFingerprint:
-          avatar.groupProviderSyncStatus === "synced" ? avatar.groupProviderSyncFingerprint : null,
-        sessionMode: "group",
-        knowledgeBase: buildKnowledgeBase(avatar),
-        includeInlineContext: !(
-          avatar.providerContextSyncStatus === "synced" && avatar.providerContextDocumentId
-        ),
-      });
-      await dependencies.repository.updateGroupProvider(avatar.id, {
-        status: "synced",
-        agentId: sync.providerAgentId,
-        fingerprint: sync.providerSyncFingerprint,
-        error: null,
-      });
+      let groupProviderAgentId = avatar.groupProviderAgentId;
+      const projectionManagedBySharing = Boolean(avatar.avatarGroupMembers?.length);
+      if (options.allowProviderSync && !projectionManagedBySharing) {
+        const claimed = await dependencies.repository.updateGroupProvider(
+          avatar.id,
+          {
+            status: "syncing",
+            error: null,
+            revision: inlineGroupProviderRevision,
+          },
+          expectedGroupProviderRevision
+        );
+        if (!claimed) {
+          throw new GroupVoiceSessionUnavailableError("El grupo todavía se está preparando");
+        }
+        groupProviderSyncAttempted = true;
+        const sync = await dependencies.elevenLabsAgentProvider.syncAvatarAgent({
+          id: avatar.id,
+          name: avatar.name,
+          description: avatar.description,
+          instructions: avatar.instructions,
+          context: avatar.context,
+          voiceConfig,
+          providerAgentId: avatar.groupProviderAgentId,
+          providerSyncFingerprint:
+            avatar.groupProviderSyncStatus === "synced" ? avatar.groupProviderSyncFingerprint : null,
+          sessionMode: "group",
+          knowledgeBase: buildKnowledgeBase(avatar),
+          includeInlineContext: !(
+            avatar.providerContextSyncStatus === "synced" && avatar.providerContextDocumentId
+          ),
+        });
+        groupProviderAgentId = sync.providerAgentId;
+        const committed = await dependencies.repository.updateGroupProvider(
+          avatar.id,
+          {
+            status: "synced",
+            agentId: sync.providerAgentId,
+            fingerprint: sync.providerSyncFingerprint,
+            error: null,
+          },
+          inlineGroupProviderRevision
+        );
+        if (!committed) {
+          throw new GroupVoiceSessionUnavailableError("El grupo todavía se está preparando");
+        }
+      } else if (avatar.groupProviderSyncStatus !== "synced" || !groupProviderAgentId) {
+        throw new GroupVoiceSessionUnavailableError("El grupo todavía se está preparando");
+      }
       groupProviderReady = true;
       const live = await dependencies.liveAvatarProvider.createLiteSessionToken({
         avatarId: liveConfig.avatarId,
-        elevenLabsAgentId: sync.providerAgentId,
+        elevenLabsAgentId: groupProviderAgentId,
       });
       providerSessionId = live.sessionId;
+      providerSessionToken = live.sessionToken;
       encryptedProviderToken = dependencies.providerTokenProtector.encrypt(live.sessionToken);
       const activated = await dependencies.repository.activateParticipantConnection(
         participant.id,
@@ -196,24 +250,45 @@ export function createAvatarGroupsService(dependencies: AvatarGroupsServiceDepen
       };
     } catch (error) {
       const message = providerErrorMessage(error);
+      let durableCleanupRegistered = false;
       if (realtimeSessionId && encryptedProviderToken) {
-        await dependencies.repository
-          .abandonParticipantConnection(
+        try {
+          await dependencies.repository.abandonParticipantConnection(
             participant.id,
             realtimeSessionId,
             providerSessionId,
             encryptedProviderToken,
             message
-          )
-          .catch(() => undefined);
+          );
+          durableCleanupRegistered = true;
+        } catch (cleanupError) {
+          logger.error("group participant cleanup could not be persisted", {
+            sessionId: session.id,
+            participantId: participant.id,
+            error: cleanupError instanceof Error ? cleanupError.message : "Unknown error",
+          });
+        }
+      }
+      if (providerSessionToken && !durableCleanupRegistered) {
+        await dependencies.liveAvatarProvider.stopSession(providerSessionToken).catch((stopError) => {
+          logger.error("group participant provider cleanup failed", {
+            sessionId: session.id,
+            participantId: participant.id,
+            error: stopError instanceof Error ? stopError.message : "Unknown error",
+          });
+        });
       }
       await Promise.allSettled([
-        groupProviderReady
+        !groupProviderSyncAttempted || groupProviderReady
           ? Promise.resolve()
-          : dependencies.repository.updateGroupProvider(avatar.id, {
-              status: "failed",
-              error: message,
-            }),
+          : dependencies.repository.updateGroupProvider(
+              avatar.id,
+              {
+                status: "failed",
+                error: message,
+              },
+              inlineGroupProviderRevision
+            ),
         realtimeSessionId
           ? dependencies.repository.markParticipantErrored(participant.id, realtimeSessionId, message)
           : Promise.resolve(false),
@@ -231,28 +306,83 @@ export function createAvatarGroupsService(dependencies: AvatarGroupsServiceDepen
     }
   }
 
+  async function initializeSession(
+    principalId: string,
+    groupId: string,
+    session: { id: string; conversationId: string; expiresAt: Date },
+    strictFullRoster: boolean
+  ) {
+    const detailed = await requireSession(principalId, session.id);
+    const participants = await Promise.all(
+      detailed.participants.map((participant) =>
+        initializeParticipant(detailed, participant, { allowProviderSync: !strictFullRoster })
+      )
+    );
+    const activeCount = participants.filter((participant) => participant.status === "active").length;
+    const minimum = strictFullRoster ? participants.length : Math.min(2, participants.length);
+    if (activeCount < minimum) {
+      await dependencies.repository.endSession(principalId, session.id, "errored");
+      logger.warn("group sharing start denied", {
+        sessionId: session.id,
+        groupId,
+        reason: strictFullRoster ? "full_roster_failed" : "insufficient_participants",
+      });
+      throw new GroupVoiceSessionUnavailableError(
+        strictFullRoster
+          ? "No pudimos conectar el roster completo"
+          : "El grupo necesita al menos dos participantes disponibles"
+      );
+    }
+    return {
+      id: session.id,
+      groupId,
+      conversationId: session.conversationId,
+      status: "connecting" as const,
+      expiresAt: session.expiresAt.toISOString(),
+      participants,
+    };
+  }
+
   return {
-    async list(userId: string) {
-      return (await dependencies.repository.listOwned(userId)).map(toGroupDto);
+    async list(userId: string, scope: "all" | "owned" | "shared" = "owned") {
+      const sharingChannels = getSharingChannels();
+      const activityEnabled = isGroupActivityEnabled();
+      const groups =
+        scope === "owned" || !sharingChannels.account
+          ? await dependencies.repository.listOwned(userId)
+          : await dependencies.repository.listAccessible(userId);
+      return groups
+        .filter((group) => scope !== "shared" || group.ownerId !== userId)
+        .map((group) => toGroupDto(group, userId, sharingChannels, activityEnabled));
     },
 
     async get(userId: string, groupId: string) {
-      const group = await dependencies.repository.findOwned(userId, groupId);
+      const sharingChannels = getSharingChannels();
+      const group = sharingChannels.account
+        ? await dependencies.repository.findAccessible(userId, groupId)
+        : await dependencies.repository.findOwned(userId, groupId);
       if (!group) throw new NotFoundError("Grupo no encontrado");
-      return toGroupDto(group);
+      return toGroupDto(group, userId, sharingChannels, isGroupActivityEnabled());
     },
 
     async create(userId: string, input: CreateAvatarGroupInput) {
-      return toGroupDto(await dependencies.repository.create(userId, input));
+      const sharingChannels = getSharingChannels();
+      return toGroupDto(
+        await dependencies.repository.create(userId, input),
+        userId,
+        sharingChannels,
+        isGroupActivityEnabled()
+      );
     },
 
     async update(userId: string, groupId: string, input: UpdateAvatarGroupInput) {
-      return toGroupDto(
-        await dependencies.repository.update(userId, groupId, {
-          ...(input.name !== undefined ? { name: input.name } : {}),
-          ...(input.avatarIds !== undefined ? { avatarIds: input.avatarIds } : {}),
-        })
-      );
+      await dependencies.repository.update(userId, groupId, {
+        ...(input.name !== undefined ? { name: input.name } : {}),
+        ...(input.avatarIds !== undefined ? { avatarIds: input.avatarIds } : {}),
+      });
+      const group = await dependencies.repository.findAccessible(userId, groupId);
+      if (!group) throw new NotFoundError("Grupo no encontrado");
+      return toGroupDto(group, userId, getSharingChannels(), isGroupActivityEnabled());
     },
 
     async delete(userId: string, groupId: string) {
@@ -260,11 +390,40 @@ export function createAvatarGroupsService(dependencies: AvatarGroupsServiceDepen
       return { ok: true as const };
     },
 
-    async start(userId: string, groupId: string) {
+    async start(userId: string, groupId: string, input: StartGroupVoiceSessionInput = {}) {
       let session;
+      const group = await dependencies.repository.findAccessible(userId, groupId);
+      if (!group) throw new NotFoundError("Grupo no encontrado");
+      const shared = group.ownerId !== userId;
+      if (shared && !(dependencies.accountSharingEnabled?.() ?? true)) {
+        throw new GroupAccountSharingDisabledError();
+      }
+      if (shared) {
+        logger.info("group sharing start requested", { groupId, targetKind: "account_grant" });
+      }
       try {
-        session = await dependencies.repository.createVoiceSession(userId, groupId, maxMinutes);
+        session = shared
+          ? await dependencies.repository.createSharedVoiceSession(
+              userId,
+              groupId,
+              "consentScopeId" in input
+                ? { scopeId: input.consentScopeId, version: input.consentVersion }
+                : null,
+              sharedMaxMinutes,
+              dependencies.externalCapacity
+            )
+          : await dependencies.repository.createVoiceSession(userId, groupId, maxMinutes);
       } catch (error) {
+        if (shared) {
+          logger.warn("group sharing start denied", {
+            groupId,
+            targetKind: "account_grant",
+            reason: error instanceof Error ? error.name : "unknown",
+          });
+        }
+        if (error instanceof GroupVoiceRosterUnavailableError) {
+          throw new GroupVoiceSessionUnavailableError("El grupo todavía se está preparando");
+        }
         if (
           error instanceof NotFoundError &&
           /participantes disponibles|avatares no están disponibles/i.test(error.message)
@@ -275,27 +434,53 @@ export function createAvatarGroupsService(dependencies: AvatarGroupsServiceDepen
         }
         throw error;
       }
-      const detailed = await requireSession(userId, session.id);
-      const participants = await Promise.all(
-        detailed.participants.map((participant) => initializeParticipant(detailed, participant))
-      );
-      const activeCount = participants.filter((participant) => participant.status === "active").length;
-      if (activeCount === 0) {
-        await dependencies.repository.endSession(userId, session.id, "errored");
-        throw new GroupVoiceSessionUnavailableError();
+      if (shared) {
+        logger.info("group sharing start reserved", {
+          groupId,
+          targetKind: "account_grant",
+          sessionId: session.id,
+        });
       }
-      if (!(await dependencies.repository.markSessionActive(session.id))) {
-        throw new GroupVoiceSessionUnavailableError("La llamada terminó mientras se conectaban los avatares");
-      }
+      return initializeSession(userId, groupId, session, shared);
+    },
 
-      return {
-        id: session.id,
-        groupId,
-        conversationId: session.conversationId,
-        status: activeCount === participants.length ? ("active" as const) : ("degraded" as const),
-        expiresAt: session.expiresAt.toISOString(),
-        participants,
-      };
+    async startPublic(input: {
+      shareLinkId: string;
+      groupId: string;
+      participantEmail: string;
+      consentedAt: Date;
+      consentScopeId: string;
+      consentVersion: number;
+    }) {
+      let reserved;
+      try {
+        reserved = await dependencies.repository.createPublicVoiceSession({
+          shareLinkId: input.shareLinkId,
+          participantEmail: input.participantEmail,
+          consentedAt: input.consentedAt,
+          consentScopeId: input.consentScopeId,
+          consentVersion: input.consentVersion,
+          maxMinutes: sharedMaxMinutes,
+          ...(dependencies.externalCapacity ? { capacity: dependencies.externalCapacity } : {}),
+        });
+      } catch (error) {
+        if (error instanceof GroupVoiceRosterUnavailableError) {
+          throw new GroupVoiceSessionUnavailableError("El grupo todavía se está preparando");
+        }
+        throw error;
+      }
+      const principalId = groupPublicSessionPrincipal(reserved.publicSession.id);
+      try {
+        return {
+          publicSession: reserved.publicSession,
+          voiceSession: await initializeSession(principalId, input.groupId, reserved.voiceSession, true),
+        };
+      } catch (error) {
+        await dependencies.repository
+          .endSession(principalId, reserved.voiceSession.id, "errored")
+          .catch(() => undefined);
+        throw error;
+      }
     },
 
     async retry(userId: string, sessionId: string, avatarId: string) {
@@ -308,11 +493,16 @@ export function createAvatarGroupsService(dependencies: AvatarGroupsServiceDepen
       if (participant.status !== "errored") {
         throw new GroupVoiceSessionUnavailableError("El participante no está disponible para reintentar");
       }
+      if ((session.groupAccessGrantId || session.groupPublicSessionId) && !session.activatedAt) {
+        throw new GroupVoiceSessionUnavailableError("El roster completo todavía no fue confirmado");
+      }
       const claimed = await dependencies.repository.beginParticipantRetry(userId, sessionId, avatarId);
       if (!claimed) {
         throw new GroupVoiceSessionUnavailableError("El participante ya se está reconectando");
       }
-      return initializeParticipant(session, claimed);
+      return initializeParticipant(session, claimed, {
+        allowProviderSync: !session.groupAccessGrantId && !session.groupPublicSessionId,
+      });
     },
 
     async confirmParticipantStarted(
@@ -323,7 +513,7 @@ export function createAvatarGroupsService(dependencies: AvatarGroupsServiceDepen
     ) {
       const parsed = GroupVoiceParticipantStartedInputSchema.parse(input);
       const session = await requireSession(userId, sessionId);
-      assertLive(session);
+      assertLive(session, true);
       const confirmed = await dependencies.repository.confirmParticipantStarted(
         userId,
         sessionId,
@@ -331,7 +521,25 @@ export function createAvatarGroupsService(dependencies: AvatarGroupsServiceDepen
         parsed.participantAttemptId
       );
       if (!confirmed) throw new NotFoundError("Intento de participante no encontrado");
-      return { ok: true as const };
+      const active = await dependencies.repository.markSessionActive(sessionId);
+      if (!active) {
+        const refreshed = await requireSession(userId, sessionId);
+        if (refreshed.status !== "connecting") {
+          throw new GroupVoiceSessionUnavailableError("La llamada se canceló antes de activar el roster");
+        }
+      }
+      if (active && !session.activatedAt) {
+        logger.info("group sharing session activated", {
+          groupId: session.avatarGroupId,
+          sessionId,
+          targetKind: session.groupPublicSessionId
+            ? "public_link"
+            : session.groupAccessGrantId
+              ? "account_grant"
+              : "owner",
+        });
+      }
+      return { ok: true as const, status: active ? ("active" as const) : ("connecting" as const) };
     },
 
     async scribeToken(userId: string, sessionId: string) {
@@ -480,6 +688,9 @@ export function createAvatarGroupsService(dependencies: AvatarGroupsServiceDepen
       const session = await requireSession(userId, sessionId);
       const acceptsLateContent =
         parsed.type === "agent_response" || parsed.type === "agent_response_correction";
+      if (session.status === "connecting" || !session.activatedAt) {
+        throw new GroupVoiceSessionUnavailableError("El roster completo todavía no fue confirmado");
+      }
       if (!acceptsLateContent) assertLive(session);
       const result = await dependencies.repository.recordProviderEvent(userId, sessionId, {
         sourceEventId: parsed.sourceEventId,
@@ -638,13 +849,22 @@ export function createAvatarGroupsService(dependencies: AvatarGroupsServiceDepen
     ) {
       const parsed = GroupVoiceParticipantFailureInputSchema.parse(input);
       const session = await requireSession(userId, sessionId);
-      assertLive(session);
+      assertLive(session, true);
       const result = await dependencies.repository.failParticipant(userId, sessionId, avatarId, {
         sourceEventId: parsed.sourceEventId,
         reason: parsed.reason,
         participantAttemptId: parsed.participantAttemptId,
         ...(parsed.expectedTurnId ? { expectedTurnId: parsed.expectedTurnId } : {}),
       });
+      if (
+        (result.session.groupAccessGrantId || result.session.groupPublicSessionId) &&
+        !result.session.activatedAt &&
+        result.kind !== "stale" &&
+        result.kind !== "duplicate"
+      ) {
+        await dependencies.repository.endSession(userId, sessionId, "errored");
+        throw new GroupVoiceSessionUnavailableError("No pudimos confirmar el roster completo");
+      }
       logger.warn("group participant failed", {
         sessionId,
         avatarId,
@@ -659,6 +879,32 @@ export function createAvatarGroupsService(dependencies: AvatarGroupsServiceDepen
         status: result.participant.status,
         error: result.participant.errorMessage,
       };
+      const refreshed = await requireSession(userId, sessionId);
+      if (
+        refreshed.activatedAt &&
+        refreshed.participants.filter((item) => item.status === "active").length < 2
+      ) {
+        await dependencies.repository.endSession(userId, sessionId, "errored");
+        logger.warn("group sharing session finished", {
+          groupId: refreshed.avatarGroupId,
+          sessionId,
+          reason: "insufficient_participants",
+          durationMs: refreshed.activatedAt ? Math.max(0, Date.now() - refreshed.activatedAt.getTime()) : 0,
+        });
+        return {
+          phase: "ended" as const,
+          directive: null,
+          participant,
+          floor: null,
+        };
+      }
+      if (refreshed.activatedAt && result.kind !== "duplicate" && result.kind !== "stale") {
+        logger.warn("group sharing session degraded", {
+          groupId: refreshed.avatarGroupId,
+          sessionId,
+          reason: parsed.reason,
+        });
+      }
       if (result.kind === "next" && result.next) {
         return reconcileCurrentSpeak(userId, sessionId, session, { participant });
       }
@@ -683,15 +929,24 @@ export function createAvatarGroupsService(dependencies: AvatarGroupsServiceDepen
 
     async heartbeat(userId: string, sessionId: string) {
       const session = await requireSession(userId, sessionId);
-      assertLive(session);
-      await dependencies.repository.heartbeat(userId, sessionId);
+      assertLive(session, true);
+      const refreshed = await dependencies.repository.heartbeat(userId, sessionId);
+      if (refreshed.count !== 1) {
+        throw new GroupVoiceSessionUnavailableError("La llamada ya terminó");
+      }
       return { ok: true as const, expiresAt: session.expiresAt.toISOString() };
     },
 
     async end(userId: string, sessionId: string, input: EndGroupVoiceSessionInput) {
       EndGroupVoiceSessionInputSchema.parse(input);
-      await requireSession(userId, sessionId);
+      const session = await requireSession(userId, sessionId);
       await dependencies.repository.endSession(userId, sessionId);
+      logger.info("group sharing session finished", {
+        groupId: session.avatarGroupId,
+        sessionId,
+        reason: input.reason,
+        durationMs: session.activatedAt ? Math.max(0, Date.now() - session.activatedAt.getTime()) : 0,
+      });
       return { id: sessionId, status: "ended" as const };
     },
 
@@ -701,16 +956,29 @@ export function createAvatarGroupsService(dependencies: AvatarGroupsServiceDepen
       return {
         id: conversation.id,
         title: conversation.title,
-        group: conversation.avatarGroup,
-        participants: conversation.conversationAvatars.map((participant) =>
-          toParticipantAvatar(participant.avatarAgent)
-        ),
+        group: conversation.avatarGroupId
+          ? {
+              id: conversation.avatarGroupId,
+              name:
+                conversation.avatarGroupNameSnapshot ?? conversation.avatarGroup?.name ?? "Grupo eliminado",
+            }
+          : null,
+        participants: conversation.groupParticipantSnapshots.length
+          ? conversation.groupParticipantSnapshots.map((participant) => ({
+              id: participant.sourceAvatarId,
+              name: participant.name,
+              description: participant.description,
+              thumbnailUrl: readSafeHttpUrl(participant.thumbnailUrl),
+            }))
+          : conversation.conversationAvatars.map((participant) =>
+              toParticipantAvatar(participant.avatarAgent)
+            ),
         messages: conversation.messages.map((message) => ({
           id: message.id,
           role: message.role,
           content: message.content,
-          speakerAvatarId: message.speakerAvatarId,
-          speakerName: message.speakerAvatar?.name ?? null,
+          speakerAvatarId: message.groupParticipantSnapshot?.sourceAvatarId ?? message.speakerAvatarId,
+          speakerName: message.groupParticipantSnapshot?.name ?? message.speakerAvatar?.name ?? null,
           createdAt: message.createdAt.toISOString(),
         })),
       };
@@ -722,10 +990,18 @@ export function createAvatarGroupsService(dependencies: AvatarGroupsServiceDepen
         id: conversation.id,
         title: conversation.title,
         groupId: conversation.avatarGroupId,
-        groupName: conversation.avatarGroup?.name ?? "Grupo eliminado",
-        participants: conversation.conversationAvatars.map((participant) =>
-          toParticipantAvatar(participant.avatarAgent)
-        ),
+        groupName:
+          conversation.avatarGroupNameSnapshot ?? conversation.avatarGroup?.name ?? "Grupo eliminado",
+        participants: conversation.groupParticipantSnapshots.length
+          ? conversation.groupParticipantSnapshots.map((participant) => ({
+              id: participant.sourceAvatarId,
+              name: participant.name,
+              description: participant.description,
+              thumbnailUrl: readSafeHttpUrl(participant.thumbnailUrl),
+            }))
+          : conversation.conversationAvatars.map((participant) =>
+              toParticipantAvatar(participant.avatarAgent)
+            ),
         messageCount: conversation._count.messages,
         status: conversation.status,
         lastMessageAt: conversation.lastMessageAt?.toISOString() ?? null,
@@ -750,49 +1026,162 @@ export function createAvatarGroupsService(dependencies: AvatarGroupsServiceDepen
         }
       }
       const expired = await dependencies.repository.listExpiredVoiceSessions(now);
+      let expiredCount = 0;
       for (const session of expired) {
-        await dependencies.repository.endSession(session.ownerId, session.id);
+        const principalId = session.groupPublicSessionId
+          ? groupPublicSessionPrincipal(session.groupPublicSessionId)
+          : (session.initiatorUserId ?? session.ownerId);
+        if (!principalId) {
+          logger.error("group voice session has no cleanup principal", { sessionId: session.id });
+          continue;
+        }
+        const claimed = await dependencies.repository.expireVoiceSessionIfStale(principalId, session.id, now);
+        if (!claimed) continue;
+        expiredCount += 1;
+        logger.info("group sharing session cleanup", {
+          groupId: session.avatarGroupId,
+          sessionId: session.id,
+          reason: "expired",
+          durationMs: session.activatedAt ? Math.max(0, now.getTime() - session.activatedAt.getTime()) : 0,
+        });
       }
       await dependencies.repository.enqueuePendingSessionCleanups();
-      return expired.length;
+      return expiredCount;
     },
   };
 }
 
-function assertLive(session: { status: string; expiresAt: Date }) {
-  if (session.status !== "active" && session.status !== "connecting") {
+function assertLive(
+  session: { status: string; expiresAt: Date; activatedAt?: Date | null },
+  allowConnecting = false
+) {
+  if (session.status !== "active" && !(allowConnecting && session.status === "connecting")) {
     throw new GroupVoiceSessionUnavailableError("La llamada ya terminó");
   }
+  if (!allowConnecting && !session.activatedAt) {
+    throw new GroupVoiceSessionUnavailableError("El roster completo todavía no fue confirmado");
+  }
   if (session.expiresAt.getTime() <= Date.now()) {
-    throw new GroupVoiceSessionUnavailableError("La llamada alcanzó el límite de 10 minutos");
+    throw new GroupVoiceSessionUnavailableError("La llamada alcanzó su límite de tiempo");
   }
 }
 
-function toGroupDto(group: {
-  id: string;
-  ownerId: string;
-  name: string;
-  createdAt: Date;
-  updatedAt: Date;
-  members: Array<{
-    position: number;
-    avatarAgent: Parameters<typeof toParticipantAvatar>[0] & { ownerId: string; status: string };
-    accessGrant: { id: string; status: string; participantUserId: string | null } | null;
-  }>;
-}) {
+function toGroupDto(
+  group: {
+    id: string;
+    ownerId: string;
+    name: string;
+    createdAt: Date;
+    updatedAt: Date;
+    membershipVersion: number;
+    owner?: { name: string | null };
+    accessGrants?: Array<{
+      id: string;
+      participantUserId: string | null;
+      status: string;
+      maxSessionDurationSeconds: number | null;
+      maxSessionsPer24Hours: number | null;
+    }>;
+    _count?: { accessGrants: number; shareLinks: number };
+    members: Array<{
+      accessGrantId: string | null;
+      position: number;
+      avatarAgent: Parameters<typeof toParticipantAvatar>[0] & {
+        ownerId: string;
+        status: string;
+        voiceConfig: unknown;
+        groupProviderAgentId: string | null;
+        groupProviderSyncStatus: string;
+      };
+      accessGrant: { id: string; status: string; participantUserId: string | null } | null;
+    }>;
+  },
+  viewerId: string,
+  sharingChannels: { account: boolean; public: boolean },
+  activityEnabled: boolean
+) {
+  const shared = group.ownerId !== viewerId;
+  const viewerGrant = shared
+    ? (group.accessGrants?.find(
+        (grant) => grant.status === "active" && grant.participantUserId === viewerId
+      ) ?? null)
+    : null;
+  const memberAvailability = group.members.map((member) => {
+    const owned = member.avatarAgent.ownerId === group.ownerId;
+    return (
+      member.avatarAgent.status === "active" &&
+      (shared
+        ? member.avatarAgent.groupProviderSyncStatus === "synced" &&
+          Boolean(member.avatarAgent.groupProviderAgentId) &&
+          LiveAvatarConfigSchema.safeParse(member.avatarAgent.liveAvatarConfig).success &&
+          VoiceConfigSchema.safeParse(member.avatarAgent.voiceConfig).success
+        : owned ||
+          (member.accessGrant?.status === "active" && member.accessGrant.participantUserId === group.ownerId))
+    );
+  });
+  const ownerReadyMembers = memberAvailability.filter(Boolean).length;
+  const interactionAvailability = shared
+    ? groupInteractionAvailability(group)
+    : group.members.length < 2 || group.members.length > 3
+      ? {
+          status: "unavailable" as const,
+          reason: "invalid_roster" as const,
+          readyMembers: ownerReadyMembers,
+          totalMembers: group.members.length,
+        }
+      : ownerReadyMembers >= 2
+        ? {
+            status: "ready" as const,
+            readyMembers: ownerReadyMembers,
+            totalMembers: group.members.length,
+          }
+        : {
+            status: "unavailable" as const,
+            reason: "inactive_member" as const,
+            readyMembers: ownerReadyMembers,
+            totalMembers: group.members.length,
+          };
+  const sharingEligibility = groupSharingEligibility(group);
+  const consent =
+    shared && viewerGrant
+      ? {
+          scopeId: `group-access-grant:${viewerGrant.id}`,
+          version: String(group.membershipVersion),
+        }
+      : null;
   return {
     id: group.id,
     name: group.name,
-    members: group.members.map((member) => {
+    membershipVersion: group.membershipVersion,
+    sharingEligibility,
+    sharingChannels,
+    activityEnabled,
+    interactionAvailability,
+    hasActiveSharingChannels: (group._count?.accessGrants ?? 0) + (group._count?.shareLinks ?? 0) > 0,
+    access: {
+      type: shared ? ("shared" as const) : ("owner" as const),
+      canEdit: !shared,
+      canDelete: !shared,
+      canShare:
+        !shared &&
+        sharingEligibility.status === "eligible" &&
+        (sharingChannels.account || sharingChannels.public),
+      canInteract: interactionAvailability.status === "ready",
+      limits: viewerGrant ? toInteractionLimits(viewerGrant) : null,
+      consent,
+      sharedBy: shared ? { name: group.owner?.name ?? "Creador del grupo" } : null,
+    },
+    members: group.members.map((member, index) => {
       const owned = member.avatarAgent.ownerId === group.ownerId;
       return {
         ...toParticipantAvatar(member.avatarAgent),
         accessType: owned ? ("owner" as const) : ("shared" as const),
-        available:
-          member.avatarAgent.status === "active" &&
-          (owned ||
-            (member.accessGrant?.status === "active" &&
-              member.accessGrant.participantUserId === group.ownerId)),
+        viewerAccess: shared
+          ? ("group_grant" as const)
+          : owned
+            ? ("owned" as const)
+            : ("direct_grant" as const),
+        available: memberAvailability[index] ?? false,
         position: member.position,
       };
     }),
@@ -812,7 +1201,7 @@ function toParticipantAvatar(avatar: {
     id: avatar.id,
     name: avatar.name,
     description: avatar.description,
-    thumbnailUrl: live.success ? (live.data.thumbnailUrl ?? null) : null,
+    thumbnailUrl: live.success ? readSafeHttpUrl(live.data.thumbnailUrl) : null,
   };
 }
 

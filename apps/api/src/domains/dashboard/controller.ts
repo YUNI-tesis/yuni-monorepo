@@ -33,6 +33,8 @@ export function createCreatorDashboardController(dependencies: CreatorDashboardC
         durationMs: Math.round(performance.now() - startedAt),
         days: options.value.days,
         timeZone: options.value.timeZone,
+        groupAnalyticsEnabled: Boolean(dependencies.groupAnalyticsEnabled),
+        groupCount: "groups" in summary ? summary.groups.length : 0,
       });
       return context.json(summary);
     } catch (error) {

@@ -32,9 +32,14 @@ export function createAvatarActivityRepository(db: Db) {
           by: ["participantEmail", "visibility"],
           where: {
             avatarAgentId,
+            avatarGroupId: null,
             participantEmail: { not: null },
             OR: [
-              { visibility: "public" },
+              {
+                visibility: "public",
+                shareLinkId: { not: null },
+                shareLink: { ownerId, avatarAgentId },
+              },
               { visibility: "private", accessGrant: { ownerId, avatarAgentId } },
             ],
           },
@@ -166,9 +171,17 @@ export function createAvatarActivityRepository(db: Db) {
         where: {
           id: conversationId,
           avatarAgentId,
+          avatarGroupId: null,
           participantEmail: { not: null },
           NOT: { participantEmail: avatar.owner.email },
-          OR: [{ visibility: "public" }, { visibility: "private", accessGrant: { ownerId, avatarAgentId } }],
+          OR: [
+            {
+              visibility: "public",
+              shareLinkId: { not: null },
+              shareLink: { ownerId, avatarAgentId },
+            },
+            { visibility: "private", accessGrant: { ownerId, avatarAgentId } },
+          ],
         },
         select: {
           id: true,
@@ -202,9 +215,14 @@ export function createAvatarActivityRepository(db: Db) {
 function participantConversationWhere(avatarAgentId: string, participantEmails: string[], ownerId: string) {
   return {
     avatarAgentId,
+    avatarGroupId: null,
     participantEmail: { in: participantEmails },
     OR: [
-      { visibility: "public" as const },
+      {
+        visibility: "public" as const,
+        shareLinkId: { not: null },
+        shareLink: { ownerId, avatarAgentId },
+      },
       { visibility: "private" as const, accessGrant: { ownerId, avatarAgentId } },
     ],
   };
@@ -224,9 +242,20 @@ async function hasParticipant(db: Db, ownerId: string, avatarAgentId: string, pa
       SELECT conversation."id"
       FROM "Conversation" AS conversation
       WHERE conversation."avatarAgentId" = ${avatarAgentId}
+        AND conversation."avatarGroupId" IS NULL
         AND LOWER(BTRIM(conversation."participantEmail")) = ${participantEmail}
         AND (
-          conversation."visibility" = 'public'::"ConversationVisibility"
+          (
+            conversation."visibility" = 'public'::"ConversationVisibility"
+            AND conversation."shareLinkId" IS NOT NULL
+            AND EXISTS (
+              SELECT 1
+              FROM "ShareLink" AS share_link
+              WHERE share_link."id" = conversation."shareLinkId"
+                AND share_link."ownerId" = ${ownerId}
+                AND share_link."avatarAgentId" = ${avatarAgentId}
+            )
+          )
           OR EXISTS (
             SELECT 1
             FROM "AccessGrant" AS access_grant
@@ -251,9 +280,20 @@ async function listConversationEmailVariants(
     SELECT DISTINCT conversation."participantEmail" AS "participantEmail"
     FROM "Conversation" AS conversation
     WHERE conversation."avatarAgentId" = ${avatarAgentId}
+      AND conversation."avatarGroupId" IS NULL
       AND LOWER(BTRIM(conversation."participantEmail")) = ${participantEmail}
       AND (
-        conversation."visibility" = 'public'::"ConversationVisibility"
+        (
+          conversation."visibility" = 'public'::"ConversationVisibility"
+          AND conversation."shareLinkId" IS NOT NULL
+          AND EXISTS (
+            SELECT 1
+            FROM "ShareLink" AS share_link
+            WHERE share_link."id" = conversation."shareLinkId"
+              AND share_link."ownerId" = ${ownerId}
+              AND share_link."avatarAgentId" = ${avatarAgentId}
+          )
+        )
         OR EXISTS (
           SELECT 1
           FROM "AccessGrant" AS access_grant

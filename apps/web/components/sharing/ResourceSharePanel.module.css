@@ -1,5 +1,6 @@
 .layout {
   display: grid;
+  min-width: 0;
   gap: var(--yuni-space-5);
 }
 

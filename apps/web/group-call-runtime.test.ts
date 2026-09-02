@@ -4,11 +4,16 @@ import {
   encodeElevenLabsAgentCommand,
   isAuthorizedSpeechEnd,
   isAuthorizedSpeechStart,
+  isTerminalHeartbeatError,
+  parseElevenLabsResponse,
   providerEventSourceId,
+  requiresCompleteGroupStartup,
+  resolveTurnForAgentResponse,
   shouldSendGroupUserActivity,
   type GroupMediaElement,
   type LocalFloorAuthorization,
 } from "./components/interact/group-call-runtime";
+import { ApiClientError } from "./lib/api/http-client";
 
 const authorization: LocalFloorAuthorization = {
   turnId: "turn-1",
@@ -18,6 +23,19 @@ const authorization: LocalFloorAuthorization = {
 };
 
 describe("strict group call runtime", () => {
+  it("treats a server-terminated group heartbeat as terminal", () => {
+    expect(
+      isTerminalHeartbeatError(
+        new ApiClientError("La llamada ya terminó", 503, "SERVICE_UNAVAILABLE", "GROUP_NOT_READY")
+      )
+    ).toBe(true);
+    expect(
+      isTerminalHeartbeatError(
+        new ApiClientError("Proveedor temporalmente no disponible", 503, "SERVICE_UNAVAILABLE")
+      )
+    ).toBe(false);
+  });
+
   it("keeps every participant muted until one owner is authorized", () => {
     const first: GroupMediaElement = { muted: false };
     const second: GroupMediaElement = { muted: false };
@@ -80,5 +98,51 @@ describe("strict group call runtime", () => {
         providerEventId: "provider-event-9",
       })
     ).toBe("speak_started:avatar-1:provider-event-9");
+  });
+
+  it("requires an all-or-nothing browser start for every external group channel", () => {
+    expect(requiresCompleteGroupStartup("shared", "authenticated")).toBe(true);
+    expect(requiresCompleteGroupStartup("shared", "handled")).toBe(true);
+    expect(requiresCompleteGroupStartup("owner", "handled")).toBe(true);
+    expect(requiresCompleteGroupStartup("owner", "authenticated")).toBe(false);
+  });
+
+  it("correlates nested provider responses with the authorized local turn", () => {
+    const response = parseElevenLabsResponse({
+      payload: {
+        event_id: "provider-event-1",
+        agent_response: "Primera respuesta",
+      },
+    });
+    expect(response).toEqual({
+      text: "Primera respuesta",
+      originalText: null,
+      responseKeys: ["provider-event-1"],
+    });
+    expect(
+      resolveTurnForAgentResponse({
+        avatarId: "avatar-1",
+        callEpoch: 3,
+        type: "agent_response",
+        response: response!,
+        authorization,
+        ledger: new Map([
+          [
+            "turn-1",
+            {
+              turnId: "turn-1",
+              avatarId: "avatar-1",
+              callEpoch: 3,
+              state: "queued",
+              originalResponse: null,
+              latestResponse: null,
+              responseReceived: false,
+              responseKeys: new Set(),
+            },
+          ],
+        ]),
+        responseTurnIds: new Map(),
+      })
+    ).toBe("turn-1");
   });
 });

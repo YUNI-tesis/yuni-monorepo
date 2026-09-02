@@ -3,7 +3,7 @@
 import React from "react";
 import { FormField, Input, Select } from "@yuni/ui";
 import type { InteractionLimitsDraft } from "../../lib/avatar-sharing";
-import styles from "./AvatarShareTab.module.css";
+import styles from "./ResourceSharePanel.module.css";
 
 export type InteractionLimitErrors = Record<keyof InteractionLimitsDraft, string | null>;
 

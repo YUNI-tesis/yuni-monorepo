@@ -9,7 +9,7 @@ import type { AvatarsRepository } from "../avatars/repository";
 
 type ConversationSummaryRecord = {
   id: string;
-  avatarAgentId: string;
+  avatarAgentId: string | null;
   title: string | null;
   mode: ConversationMode;
   status: ConversationStatus;
@@ -33,7 +33,7 @@ type ConversationDetailRecord = ConversationSummaryRecord & {
 type ConversationIdentityRecord = {
   id: string;
   ownerId: string | null;
-  avatarAgentId: string;
+  avatarAgentId: string | null;
   accessGrantId: string | null;
 };
 
@@ -114,6 +114,7 @@ export function createConversationsService(dependencies: ConversationsServiceDep
         throw new NotFoundError("Conversation not found");
       }
 
+      if (!identity.avatarAgentId) throw new NotFoundError("Conversation not found");
       const access = await findAvatarAccess(dependencies, userId, identity.avatarAgentId);
       const accessGrantId = access.type === "shared" ? access.accessGrant.id : null;
 

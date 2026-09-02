@@ -100,7 +100,7 @@ function formatDuration(seconds: number) {
   return seconds % 60 === 0 ? `${seconds / 60} ${seconds === 60 ? "minuto" : "min"}` : `${seconds} s`;
 }
 
-export function toPublicSlug(value: string): string {
+export function toPublicSlug(value: string, fallback: "avatar" | "group" = "avatar"): string {
   const normalized = value
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
@@ -115,7 +115,8 @@ export function toPublicSlug(value: string): string {
     return normalized;
   }
 
-  return normalized ? `${normalized}-avatar` : "avatar";
+  const fallbackSlug = fallback === "group" ? "grupo" : "avatar";
+  return normalized ? `${normalized}-${fallbackSlug}` : fallbackSlug;
 }
 
 export function validateShareLinkDraft(name: string, slug: string) {
@@ -145,13 +146,14 @@ export function validateGrantEmail(value: string) {
   return emailPattern.test(email) ? null : "Ingresá un email válido.";
 }
 
-export function getAccessGrantCreateError(error: unknown) {
+export function getAccessGrantCreateError(error: unknown, subject: "avatar" | "group" = "avatar") {
+  const noun = subject === "group" ? "grupo" : "avatar";
   if (error instanceof ApiClientError && error.reason === "SELF_ACCESS_GRANT") {
-    return "No necesitás darte acceso: ya sos el propietario de este avatar.";
+    return `No necesitás darte acceso: ya sos el propietario de este ${noun}.`;
   }
 
   if (error instanceof ApiClientError && error.status === 409) {
-    return "Ese email ya tiene un acceso para este avatar.";
+    return `Ese email ya tiene un acceso para este ${noun}.`;
   }
 
   return error instanceof Error ? error.message : "No pudimos completar la acción.";
@@ -169,8 +171,8 @@ export function getAccessGrantPresentation(state: ApiAccessGrantState) {
   return { label: "Cuenta pendiente", tone: "warning" as const };
 }
 
-export function canOpenPublicLink(link: Pick<ApiShareLink, "isEnabled">, avatarStatus: string) {
-  return link.isEnabled && avatarStatus === "active";
+export function canOpenPublicLink(link: Pick<ApiShareLink, "isEnabled">, availability: string | boolean) {
+  return link.isEnabled && (typeof availability === "boolean" ? availability : availability === "active");
 }
 
 export function requiresRenewedPublicConsent(

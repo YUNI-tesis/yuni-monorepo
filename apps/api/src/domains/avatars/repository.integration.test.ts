@@ -159,6 +159,131 @@ integration("avatar deletion repository integration", () => {
     }
   });
 
+  it("keeps an active group call running when two active participants remain", async () => {
+    if (!db) throw new Error("TEST_DATABASE_URL is required");
+    const suffix = `active-degrade-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const user = await db.user.create({
+      data: {
+        email: `avatar-active-degrade-${suffix}@integration.yuni.test`,
+        passwordHash: "integration-only",
+        name: "Avatar active degradation",
+      },
+    });
+    try {
+      const avatars = await Promise.all(
+        Array.from({ length: 3 }, (_, index) => createTestAvatar(user.id, suffix, index))
+      );
+      const groupRepository = createAvatarGroupRepository(db);
+      const group = await groupRepository.create(user.id, {
+        name: `Active degradation ${suffix}`,
+        avatarIds: avatars.map((avatar) => avatar.id),
+      });
+      const session = await groupRepository.createVoiceSession(user.id, group.id);
+      const attempts = await activateParticipants(groupRepository, user.id, session, [0, 1, 2]);
+      await expect(groupRepository.markSessionActive(session.id)).resolves.toBe(true);
+
+      const deletedAvatar = avatars[2]!;
+      const deletedAttemptId = attempts.get(deletedAvatar.id);
+      if (!deletedAttemptId) throw new Error("Missing deleted avatar attempt");
+      await createAvatarsRepository(db).deleteWithCleanup!(user.id, deletedAvatar.id);
+
+      const [persistedSession, persistedGroup, conversation, failure, cleanupJob] = await Promise.all([
+        db.groupVoiceSession.findUnique({
+          where: { id: session.id },
+          include: { participants: { orderBy: { createdAt: "asc" } } },
+        }),
+        db.avatarGroup.findUnique({
+          where: { id: group.id },
+          include: { members: { orderBy: { position: "asc" } } },
+        }),
+        db.conversation.findUnique({ where: { id: session.conversationId } }),
+        db.groupVoiceParticipantFailureEvent.findFirst({
+          where: {
+            groupVoiceSessionId: session.id,
+            sourceEventId: `avatar-deleted:${deletedAvatar.id}`,
+          },
+        }),
+        db.job.findUnique({
+          where: { dedupeKey: `liveavatar-session-cleanup:${deletedAttemptId}` },
+        }),
+      ]);
+
+      expect(persistedSession).toMatchObject({
+        status: "active",
+        endedAt: null,
+        orchestrationPhase: "listening",
+      });
+      expect(persistedSession?.participants).toHaveLength(2);
+      expect(persistedSession?.participants.every((participant) => participant.status === "active")).toBe(
+        true
+      );
+      expect(persistedGroup?.deletedAt).toBeNull();
+      expect(persistedGroup?.membershipVersion).toBe(group.membershipVersion + 1);
+      expect(persistedGroup?.members.map((member) => member.avatarAgentId)).toEqual(
+        avatars.slice(0, 2).map((avatar) => avatar.id)
+      );
+      expect(conversation?.status).toBe("active");
+      expect(failure).toMatchObject({ avatarAgentId: deletedAvatar.id, reason: "avatar_deleted" });
+      expect(cleanupJob).not.toBeNull();
+    } finally {
+      await db.job.deleteMany({ where: { ownerId: user.id } });
+      await db.user.deleteMany({ where: { id: user.id } });
+    }
+  });
+
+  it("ends an active group call when deleting an avatar leaves fewer than two active participants", async () => {
+    if (!db) throw new Error("TEST_DATABASE_URL is required");
+    const suffix = `active-insufficient-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const user = await db.user.create({
+      data: {
+        email: `avatar-active-insufficient-${suffix}@integration.yuni.test`,
+        passwordHash: "integration-only",
+        name: "Avatar active termination",
+      },
+    });
+    try {
+      const avatars = await Promise.all(
+        Array.from({ length: 3 }, (_, index) => createTestAvatar(user.id, suffix, index))
+      );
+      const groupRepository = createAvatarGroupRepository(db);
+      const group = await groupRepository.create(user.id, {
+        name: `Active termination ${suffix}`,
+        avatarIds: avatars.map((avatar) => avatar.id),
+      });
+      const session = await groupRepository.createVoiceSession(user.id, group.id);
+      await activateParticipants(groupRepository, user.id, session, [0, 1]);
+      await expect(groupRepository.markSessionActive(session.id)).resolves.toBe(true);
+
+      await createAvatarsRepository(db).deleteWithCleanup!(user.id, avatars[0]!.id);
+
+      const [persistedSession, persistedGroup, conversation] = await Promise.all([
+        db.groupVoiceSession.findUnique({
+          where: { id: session.id },
+          include: { participants: { orderBy: { createdAt: "asc" } } },
+        }),
+        db.avatarGroup.findUnique({ where: { id: group.id } }),
+        db.conversation.findUnique({ where: { id: session.conversationId } }),
+      ]);
+
+      expect(persistedSession).toMatchObject({
+        status: "ended",
+        orchestrationPhase: "ended",
+        errorMessage: "avatar_deleted",
+      });
+      expect(persistedSession?.endedAt).not.toBeNull();
+      expect(
+        persistedSession?.participants.every(
+          (participant) => participant.status === "ended" && participant.endedAt !== null
+        )
+      ).toBe(true);
+      expect(persistedGroup?.deletedAt).toBeNull();
+      expect(conversation?.status).toBe("ended");
+    } finally {
+      await db.job.deleteMany({ where: { ownerId: user.id } });
+      await db.user.deleteMany({ where: { id: user.id } });
+    }
+  });
+
   it("cleans every historical session before deleting a group whose current member is removed", async () => {
     if (!db) throw new Error("TEST_DATABASE_URL is required");
     const suffix = `group-snapshot-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -253,10 +378,15 @@ integration("avatar deletion repository integration", () => {
       ]);
       createdJobIds = cleanupJobs.map((job) => job.id);
 
-      expect(deletedGroup).toBeNull();
-      expect(deletedSession).toBeNull();
+      expect(deletedGroup).toMatchObject({ id: group.id });
+      expect(deletedGroup?.deletedAt).not.toBeNull();
+      expect(deletedSession).toMatchObject({
+        status: "ended",
+        orchestrationPhase: "ended",
+        errorMessage: "avatar_deleted",
+      });
       expect(conversation).toMatchObject({
-        avatarGroupId: null,
+        avatarGroupId: group.id,
         status: "ended",
         avatarAgentId: avatarA.id,
       });
@@ -286,6 +416,43 @@ integration("avatar deletion repository integration", () => {
     }
   });
 });
+
+type GroupRepository = ReturnType<typeof createAvatarGroupRepository>;
+type GroupSession = Awaited<ReturnType<GroupRepository["createVoiceSession"]>>;
+
+async function activateParticipants(
+  repository: GroupRepository,
+  ownerId: string,
+  session: GroupSession,
+  participantIndexes: number[]
+) {
+  const attempts = new Map<string, string>();
+  for (const index of participantIndexes) {
+    const participant = session.participants[index];
+    if (!participant) throw new Error(`Missing participant at position ${index}`);
+    const attempt = await repository.createRealtimeParticipant(
+      participant.id,
+      session.conversationId,
+      participant.avatarAgentId
+    );
+    if (!attempt.realtimeSessionId) throw new Error("Expected a realtime participant attempt");
+    attempts.set(participant.avatarAgentId, attempt.realtimeSessionId);
+    await repository.activateParticipantConnection(
+      participant.id,
+      attempt.realtimeSessionId,
+      `provider-${participant.avatarAgentId}`,
+      `ciphertext-${participant.avatarAgentId}`
+    );
+    const confirmed = await repository.confirmParticipantStarted(
+      ownerId,
+      session.id,
+      participant.avatarAgentId,
+      attempt.realtimeSessionId
+    );
+    if (!confirmed) throw new Error("Expected participant start confirmation");
+  }
+  return attempts;
+}
 
 function createTestAvatar(dbOwnerId: string, suffix: string, index: number) {
   if (!db) throw new Error("TEST_DATABASE_URL is required");

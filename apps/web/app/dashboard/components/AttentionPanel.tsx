@@ -5,7 +5,11 @@ import type {
   ApiDashboardAttentionGroup,
   ApiDashboardAttentionItem,
 } from "../../../lib/api/dashboard-api";
-import { formatDashboardDate, getDashboardAttentionPath } from "../../../lib/creator-dashboard";
+import {
+  formatDashboardDate,
+  getDashboardAttentionPath,
+  getDashboardResourceName,
+} from "../../../lib/creator-dashboard";
 import styles from "../Dashboard.module.css";
 
 export function AttentionPanel({
@@ -45,6 +49,17 @@ export function AttentionPanel({
         tone: "danger",
         group: summary.attention.unavailableAvatars,
       },
+      ...(summary.attention.unavailableGroups
+        ? [
+            {
+              key: "groups",
+              title: "Grupos no disponibles",
+              description: "Uno o más integrantes no tienen una versión grupal utilizable.",
+              tone: "danger" as const,
+              group: summary.attention.unavailableGroups,
+            },
+          ]
+        : []),
     ] satisfies Array<{
       key: string;
       title: string;
@@ -130,22 +145,28 @@ function AttentionGroup({
 }
 
 function attentionItemTitle(item: ApiDashboardAttentionItem) {
-  if (item.type === "unavailable_avatar") return item.avatarName;
-  return item.participantName || item.participantEmail || item.avatarName;
+  if (item.type === "unavailable_avatar" || item.type === "unavailable_group") {
+    return getDashboardResourceName(item);
+  }
+  return item.participantName || item.participantEmail || getDashboardResourceName(item);
 }
 
 function attentionItemDetail(item: ApiDashboardAttentionItem) {
-  if (item.type === "unavailable_avatar") return "Sin versión utilizable";
+  const resourceName = getDashboardResourceName(item);
+  if (item.type === "unavailable_avatar" || item.type === "unavailable_group") {
+    return "Sin versión utilizable";
+  }
   if (item.type === "interrupted_interaction")
-    return `${item.avatarName} · ${formatDashboardDate(item.occurredAt)}`;
+    return `${resourceName} · ${formatDashboardDate(item.occurredAt)}`;
   if (item.type === "unused_direct_access")
-    return `${item.avatarName} · compartido ${formatDashboardDate(item.occurredAt)}`;
-  return `${item.avatarName} · última actividad ${formatDashboardDate(item.occurredAt)}`;
+    return `${resourceName} · compartido ${formatDashboardDate(item.occurredAt)}`;
+  return `${resourceName} · última actividad ${formatDashboardDate(item.occurredAt)}`;
 }
 
 function attentionItemAction(item: ApiDashboardAttentionItem) {
   if (item.type === "unused_direct_access") return "Abrir Compartir";
   if (item.type === "inactive_participant") return "Ver actividad";
   if (item.type === "interrupted_interaction") return "Ver conversación";
+  if (item.type === "unavailable_group") return "Revisar grupo";
   return "Revisar configuración";
 }
