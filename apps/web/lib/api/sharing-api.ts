@@ -8,9 +8,8 @@ export type ApiInteractionLimits = {
   maxSessionsPer24Hours: number | null;
 };
 
-export type ApiShareLink = {
+export type ApiShareLinkBase = {
   id: string;
-  avatarAgentId: string;
   slug: string;
   name: string;
   isEnabled: boolean;
@@ -21,11 +20,14 @@ export type ApiShareLink = {
   limits: ApiInteractionLimits;
 };
 
+export type ApiShareLink = ApiShareLinkBase & {
+  avatarAgentId: string;
+};
+
 export type ApiAccessGrantState = "pending" | "linked" | "revoked";
 
-export type ApiAccessGrant = {
+export type ApiAccessGrantBase = {
   id: string;
-  avatarAgentId: string;
   participantEmail: string;
   participantUserId: string | null;
   state: ApiAccessGrantState;
@@ -33,6 +35,10 @@ export type ApiAccessGrant = {
   updatedAt: string;
   revokedAt: string | null;
   limits: ApiInteractionLimits;
+};
+
+export type ApiAccessGrant = ApiAccessGrantBase & {
+  avatarAgentId: string;
 };
 
 export type ApiPublicSharedAvatar = {

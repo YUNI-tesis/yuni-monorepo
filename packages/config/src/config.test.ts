@@ -4,6 +4,7 @@ import { createAuthConfig, requireAuthConfig } from "./auth";
 import { createClientEnv } from "./client";
 import { createDatabaseConfig } from "./database";
 import { createElevenLabsConfig, requireElevenLabsConfig, requireElevenLabsDefaultVoice } from "./elevenlabs";
+import { createFeatureConfig } from "./features";
 import { parseRawEnv, requireProductionServerEnv } from "./env";
 import { createLiveAvatarConfig, requireLiveAvatarElevenLabsConnectorConfig } from "./live-avatar";
 import { createOpenAiConfig, requireOpenAiConfig } from "./openai";
@@ -189,6 +190,26 @@ describe("@yuni/config", () => {
     expect(config.maxExternalSessionStartsPerParticipantTargetHour).toBe(20);
     expect(config.maxPublicSessionStartsPerLinkHour).toBe(120);
     expect(config.maxExternalSessionStartsPerAvatarHour).toBe(200);
+    expect(config.maxPublicGroupRuntimeCommandsPerSessionMinute).toBe(240);
+    expect(config.maxPublicGroupRuntimeCommandsPerSessionIpMinute).toBe(120);
+    expect(config.maxPublicGroupEndRequestsPerSessionMinute).toBe(20);
+    expect(config.maxPublicGroupEndRequestsPerSessionIpMinute).toBe(10);
+  });
+
+  it("accepts independent public group runtime and teardown rate limits", () => {
+    const config = createRateLimitConfig(
+      parseRawEnv({
+        MAX_PUBLIC_GROUP_RUNTIME_COMMANDS_PER_SESSION_MINUTE: "300",
+        MAX_PUBLIC_GROUP_RUNTIME_COMMANDS_PER_SESSION_IP_MINUTE: "90",
+        MAX_PUBLIC_GROUP_END_REQUESTS_PER_SESSION_MINUTE: "12",
+        MAX_PUBLIC_GROUP_END_REQUESTS_PER_SESSION_IP_MINUTE: "4",
+      })
+    );
+
+    expect(config.maxPublicGroupRuntimeCommandsPerSessionMinute).toBe(300);
+    expect(config.maxPublicGroupRuntimeCommandsPerSessionIpMinute).toBe(90);
+    expect(config.maxPublicGroupEndRequestsPerSessionMinute).toBe(12);
+    expect(config.maxPublicGroupEndRequestsPerSessionIpMinute).toBe(4);
   });
 
   it("uses a dedicated external session ceiling and ignores the retired public ceiling", () => {
@@ -208,6 +229,29 @@ describe("@yuni/config", () => {
     expect(config.currency).toBe("USD");
     expect(config.openAiInputUsdPer1MTokens).toBe(0.15);
     expect(config.openAiOutputUsdPer1MTokens).toBe(0.6);
+  });
+
+  it("supports independent group sharing rollout flags", () => {
+    const defaults = createFeatureConfig(parseRawEnv({}));
+    expect(defaults).toEqual({
+      groupAccountSharingEnabled: true,
+      groupPublicSharingEnabled: true,
+      groupSharingAnalyticsEnabled: true,
+    });
+
+    expect(
+      createFeatureConfig(
+        parseRawEnv({
+          GROUP_ACCOUNT_SHARING_ENABLED: "false",
+          GROUP_PUBLIC_SHARING_ENABLED: "true",
+          GROUP_SHARING_ANALYTICS_ENABLED: "false",
+        })
+      )
+    ).toEqual({
+      groupAccountSharingEnabled: false,
+      groupPublicSharingEnabled: true,
+      groupSharingAnalyticsEnabled: false,
+    });
   });
 
   it("coerces numeric values from strings", () => {

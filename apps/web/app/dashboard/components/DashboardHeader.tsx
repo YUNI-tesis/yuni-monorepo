@@ -24,14 +24,17 @@ export function DashboardHeader({
     summary.period.to,
     summary.period.timeZone
   )}`;
-  const description = "Quién participa, cuánto usa tus avatares, quién vuelve y qué requiere una acción.";
+  const includesGroups = summary.groups !== undefined;
+  const description = includesGroups
+    ? "Quién participa, cuánto usa tus avatares y grupos, quién vuelve y qué requiere una acción."
+    : "Quién participa, cuánto usa tus avatares, quién vuelve y qué requiere una acción.";
 
   return (
     <div className={styles.headerStack}>
       <div className={styles.desktopHeader}>
         <PageHeader
           eyebrow={eyebrow}
-          title="Cómo están usando tus avatares"
+          title={includesGroups ? "Cómo están usando tus recursos" : "Cómo están usando tus avatares"}
           description={description}
           actions={
             <div className={styles.actions}>
@@ -41,6 +44,11 @@ export function DashboardHeader({
               <Button variant="secondary" onClick={() => onNavigate("/avatars")}>
                 Mis avatares
               </Button>
+              {includesGroups ? (
+                <Button variant="secondary" onClick={() => onNavigate("/groups")}>
+                  Mis grupos
+                </Button>
+              ) : null}
             </div>
           }
         />

@@ -7,16 +7,26 @@ import {
   GroupVoiceParticipantStartedInputSchema,
   GroupVoiceTurnInputSchema,
   InterruptGroupVoiceSessionInputSchema,
+  GroupSharingIneligibleError,
   NotFoundError,
+  StartGroupVoiceSessionInputSchema,
   UpdateAvatarGroupInputSchema,
 } from "@yuni/domain";
 import type { CreatorSessionEnv } from "../auth/middleware";
 import { badGatewayError, notFoundError, serviceUnavailableError, validationError } from "../../utils/errors";
 import {
   createAvatarGroupsService,
+  GroupAccountSharingDisabledError,
   GroupVoiceSessionUnavailableError,
   type AvatarGroupsServiceDependencies,
 } from "./service";
+import {
+  GroupConsentVersionStaleError,
+  GroupVoiceActiveSessionError,
+  GroupVoiceCapacityError,
+  GroupVoiceUsageLimitError,
+} from "@yuni/db";
+import { conflictErrorWithReason, rateLimitedError } from "../../utils/errors";
 
 export type AvatarGroupsControllerDependencies = AvatarGroupsServiceDependencies;
 
@@ -26,7 +36,11 @@ export function createAvatarGroupsController(dependencies: AvatarGroupsControlle
 
   controller.get("/avatar-groups", async (context) => {
     const currentUser = context.get("currentUser");
-    return context.json({ groups: await service.list(currentUser.id) });
+    const scope = context.req.query("scope") ?? "owned";
+    if (scope !== "all" && scope !== "owned" && scope !== "shared") {
+      return context.json(validationError([{ message: "scope must be all, owned, or shared" }]), 400);
+    }
+    return context.json({ groups: await service.list(currentUser.id, scope) });
   });
 
   controller.post("/avatar-groups", async (context) => {
@@ -75,9 +89,13 @@ export function createAvatarGroupsController(dependencies: AvatarGroupsControlle
 
   controller.post("/avatar-groups/:groupId/voice-sessions", async (context) => {
     const currentUser = context.get("currentUser");
+    const parsed = StartGroupVoiceSessionInputSchema.safeParse(await context.req.json().catch(() => ({})));
+    if (!parsed.success) return context.json(validationError(parsed.error.issues), 400);
     try {
       return context.json(
-        { voiceSession: await service.start(currentUser.id, context.req.param("groupId")) },
+        {
+          voiceSession: await service.start(currentUser.id, context.req.param("groupId"), parsed.data),
+        },
         201
       );
     } catch (error) {
@@ -236,7 +254,44 @@ export function createAvatarGroupsController(dependencies: AvatarGroupsControlle
 function groupError(context: Context, error: unknown) {
   if (error instanceof NotFoundError) return context.json(notFoundError(error.message), 404);
   if (error instanceof GroupVoiceSessionUnavailableError) {
-    return context.json(serviceUnavailableError(error.message), 503);
+    return context.json(serviceUnavailableError(error.message, "GROUP_NOT_READY"), 503);
+  }
+  if (error instanceof GroupConsentVersionStaleError) {
+    return context.json(conflictErrorWithReason(error.message, "CONSENT_VERSION_STALE"), 409);
+  }
+  if (error instanceof GroupVoiceActiveSessionError) {
+    return context.json(conflictErrorWithReason(error.message, "ACTIVE_SESSION_EXISTS"), 409);
+  }
+  if (error instanceof GroupVoiceUsageLimitError) {
+    context.header("Retry-After", String(error.retryAfterSeconds));
+    return context.json(
+      rateLimitedError(
+        "Este acceso alcanzó su límite de uso.",
+        "SHARE_SESSION_COUNT_LIMIT",
+        error.retryAfterSeconds
+      ),
+      429
+    );
+  }
+  if (error instanceof GroupVoiceCapacityError) {
+    context.header("Retry-After", String(error.retryAfterSeconds));
+    return context.json(
+      rateLimitedError(
+        "Uno de los avatares alcanzó su capacidad temporal.",
+        "EXTERNAL_SESSION_CAPACITY",
+        error.retryAfterSeconds
+      ),
+      429
+    );
+  }
+  if (error instanceof GroupSharingIneligibleError) {
+    return context.json(conflictErrorWithReason(error.message, "GROUP_SHARING_ROSTER_LOCKED"), 409);
+  }
+  if (error instanceof GroupAccountSharingDisabledError) {
+    return context.json(
+      serviceUnavailableError("Group account sharing is disabled", "FEATURE_DISABLED"),
+      503
+    );
   }
   if (error instanceof Error && /ElevenLabs|Live Avatar/i.test(error.message)) {
     return context.json(badGatewayError(error.message), 502);

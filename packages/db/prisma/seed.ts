@@ -12,6 +12,11 @@ const DAY_MS = 24 * 60 * 60 * 1_000;
 const MINUTE_MS = 60 * 1_000;
 const MESSAGE_STEP_MS = 8 * 1_000;
 const demoPasswordHash = "$2b$10$Gp7Lpf7jYhtgKnocU9Zs2eLyiLxzG1ydQ0gFj0YMLyIslW95AD3ay";
+const dashboardGroupId = "dashboard-seed-group-advisory";
+const dashboardGroupConversationId = "dashboard-seed-group-conversation-current-01";
+const dashboardGroupShareLinkId = "dashboard-seed-group-share-advisory";
+const dashboardGroupLinkedGrantId = "dashboard-seed-group-grant-linked";
+const dashboardGroupPendingGrantId = "dashboard-seed-group-grant-pending";
 
 const avatars = [
   {
@@ -386,7 +391,7 @@ function buildMessages(seed: ConversationSeed, startedAt: Date) {
 async function main() {
   const now = new Date();
   const startOfToday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-  const conversationIds = conversations.map(({ id }) => id);
+  const conversationIds = [...conversations.map(({ id }) => id), dashboardGroupConversationId];
   const realtimeSessionIds = conversations.flatMap(({ id, voice }) => (voice ? [`${id}-realtime`] : []));
   const publicSessionIds = conversations.flatMap(({ id, visibility }) =>
     visibility === "public" ? [`${id}-public`] : []
@@ -452,6 +457,14 @@ async function main() {
         providerContextError: null,
         providerContextSyncedAt: null,
         providerContextLastUsableAt: null,
+        groupProviderAgentId:
+          avatar.id === "dashboard-seed-avatar-presentations" ? null : `seed-group-${avatar.voiceId}`,
+        groupProviderSyncFingerprint:
+          avatar.id === "dashboard-seed-avatar-presentations" ? null : `seed-group-${avatar.voiceId}`,
+        groupProviderSyncStatus:
+          avatar.id === "dashboard-seed-avatar-presentations" ? ("not_synced" as const) : ("synced" as const),
+        groupProviderSyncError: null,
+        groupProviderSyncedAt: avatar.id === "dashboard-seed-avatar-presentations" ? null : startOfToday,
         status: "active" as const,
       } satisfies Omit<Prisma.AvatarAgentUncheckedCreateInput, "id">;
 
@@ -461,6 +474,126 @@ async function main() {
         create: { id: avatar.id, ...data },
       });
     }
+
+    const dashboardGroup = await tx.avatarGroup.upsert({
+      where: { id: dashboardGroupId },
+      update: {
+        ownerId: owner.id,
+        name: "Consejo · Tesis y presentaciones",
+        membershipVersion: 1,
+        deletedAt: null,
+      },
+      create: {
+        id: dashboardGroupId,
+        ownerId: owner.id,
+        name: "Consejo · Tesis y presentaciones",
+        membershipVersion: 1,
+      },
+    });
+    await tx.avatarGroupMember.deleteMany({ where: { avatarGroupId: dashboardGroup.id } });
+    await tx.avatarGroupMember.createMany({
+      data: [
+        {
+          id: "dashboard-seed-group-member-algebra",
+          avatarGroupId: dashboardGroup.id,
+          avatarAgentId: "dashboard-seed-avatar-algebra",
+          position: 0,
+        },
+        {
+          id: "dashboard-seed-group-member-thesis",
+          avatarGroupId: dashboardGroup.id,
+          avatarAgentId: "dashboard-seed-avatar-thesis",
+          position: 1,
+        },
+      ],
+    });
+
+    await tx.groupShareLink.upsert({
+      where: { id: dashboardGroupShareLinkId },
+      update: {
+        avatarGroupId: dashboardGroup.id,
+        ownerId: owner.id,
+        slug: "dashboard-seed-advisory-group",
+        name: "Consejo interdisciplinario",
+        isEnabled: true,
+        deletedAt: null,
+        lastUsedAt: atDaysAgo(startOfToday, 2, 16),
+        avatarGroupOwnerIdSnapshot: owner.id,
+        avatarGroupNameSnapshot: dashboardGroup.name,
+        groupMembershipVersion: dashboardGroup.membershipVersion,
+      },
+      create: {
+        id: dashboardGroupShareLinkId,
+        avatarGroupId: dashboardGroup.id,
+        ownerId: owner.id,
+        slug: "dashboard-seed-advisory-group",
+        name: "Consejo interdisciplinario",
+        isEnabled: true,
+        lastUsedAt: atDaysAgo(startOfToday, 2, 16),
+        avatarGroupOwnerIdSnapshot: owner.id,
+        avatarGroupNameSnapshot: dashboardGroup.name,
+        groupMembershipVersion: dashboardGroup.membershipVersion,
+      },
+    });
+
+    const linkedGroupParticipantEmail = "ana@dashboard-seed.yuni.local";
+    const linkedGroupParticipantId = participantIds.get(linkedGroupParticipantEmail) ?? null;
+    if (!linkedGroupParticipantId) {
+      throw new Error("Dashboard group seed requires the linked participant");
+    }
+    const linkedGroupGrant = await tx.groupAccessGrant.upsert({
+      where: { id: dashboardGroupLinkedGrantId },
+      update: {
+        avatarGroupId: dashboardGroup.id,
+        ownerId: owner.id,
+        participantEmail: linkedGroupParticipantEmail,
+        participantUserId: linkedGroupParticipantId,
+        status: "active",
+        revokedAt: null,
+        avatarGroupOwnerIdSnapshot: owner.id,
+        avatarGroupNameSnapshot: dashboardGroup.name,
+        groupMembershipVersion: dashboardGroup.membershipVersion,
+        createdAt: atDaysAgo(startOfToday, 12, 12),
+      },
+      create: {
+        id: dashboardGroupLinkedGrantId,
+        avatarGroupId: dashboardGroup.id,
+        ownerId: owner.id,
+        participantEmail: linkedGroupParticipantEmail,
+        participantUserId: linkedGroupParticipantId,
+        status: "active",
+        avatarGroupOwnerIdSnapshot: owner.id,
+        avatarGroupNameSnapshot: dashboardGroup.name,
+        groupMembershipVersion: dashboardGroup.membershipVersion,
+        createdAt: atDaysAgo(startOfToday, 12, 12),
+      },
+    });
+    await tx.groupAccessGrant.upsert({
+      where: { id: dashboardGroupPendingGrantId },
+      update: {
+        avatarGroupId: dashboardGroup.id,
+        ownerId: owner.id,
+        participantEmail: "pendiente-grupo@dashboard-seed.yuni.local",
+        participantUserId: null,
+        status: "active",
+        revokedAt: null,
+        avatarGroupOwnerIdSnapshot: owner.id,
+        avatarGroupNameSnapshot: dashboardGroup.name,
+        groupMembershipVersion: dashboardGroup.membershipVersion,
+        createdAt: atDaysAgo(startOfToday, 10, 12),
+      },
+      create: {
+        id: dashboardGroupPendingGrantId,
+        avatarGroupId: dashboardGroup.id,
+        ownerId: owner.id,
+        participantEmail: "pendiente-grupo@dashboard-seed.yuni.local",
+        status: "active",
+        avatarGroupOwnerIdSnapshot: owner.id,
+        avatarGroupNameSnapshot: dashboardGroup.name,
+        groupMembershipVersion: dashboardGroup.membershipVersion,
+        createdAt: atDaysAgo(startOfToday, 10, 12),
+      },
+    });
 
     const algebraLink = await tx.shareLink.upsert({
       where: { id: "dashboard-seed-share-algebra" },
@@ -626,10 +759,137 @@ async function main() {
         });
       }
     }
+
+    const groupStartedAt = atDaysAgo(startOfToday, 2, 16);
+    const groupActivatedAt = new Date(groupStartedAt.getTime() + 5_000);
+    const groupEndedAt = new Date(groupActivatedAt.getTime() + 12 * MINUTE_MS);
+    const groupUserMessageAt = new Date(groupActivatedAt.getTime() + MESSAGE_STEP_MS);
+    const groupAssistantMessageAt = new Date(groupUserMessageAt.getTime() + MESSAGE_STEP_MS);
+    const algebraSnapshotId = "dashboard-seed-group-snapshot-algebra";
+    const thesisSnapshotId = "dashboard-seed-group-snapshot-thesis";
+
+    await tx.conversation.create({
+      data: {
+        id: dashboardGroupConversationId,
+        ownerId: linkedGroupParticipantId,
+        avatarAgentId: "dashboard-seed-avatar-algebra",
+        avatarGroupId: dashboardGroup.id,
+        groupAccessGrantId: linkedGroupGrant.id,
+        participantEmail: linkedGroupParticipantEmail,
+        avatarGroupOwnerIdSnapshot: owner.id,
+        avatarGroupNameSnapshot: dashboardGroup.name,
+        groupMembershipVersion: dashboardGroup.membershipVersion,
+        avatarGroupRosterSnapshot: [
+          {
+            id: "dashboard-seed-avatar-algebra",
+            name: avatars[0]!.name,
+            position: 0,
+          },
+          {
+            id: "dashboard-seed-avatar-thesis",
+            name: avatars[1]!.name,
+            position: 1,
+          },
+        ],
+        visibility: "private",
+        mode: "voice",
+        status: "ended",
+        title: "Revisión interdisciplinaria del marco teórico",
+        lastMessageAt: groupAssistantMessageAt,
+        createdAt: groupStartedAt,
+        updatedAt: groupAssistantMessageAt,
+        conversationAvatars: {
+          create: [
+            {
+              id: "dashboard-seed-group-conversation-avatar-algebra",
+              avatarAgentId: "dashboard-seed-avatar-algebra",
+              position: 0,
+            },
+            {
+              id: "dashboard-seed-group-conversation-avatar-thesis",
+              avatarAgentId: "dashboard-seed-avatar-thesis",
+              position: 1,
+            },
+          ],
+        },
+        groupParticipantSnapshots: {
+          create: [
+            {
+              id: algebraSnapshotId,
+              sourceAvatarId: "dashboard-seed-avatar-algebra",
+              name: avatars[0]!.name,
+              description: avatars[0]!.description,
+              position: 0,
+            },
+            {
+              id: thesisSnapshotId,
+              sourceAvatarId: "dashboard-seed-avatar-thesis",
+              name: avatars[1]!.name,
+              description: avatars[1]!.description,
+              position: 1,
+            },
+          ],
+        },
+      },
+    });
+    await tx.message.createMany({
+      data: [
+        {
+          id: "dashboard-seed-group-message-user",
+          conversationId: dashboardGroupConversationId,
+          role: "user",
+          content: "¿Cómo conecto el marco teórico con una defensa oral clara?",
+          metadata: { source: "dashboard_seed", resource: "group" },
+          createdAt: groupUserMessageAt,
+        },
+        {
+          id: "dashboard-seed-group-message-assistant-algebra",
+          conversationId: dashboardGroupConversationId,
+          role: "assistant",
+          content: "Presentá primero las relaciones conceptuales que sostienen tu pregunta.",
+          metadata: { source: "dashboard_seed", resource: "group" },
+          speakerAvatarId: "dashboard-seed-avatar-algebra",
+          groupParticipantSnapshotId: algebraSnapshotId,
+          createdAt: groupAssistantMessageAt,
+        },
+      ],
+    });
+    await tx.groupVoiceSession.create({
+      data: {
+        id: "dashboard-seed-group-session-current-01",
+        avatarGroupId: dashboardGroup.id,
+        conversationId: dashboardGroupConversationId,
+        ownerId: owner.id,
+        initiatorUserId: linkedGroupParticipantId,
+        groupAccessGrantId: linkedGroupGrant.id,
+        status: "ended",
+        expiresAt: new Date(groupStartedAt.getTime() + 60 * MINUTE_MS),
+        startedAt: groupStartedAt,
+        activatedAt: groupActivatedAt,
+        endedAt: groupEndedAt,
+        orchestrationPhase: "ended",
+        participants: {
+          create: [
+            {
+              id: "dashboard-seed-group-session-participant-algebra",
+              avatarAgentId: "dashboard-seed-avatar-algebra",
+              status: "ended",
+              endedAt: groupEndedAt,
+            },
+            {
+              id: "dashboard-seed-group-session-participant-thesis",
+              avatarAgentId: "dashboard-seed-avatar-thesis",
+              status: "ended",
+              endedAt: groupEndedAt,
+            },
+          ],
+        },
+      },
+    });
   });
 
   console.info(
-    `Dashboard seed ready: ${DASHBOARD_SEED_OWNER_EMAIL}, ${avatars.length} avatars, ${participants.length} participants and ${conversations.length} conversations.`
+    `Dashboard seed ready: ${DASHBOARD_SEED_OWNER_EMAIL}, ${avatars.length} avatars, 1 group, ${participants.length} participants and ${conversations.length + 1} conversations.`
   );
 }
 

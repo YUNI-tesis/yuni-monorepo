@@ -12,6 +12,9 @@ async function removeNamespacedSeed() {
     const realtimeSessions = await tx.realtimeSession.deleteMany({
       where: { id: { startsWith: `${DASHBOARD_SEED_PREFIX}-` } },
     });
+    const groupVoiceSessions = await tx.groupVoiceSession.deleteMany({
+      where: { id: { startsWith: `${DASHBOARD_SEED_PREFIX}-` } },
+    });
     const conversations = await tx.conversation.deleteMany({
       where: { id: { startsWith: `${DASHBOARD_SEED_PREFIX}-` } },
     });
@@ -21,7 +24,16 @@ async function removeNamespacedSeed() {
     const accessGrants = await tx.accessGrant.deleteMany({
       where: { id: { startsWith: `${DASHBOARD_SEED_PREFIX}-` } },
     });
+    const groupAccessGrants = await tx.groupAccessGrant.deleteMany({
+      where: { id: { startsWith: `${DASHBOARD_SEED_PREFIX}-` } },
+    });
     const shareLinks = await tx.shareLink.deleteMany({
+      where: { id: { startsWith: `${DASHBOARD_SEED_PREFIX}-` } },
+    });
+    const groupShareLinks = await tx.groupShareLink.deleteMany({
+      where: { id: { startsWith: `${DASHBOARD_SEED_PREFIX}-` } },
+    });
+    const avatarGroups = await tx.avatarGroup.deleteMany({
       where: { id: { startsWith: `${DASHBOARD_SEED_PREFIX}-` } },
     });
     const avatarAgents = await tx.avatarAgent.deleteMany({
@@ -34,10 +46,14 @@ async function removeNamespacedSeed() {
     return {
       messages: messages.count,
       realtimeSessions: realtimeSessions.count,
+      groupVoiceSessions: groupVoiceSessions.count,
       conversations: conversations.count,
       publicSessions: publicSessions.count,
       accessGrants: accessGrants.count,
+      groupAccessGrants: groupAccessGrants.count,
       shareLinks: shareLinks.count,
+      groupShareLinks: groupShareLinks.count,
+      avatarGroups: avatarGroups.count,
       avatarAgents: avatarAgents.count,
       users: users.count,
     };

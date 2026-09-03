@@ -219,6 +219,12 @@ function createContextDependencies(
   const updateMany = vi.fn(
     async ({ where, data }: { where: Record<string, unknown>; data: Record<string, unknown> }) => {
       if (where.context !== undefined && where.context !== avatar.context) return { count: 0 };
+      if (
+        where.groupProviderSyncRevision !== undefined &&
+        where.groupProviderSyncRevision !== avatar.groupProviderSyncRevision
+      ) {
+        return { count: 0 };
+      }
       Object.assign(avatar, data);
       return { count: 1 };
     }
@@ -428,6 +434,89 @@ describe("text context synchronization", () => {
         data: expect.objectContaining({ providerContextLastUsableAt: expect.any(Date) }),
       })
     );
+  });
+});
+
+describe("group agent projection", () => {
+  it("syncs the dedicated group-mode agent", async () => {
+    const syncAvatarAgent = vi.fn(async () => ({
+      providerAgentId: "group-agent-1",
+      providerSyncFingerprint: "group-fingerprint",
+      synced: true,
+    }));
+    const setup = createContextDependencies(syncAvatarAgent);
+    setup.avatar.providerContextSyncStatus = "synced";
+    setup.avatar.groupProviderAgentId = "group-agent-old";
+    setup.avatar.groupProviderSyncFingerprint = "group-fingerprint-old";
+    setup.avatar.groupProviderSyncStatus = "synced";
+    const worker = createKnowledgeBaseWorker(setup.dependencies);
+
+    await worker.syncGroupAgent("avatar-1");
+
+    expect(syncAvatarAgent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "avatar-1",
+        sessionMode: "group",
+        providerAgentId: "group-agent-old",
+      })
+    );
+    expect(setup.avatar).toMatchObject({
+      groupProviderAgentId: "group-agent-1",
+      groupProviderSyncFingerprint: "group-fingerprint",
+      groupProviderSyncStatus: "synced",
+    });
+  });
+
+  it("waits for pending context work before publishing the group projection", async () => {
+    const syncAvatarAgent = vi.fn(async () => ({
+      providerAgentId: "group-agent-1",
+      providerSyncFingerprint: "group-fingerprint",
+      synced: true,
+    }));
+    const setup = createContextDependencies(syncAvatarAgent);
+    const worker = createKnowledgeBaseWorker(setup.dependencies);
+
+    await expect(worker.syncGroupAgent("avatar-1")).rejects.toThrow("Another provider projection is running");
+    expect(syncAvatarAgent).not.toHaveBeenCalled();
+  });
+
+  it("ignores a superseded group projection revision", async () => {
+    const syncAvatarAgent = vi.fn(async () => ({
+      providerAgentId: "group-agent-1",
+      providerSyncFingerprint: "group-fingerprint",
+      synced: true,
+    }));
+    const setup = createContextDependencies(syncAvatarAgent);
+    setup.avatar.providerContextSyncStatus = "synced";
+    setup.avatar.groupProviderSyncRevision = "revision-current";
+    const worker = createKnowledgeBaseWorker(setup.dependencies);
+
+    await worker.syncGroupAgent("avatar-1", "revision-superseded");
+
+    expect(syncAvatarAgent).not.toHaveBeenCalled();
+    expect(setup.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("removes a newly created group agent when its revision is superseded during provider sync", async () => {
+    const setup = createContextDependencies(async () => {
+      setup.avatar.groupProviderSyncRevision = "revision-new";
+      return {
+        providerAgentId: "orphaned-group-agent",
+        providerSyncFingerprint: "group-fingerprint",
+        synced: true,
+      };
+    });
+    setup.avatar.providerContextSyncStatus = "synced";
+    setup.avatar.groupProviderAgentId = null;
+    setup.avatar.groupProviderSyncRevision = "revision-old";
+    setup.provider.deleteAgent = vi.fn(async () => undefined);
+    const worker = createKnowledgeBaseWorker(setup.dependencies);
+
+    await worker.syncGroupAgent("avatar-1", "revision-old");
+
+    expect(setup.provider.deleteAgent).toHaveBeenCalledWith("orphaned-group-agent");
+    expect(setup.avatar.groupProviderAgentId).toBeNull();
+    expect(setup.avatar.groupProviderSyncRevision).toBe("revision-new");
   });
 });
 
@@ -676,6 +765,7 @@ describe("LiveAvatar session cleanup", () => {
     expect(claimSql).toContain("session_cleanup");
     expect(claimSql).toContain("avatar_context_provider_sync");
     expect(claimSql).toContain("agent_provider_sync");
+    expect(claimSql).toContain("group_agent_provider_sync");
     expect(claimSql).not.toContain("document_provider_sync");
     expect(documentUpdate).not.toHaveBeenCalled();
   });

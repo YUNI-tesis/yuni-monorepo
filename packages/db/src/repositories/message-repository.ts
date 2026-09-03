@@ -7,11 +7,23 @@ export function createMessageRepository(db: Db) {
   return {
     async append(conversationId: string, input: AppendMessageInput) {
       return db.$transaction(async (tx: Prisma.TransactionClient) => {
+        const participantSnapshot = input.speakerAvatarId
+          ? await tx.groupConversationParticipantSnapshot.findUnique({
+              where: {
+                conversationId_sourceAvatarId: {
+                  conversationId,
+                  sourceAvatarId: input.speakerAvatarId,
+                },
+              },
+              select: { id: true },
+            })
+          : null;
         const data: Prisma.MessageUncheckedCreateInput = {
           conversationId,
           role: input.role,
           content: input.content,
           ...(input.speakerAvatarId ? { speakerAvatarId: input.speakerAvatarId } : {}),
+          ...(participantSnapshot ? { groupParticipantSnapshotId: participantSnapshot.id } : {}),
           ...(input.sourceEventId ? { sourceEventId: input.sourceEventId } : {}),
           ...(input.metadata ? { metadata: input.metadata as Prisma.InputJsonObject } : {}),
         };

@@ -81,7 +81,7 @@ integration("group floor repository integration", () => {
     ).resolves.toBe(false);
   });
 
-  it("persists rogue speech without changing the valid owner", async () => {
+  it("discards rogue speech without changing the valid owner", async () => {
     const fixture = await createFixture("rogue", 2);
     const queued = await createQueuedRound(fixture, [fixture.avatarIds[0]!]);
 
@@ -103,7 +103,7 @@ integration("group floor repository integration", () => {
       db!.groupVoiceProviderEvent.count({
         where: { groupVoiceSessionId: fixture.sessionId, sourceEventId: "rogue:start:1" },
       })
-    ).resolves.toBe(1);
+    ).resolves.toBe(0);
   });
 
   it("does not expire a lease that speak_started already renewed", async () => {
@@ -680,7 +680,7 @@ integration("group floor repository integration", () => {
     ]);
   });
 
-  it("deletes a live group only after durably enqueueing each provider session cleanup", async () => {
+  it("soft deletes a live group only after ending its session and durably enqueueing cleanup", async () => {
     const fixture = await createFixture("delete-group", 2);
 
     await fixture.repository.delete(fixture.userId, fixture.groupId);
@@ -696,9 +696,13 @@ integration("group floor repository integration", () => {
       }),
     ]);
 
-    expect(group).toBeNull();
-    expect(session).toBeNull();
-    expect(conversation).toMatchObject({ avatarGroupId: null, status: "ended" });
+    expect(group).toMatchObject({ deletedAt: expect.any(Date) });
+    expect(session).toMatchObject({
+      avatarGroupId: fixture.groupId,
+      status: "ended",
+      errorMessage: "avatar_group_deleted",
+    });
+    expect(conversation).toMatchObject({ avatarGroupId: fixture.groupId, status: "ended" });
     expect(cleanupJobs).toHaveLength(2);
   });
 

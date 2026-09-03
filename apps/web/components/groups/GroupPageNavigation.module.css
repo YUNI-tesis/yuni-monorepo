@@ -1,0 +1,7 @@
+.backButton {
+  min-height: 44px;
+  justify-self: start;
+  border-color: var(--yuni-color-border);
+  background: var(--yuni-color-surface-soft);
+  color: var(--yuni-color-text);
+}

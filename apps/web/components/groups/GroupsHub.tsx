@@ -22,6 +22,7 @@ import {
   listAvatarGroups,
   updateAvatarGroup,
   type ApiAvatarGroup,
+  type AvatarGroupListScope,
 } from "../../lib/api/avatar-group-api";
 import catalogStyles from "../catalog/CatalogGrid.module.css";
 import { GroupCard } from "./GroupCard";
@@ -35,6 +36,7 @@ export function GroupsHub() {
   const avatarList = useAvatarList();
   const groupDialog = useRef<HTMLDialogElement>(null);
   const [groups, setGroups] = useState<ApiAvatarGroup[]>([]);
+  const [activeFilter, setActiveFilter] = useState<AvatarGroupListScope>("all");
   const [groupStatus, setGroupStatus] = useState<LoadStatus>("loading");
   const [pageError, setPageError] = useState<string | null>(null);
   const [editingGroup, setEditingGroup] = useState<ApiAvatarGroup | null>(null);
@@ -42,29 +44,45 @@ export function GroupsHub() {
   const [selected, setSelected] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
 
-  async function loadGroups() {
+  const groupsRequest = useRef(0);
+
+  async function loadGroups(scope: AvatarGroupListScope = activeFilter) {
+    const requestId = ++groupsRequest.current;
     setGroupStatus("loading");
     try {
-      const response = await listAvatarGroups();
+      const response = await listAvatarGroups(scope);
+      if (groupsRequest.current !== requestId) return;
       setGroups(response.groups);
       setPageError(null);
       setGroupStatus("ready");
     } catch (error) {
+      if (groupsRequest.current !== requestId) return;
       setPageError(error instanceof Error ? error.message : "No pudimos cargar tus grupos.");
       setGroupStatus("error");
     }
   }
 
   useEffect(() => {
-    void loadGroups();
-  }, []);
+    void loadGroups(activeFilter);
+  }, [activeFilter]);
 
+  const restrictRosterToOwned = Boolean(editingGroup?.hasActiveSharingChannels);
   const eligibleAvatars =
     avatarList.status === "ready"
-      ? avatarList.avatars.filter(
-          (avatar) => avatar.status === "active" && avatar.interactionAvailability === "ready"
-        )
+      ? avatarList.avatars.filter((avatar) => {
+          const isSelectedMember = selected.includes(avatar.id);
+          const canBeAdded = avatar.status === "active" && avatar.interactionAvailability === "ready";
+          return (
+            (isSelectedMember || canBeAdded) &&
+            (!restrictRosterToOwned || avatar.access.type === "owner" || isSelectedMember)
+          );
+        })
       : [];
+  const selectedIncludesNonOwned =
+    restrictRosterToOwned &&
+    selected.some(
+      (avatarId) => avatarList.avatars.find((avatar) => avatar.id === avatarId)?.access.type === "shared"
+    );
 
   function openCreate() {
     setEditingGroup(null);
@@ -91,14 +109,19 @@ export function GroupsHub() {
   }
 
   async function saveGroup() {
-    if (!name.trim() || selected.length < 2 || selected.length > 3 || saving) return;
+    if (!name.trim() || selected.length < 2 || selected.length > 3 || selectedIncludesNonOwned || saving)
+      return;
     setSaving(true);
     try {
       const { group } = editingGroup
         ? await updateAvatarGroup(editingGroup.id, { name: name.trim(), avatarIds: selected })
         : await createAvatarGroup({ name: name.trim(), avatarIds: selected });
       setGroups((current) =>
-        editingGroup ? current.map((item) => (item.id === group.id ? group : item)) : [group, ...current]
+        editingGroup
+          ? current.map((item) => (item.id === group.id ? group : item))
+          : activeFilter === "shared"
+            ? current
+            : [group, ...current]
       );
       groupDialog.current?.close();
       toast.success(`${group.name} quedó listo para interactuar.`, {
@@ -149,6 +172,8 @@ export function GroupsHub() {
         />
       </div>
 
+      <GroupFilterControls activeFilter={activeFilter} onFilterChange={setActiveFilter} />
+
       {groupStatus === "loading" ? (
         <LoadingState title="Cargando grupos" description="Estamos preparando tu lista." />
       ) : groupStatus === "error" ? (
@@ -159,15 +184,22 @@ export function GroupsHub() {
         />
       ) : groups.length === 0 ? (
         <Card padding="lg" className={catalogStyles.emptyCard}>
-          <EmptyState
-            title="Todavía no tenés grupos"
-            description="Creá un grupo con dos o tres avatares para iniciar una conversación coordinada."
-            action={
-              <Button icon={<YuniIcon name="add" />} onClick={openCreate}>
-                Crear grupo
-              </Button>
-            }
-          />
+          {activeFilter === "shared" ? (
+            <EmptyState
+              title="No tenés grupos compartidos"
+              description="Cuando alguien te comparta un grupo, va a aparecer en esta vista."
+            />
+          ) : (
+            <EmptyState
+              title="Todavía no tenés grupos"
+              description="Creá un grupo con dos o tres avatares para iniciar una conversación coordinada."
+              action={
+                <Button icon={<YuniIcon name="add" />} onClick={openCreate}>
+                  Crear grupo
+                </Button>
+              }
+            />
+          )}
         </Card>
       ) : (
         <div className={catalogStyles.grid}>
@@ -176,8 +208,12 @@ export function GroupsHub() {
               key={group.id}
               group={group}
               onNavigate={(href) => router.push(href)}
-              onEdit={() => openEdit(group)}
-              onDelete={() => void removeGroup(group)}
+              onEdit={() => {
+                if (group.access.canEdit) openEdit(group);
+              }}
+              onDelete={() => {
+                if (group.access.canDelete) void removeGroup(group);
+              }}
             />
           ))}
         </div>
@@ -186,11 +222,11 @@ export function GroupsHub() {
       <Dialog
         ref={groupDialog}
         title={editingGroup ? "Editar grupo" : "Crear grupo"}
-        description="Elegí dos o tres avatares. El orden seleccionado define su posición en la llamada."
+        description="Elegí dos o tres avatares. El orden seleccionado define su posición; los cambios se aplican a las próximas llamadas."
         footer={
           <Button
             loading={saving}
-            disabled={!name.trim() || selected.length < 2 || selected.length > 3}
+            disabled={!name.trim() || selected.length < 2 || selected.length > 3 || selectedIncludesNonOwned}
             onClick={() => void saveGroup()}
           >
             {editingGroup ? "Guardar cambios" : "Crear grupo"}
@@ -216,6 +252,12 @@ export function GroupsHub() {
                 {selected.length} de 3
               </span>
             </div>
+            {restrictRosterToOwned ? (
+              <p className={selectedIncludesNonOwned ? styles.inlineError : styles.formHint}>
+                Este grupo tiene accesos o links activos. Para mantenerlos, la composición sólo puede incluir
+                avatares propios.
+              </p>
+            ) : null}
             {avatarList.status === "loading" ? (
               <p className="yuni-text-muted">Cargando avatares disponibles…</p>
             ) : avatarList.status === "error" ? (
@@ -250,6 +292,39 @@ export function GroupsHub() {
           </fieldset>
         </div>
       </Dialog>
+    </div>
+  );
+}
+
+const groupFilters: Array<{ id: AvatarGroupListScope; label: string }> = [
+  { id: "all", label: "Todos" },
+  { id: "owned", label: "Propios" },
+  { id: "shared", label: "Compartidos conmigo" },
+];
+
+function GroupFilterControls({
+  activeFilter,
+  onFilterChange,
+}: {
+  activeFilter: AvatarGroupListScope;
+  onFilterChange: (filter: AvatarGroupListScope) => void;
+}) {
+  return (
+    <div className={styles.filterBar} role="group" aria-label="Filtrar grupos">
+      {groupFilters.map((filter) => {
+        const isActive = filter.id === activeFilter;
+        return (
+          <button
+            key={filter.id}
+            className={`${styles.filterButton} ${isActive ? styles.filterButtonActive : ""}`}
+            type="button"
+            aria-pressed={isActive}
+            onClick={() => onFilterChange(filter.id)}
+          >
+            {filter.label}
+          </button>
+        );
+      })}
     </div>
   );
 }

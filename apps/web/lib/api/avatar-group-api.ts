@@ -1,13 +1,41 @@
 "use client";
 
 import { apiRequest } from "./http-client";
+import type { ApiInteractionLimits } from "./sharing-api";
+
+export type AvatarGroupListScope = "all" | "owned" | "shared";
+
+export type ApiAvatarGroupAccess = {
+  type: "owner" | "shared";
+  canEdit: boolean;
+  canDelete: boolean;
+  canShare: boolean;
+  canInteract: boolean;
+  limits: ApiInteractionLimits | null;
+  consent: { scopeId: string; version: string } | null;
+  sharedBy?: { name: string } | null;
+};
+
+export type ApiAvatarGroupInteractionAvailability =
+  | { status: "ready"; readyMembers: number; totalMembers: number }
+  | {
+      status: "unavailable";
+      reason: "preparing" | "inactive_member" | "provider_error" | "invalid_roster";
+      readyMembers: number;
+      totalMembers: number;
+    };
+
+export type ApiAvatarGroupSharingEligibility =
+  | { status: "eligible" }
+  | { status: "blocked"; reason: "contains_non_owned_members" };
 
 export type ApiAvatarGroupMember = {
   id: string;
   name: string;
   description: string;
   thumbnailUrl: string | null;
-  accessType: "owner" | "shared";
+  viewerAccess: "owned" | "direct_grant" | "group_grant";
+  accessType?: "owner" | "shared";
   position: number;
   available: boolean;
 };
@@ -16,8 +44,29 @@ export type ApiAvatarGroup = {
   id: string;
   name: string;
   members: ApiAvatarGroupMember[];
+  sharingChannels: { account: boolean; public: boolean };
+  activityEnabled: boolean;
+  access: ApiAvatarGroupAccess;
+  interactionAvailability: ApiAvatarGroupInteractionAvailability;
+  sharingEligibility: ApiAvatarGroupSharingEligibility;
+  membershipVersion: number;
+  hasActiveSharingChannels: boolean;
   createdAt: string;
   updatedAt: string;
+};
+
+type WireAvatarGroupMember = Omit<ApiAvatarGroupMember, "viewerAccess"> & {
+  viewerAccess?: ApiAvatarGroupMember["viewerAccess"];
+};
+
+type WireAvatarGroup = Omit<
+  ApiAvatarGroup,
+  "members" | "hasActiveSharingChannels" | "sharingChannels" | "activityEnabled"
+> & {
+  members: WireAvatarGroupMember[];
+  hasActiveSharingChannels?: boolean;
+  sharingChannels?: ApiAvatarGroup["sharingChannels"];
+  activityEnabled?: boolean;
 };
 
 export type ApiGroupVoiceParticipant = {
@@ -35,7 +84,7 @@ export type ApiGroupVoiceSession = {
   id: string;
   groupId: string;
   conversationId: string;
-  status: "active" | "degraded";
+  status: "connecting" | "active" | "degraded";
   expiresAt: string;
   participants: ApiGroupVoiceParticipant[];
 };
@@ -106,35 +155,43 @@ export type ApiGroupConversation = {
   }>;
 };
 
-export function listAvatarGroups() {
-  return apiRequest<{ groups: ApiAvatarGroup[] }>("/avatar-groups");
+export function listAvatarGroups(scope: AvatarGroupListScope = "all") {
+  return apiRequest<{ groups: WireAvatarGroup[] }>(`/avatar-groups?scope=${scope}`).then(({ groups }) => ({
+    groups: groups.map(normalizeAvatarGroup),
+  }));
 }
 
 export function getAvatarGroup(groupId: string) {
-  return apiRequest<{ group: ApiAvatarGroup }>(`/avatar-groups/${groupId}`);
+  return apiRequest<{ group: WireAvatarGroup }>(`/avatar-groups/${groupId}`).then(({ group }) => ({
+    group: normalizeAvatarGroup(group),
+  }));
 }
 
 export function createAvatarGroup(input: { name: string; avatarIds: string[] }) {
-  return apiRequest<{ group: ApiAvatarGroup }>("/avatar-groups", {
+  return apiRequest<{ group: WireAvatarGroup }>("/avatar-groups", {
     method: "POST",
     body: JSON.stringify(input),
-  });
+  }).then(({ group }) => ({ group: normalizeAvatarGroup(group) }));
 }
 
 export function updateAvatarGroup(groupId: string, input: { name?: string; avatarIds?: string[] }) {
-  return apiRequest<{ group: ApiAvatarGroup }>(`/avatar-groups/${groupId}`, {
+  return apiRequest<{ group: WireAvatarGroup }>(`/avatar-groups/${groupId}`, {
     method: "PATCH",
     body: JSON.stringify(input),
-  });
+  }).then(({ group }) => ({ group: normalizeAvatarGroup(group) }));
 }
 
 export function deleteAvatarGroup(groupId: string) {
   return apiRequest<{ ok: true }>(`/avatar-groups/${groupId}`, { method: "DELETE" });
 }
 
-export function startGroupVoiceSession(groupId: string) {
+export function startGroupVoiceSession(
+  groupId: string,
+  consent?: { consentScopeId: string; consentVersion: string }
+) {
   return apiRequest<{ voiceSession: ApiGroupVoiceSession }>(`/avatar-groups/${groupId}/voice-sessions`, {
     method: "POST",
+    ...(consent ? { body: JSON.stringify(consent) } : {}),
   });
 }
 
@@ -255,4 +312,17 @@ export function listGroupConversations() {
 
 export function getGroupConversation(conversationId: string) {
   return apiRequest<{ conversation: ApiGroupConversation }>(`/group-conversations/${conversationId}`);
+}
+
+function normalizeAvatarGroup(group: WireAvatarGroup): ApiAvatarGroup {
+  return {
+    ...group,
+    hasActiveSharingChannels: group.hasActiveSharingChannels ?? false,
+    sharingChannels: group.sharingChannels ?? { account: true, public: true },
+    activityEnabled: group.activityEnabled === true,
+    members: group.members.map((member) => ({
+      ...member,
+      viewerAccess: member.viewerAccess ?? (member.accessType === "shared" ? "direct_grant" : "owned"),
+    })),
+  };
 }

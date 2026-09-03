@@ -68,10 +68,16 @@ export function createKnowledgeBaseWorker(dependencies: KnowledgeBaseWorkerDepen
         "avatar_context_provider_sync",
         "document_provider_sync",
         "agent_provider_sync",
+        "group_agent_provider_sync",
         "provider_document_cleanup",
         "avatar_provider_cleanup",
       ] as const)
-    : (["session_cleanup", "avatar_context_provider_sync", "agent_provider_sync"] as const);
+    : ([
+        "session_cleanup",
+        "avatar_context_provider_sync",
+        "agent_provider_sync",
+        "group_agent_provider_sync",
+      ] as const);
 
   function requireStorage() {
     if (!dependencies.storage) throw new Error("S3 is not configured for this job");
@@ -148,6 +154,85 @@ export function createKnowledgeBaseWorker(dependencies: KnowledgeBaseWorkerDepen
         providerLastUsableAt: usableAt,
       },
     });
+  }
+
+  async function syncGroupAgent(avatarId: string, expectedRevision?: string) {
+    const avatar = await dependencies.db.avatarAgent.findUnique({
+      where: { id: avatarId },
+      include: {
+        documents: {
+          where: { deletedAt: null },
+          include: { providerSync: true },
+        },
+      },
+    });
+    if (!avatar) return;
+    if (expectedRevision && avatar.groupProviderSyncRevision !== expectedRevision) return;
+    if (
+      ["pending", "syncing", "deleting"].includes(avatar.providerContextSyncStatus) ||
+      avatar.documents.some((document) => document.status === "processing")
+    ) {
+      throw new AvatarProjectionBusyError();
+    }
+    if (
+      avatar.providerContextSyncStatus === "failed" ||
+      avatar.documents.some((document) => document.status === "failed")
+    ) {
+      throw new Error("Group agent knowledge dependency failed");
+    }
+    const voice = VoiceConfigSchema.safeParse(avatar.voiceConfig);
+    if (!voice.success) throw new Error("Avatar voice configuration is invalid");
+    const knowledgeBase: ElevenLabsKnowledgeBaseReference[] = [];
+    const contextDocumentId =
+      avatar.providerContextSyncStatus === "synced" ? avatar.providerContextDocumentId : null;
+    if (contextDocumentId) {
+      knowledgeBase.push({
+        type: "text",
+        name: `YUNI Context - ${avatar.name}`,
+        id: contextDocumentId,
+        usage_mode: "prompt",
+      });
+    }
+    for (const document of avatar.documents) {
+      const providerSync = document.providerSync;
+      if (providerSync?.providerDocumentId && providerSync.status === "synced") {
+        knowledgeBase.push({
+          type: "file",
+          name: document.fileName,
+          id: providerSync.providerDocumentId,
+          usage_mode: "auto",
+        });
+      }
+    }
+    const preparing = await updateGroupProjectionIfCurrent(dependencies.db, avatarId, expectedRevision, {
+      groupProviderSyncStatus: "syncing",
+      groupProviderSyncError: null,
+    });
+    if (!preparing) return;
+    const result = await dependencies.provider.syncAvatarAgent({
+      id: avatar.id,
+      name: avatar.name,
+      description: avatar.description,
+      instructions: avatar.instructions,
+      context: avatar.context,
+      voiceConfig: voice.data,
+      providerAgentId: avatar.groupProviderAgentId,
+      providerSyncFingerprint:
+        avatar.groupProviderSyncStatus === "synced" ? avatar.groupProviderSyncFingerprint : null,
+      sessionMode: "group",
+      knowledgeBase,
+      includeInlineContext: !contextDocumentId,
+    });
+    const published = await updateGroupProjectionIfCurrent(dependencies.db, avatarId, expectedRevision, {
+      groupProviderAgentId: result.providerAgentId,
+      groupProviderSyncFingerprint: result.providerSyncFingerprint,
+      groupProviderSyncStatus: "synced",
+      groupProviderSyncError: null,
+      groupProviderSyncedAt: result.synced ? now() : avatar.groupProviderSyncedAt,
+    });
+    if (!published && !avatar.groupProviderAgentId) {
+      await ignoreProviderNotFound(() => dependencies.provider.deleteAgent(result.providerAgentId));
+    }
   }
 
   async function syncContext(avatarId: string, expectedFingerprint?: string) {
@@ -457,6 +542,11 @@ export function createKnowledgeBaseWorker(dependencies: KnowledgeBaseWorkerDepen
       case "agent_provider_sync":
         if (avatarId) await syncAgent(avatarId);
         return;
+      case "group_agent_provider_sync":
+        if (avatarId) {
+          await syncGroupAgent(avatarId, readString(payload.syncRevision) ?? undefined);
+        }
+        return;
       case "provider_document_cleanup":
         if (documentId) {
           if (payload.pendingUploadOnly === true) await cleanupPendingUpload(documentId);
@@ -501,6 +591,16 @@ export function createKnowledgeBaseWorker(dependencies: KnowledgeBaseWorkerDepen
       await dependencies.db.avatarAgent.updateMany({
         where: { id: avatarId },
         data: { providerSyncStatus: "failed", providerSyncError: errorMessage },
+      });
+    } else if (job.type === "group_agent_provider_sync" && avatarId) {
+      await dependencies.db.avatarAgent.updateMany({
+        where: {
+          id: avatarId,
+          ...(readString(payload.syncRevision)
+            ? { groupProviderSyncRevision: readString(payload.syncRevision) }
+            : {}),
+        },
+        data: { groupProviderSyncStatus: "failed", groupProviderSyncError: errorMessage },
       });
     } else if (job.type === "document_provider_sync" && documentId) {
       await Promise.all([
@@ -569,6 +669,7 @@ export function createKnowledgeBaseWorker(dependencies: KnowledgeBaseWorkerDepen
       return true;
     },
     syncAgent,
+    syncGroupAgent,
     syncContext,
     syncDocument,
     cleanupDocument,
@@ -580,6 +681,29 @@ export function createKnowledgeBaseWorker(dependencies: KnowledgeBaseWorkerDepen
 
 function fingerprint(value: string) {
   return createHash("sha256").update(value).digest("hex");
+}
+
+async function updateGroupProjectionIfCurrent(
+  db: PrismaClientInstance,
+  avatarId: string,
+  expectedRevision: string | undefined,
+  data: {
+    groupProviderAgentId?: string;
+    groupProviderSyncFingerprint?: string;
+    groupProviderSyncStatus: "syncing" | "synced";
+    groupProviderSyncError: string | null;
+    groupProviderSyncedAt?: Date | null;
+  }
+) {
+  if (!expectedRevision) {
+    await db.avatarAgent.update({ where: { id: avatarId }, data });
+    return true;
+  }
+  const updated = await db.avatarAgent.updateMany({
+    where: { id: avatarId, groupProviderSyncRevision: expectedRevision },
+    data,
+  });
+  return updated.count === 1;
 }
 
 function backoffMs(attempts: number) {

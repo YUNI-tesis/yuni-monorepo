@@ -205,10 +205,13 @@ describe("interact API helpers", () => {
   it("uses authenticated group and turn endpoints", async () => {
     const fetchMock = vi.fn().mockImplementation(() =>
       Promise.resolve(
-        new Response(JSON.stringify({ group: {}, voiceSession: {}, scribe: {}, directive: {} }), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        })
+        new Response(
+          JSON.stringify({ group: { members: [] }, voiceSession: {}, scribe: {}, directive: {} }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          }
+        )
       )
     );
     vi.stubGlobal("fetch", fetchMock);

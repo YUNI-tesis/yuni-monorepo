@@ -1,7 +1,12 @@
 import React from "react";
 import { Badge, Button, Card, EmptyState, YuniIcon } from "@yuni/ui";
 import type { ApiCreatorDashboardSummary } from "../../../lib/api/dashboard-api";
-import { formatDashboardDate, getDashboardTranscriptPath } from "../../../lib/creator-dashboard";
+import {
+  formatDashboardDate,
+  getDashboardResourceName,
+  getDashboardResourceTranscriptPath,
+  isDashboardGroupResource,
+} from "../../../lib/creator-dashboard";
 import styles from "../Dashboard.module.css";
 
 export function RecentActivity({
@@ -13,7 +18,7 @@ export function RecentActivity({
 }) {
   const openConversation = (activity: ApiCreatorDashboardSummary["recentActivity"][number]) =>
     onNavigate(
-      getDashboardTranscriptPath(activity.avatarId, activity.participantKey, activity.conversationId)
+      getDashboardResourceTranscriptPath(activity, activity.participantKey, activity.conversationId)
     );
 
   return (
@@ -37,7 +42,7 @@ export function RecentActivity({
                 <thead>
                   <tr>
                     <th>Participante</th>
-                    <th>Avatar</th>
+                    <th>Recurso</th>
                     <th>Origen</th>
                     <th>Tipo</th>
                     <th>Conversación</th>
@@ -54,7 +59,12 @@ export function RecentActivity({
                           {activity.participantName ? activity.participantEmail : ""}
                         </small>
                       </th>
-                      <td>{activity.avatarName}</td>
+                      <td>
+                        <span>{getDashboardResourceName(activity)}</span>
+                        {isDashboardGroupResource(activity) ? (
+                          <small className={styles.secondaryLine}>Grupo</small>
+                        ) : null}
+                      </td>
                       <td>
                         <OriginBadge origin={activity.origin} />
                       </td>
@@ -89,8 +99,11 @@ export function RecentActivity({
                   <p>{activity.title || "Sin título"}</p>
                   <dl>
                     <div>
-                      <dt>Avatar</dt>
-                      <dd>{activity.avatarName}</dd>
+                      <dt>Recurso</dt>
+                      <dd>
+                        {getDashboardResourceName(activity)}
+                        {isDashboardGroupResource(activity) ? " · Grupo" : ""}
+                      </dd>
                     </div>
                     <div>
                       <dt>Origen</dt>

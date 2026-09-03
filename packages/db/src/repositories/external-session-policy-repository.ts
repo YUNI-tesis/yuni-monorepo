@@ -1,5 +1,10 @@
 import type { InteractionLimits } from "@yuni/domain";
 import type { PrismaClient } from "@prisma/client";
+import {
+  countActiveExternalSessionsForAvatar,
+  countActiveExternalSessionsForParticipant,
+  lockExternalParticipant,
+} from "./external-session-capacity";
 
 type Db = PrismaClient;
 const countedStatuses = ["connecting", "active", "ended"] as const;
@@ -25,6 +30,15 @@ export function createExternalSessionPolicyRepository(db: Db) {
       }) => Date
     ) {
       return db.$transaction(async (transaction) => {
+        const avatars = await transaction.$queryRaw<Array<{ id: string }>>`
+          SELECT "id"
+          FROM "AvatarAgent"
+          WHERE "id" = ${input.avatarAgentId}
+            AND "status" = 'active'::"AvatarStatus"
+          FOR UPDATE
+        `;
+        if (!avatars[0]) return null;
+
         const links = await transaction.$queryRaw<
           Array<{
             id: string;
@@ -37,16 +51,15 @@ export function createExternalSessionPolicyRepository(db: Db) {
             share_link."maxSessionDurationSeconds",
             share_link."maxSessionsPer24Hours"
           FROM "ShareLink" AS share_link
-          INNER JOIN "AvatarAgent" AS avatar_agent
-            ON avatar_agent."id" = share_link."avatarAgentId"
           WHERE share_link."id" = ${input.shareLinkId}
             AND share_link."avatarAgentId" = ${input.avatarAgentId}
             AND share_link."isEnabled" = TRUE
-            AND avatar_agent."status" = 'active'::"AvatarStatus"
-          FOR UPDATE OF share_link, avatar_agent
+          FOR UPDATE
         `;
         const link = links[0];
         if (!link) return null;
+
+        const participantEmail = await lockExternalParticipant(transaction, input.participantEmail);
 
         const [usage, participantActive, avatarActive] = await Promise.all([
           transaction.publicSession.findMany({
@@ -54,27 +67,13 @@ export function createExternalSessionPolicyRepository(db: Db) {
               status: { in: ["active", "ended"] },
               startedAt: { gt: input.since },
               shareLinkId: link.id,
-              participantEmail: input.participantEmail,
+              participantEmail,
             },
             select: { id: true, startedAt: true, endedAt: true },
             orderBy: { startedAt: "asc" },
           }),
-          transaction.realtimeSession.count({
-            where: {
-              status: { in: [...activeStatuses] },
-              publicSession: {
-                shareLinkId: link.id,
-                participantEmail: input.participantEmail,
-              },
-            },
-          }),
-          transaction.realtimeSession.count({
-            where: {
-              avatarAgentId: input.avatarAgentId,
-              status: { in: [...activeStatuses] },
-              OR: [{ publicSessionId: { not: null } }, { accessGrantId: { not: null } }],
-            },
-          }),
+          countActiveExternalSessionsForParticipant(transaction, participantEmail),
+          countActiveExternalSessionsForAvatar(transaction, input.avatarAgentId),
         ]);
         const expiresAt = decideExpiresAt({
           limits: {
@@ -89,7 +88,7 @@ export function createExternalSessionPolicyRepository(db: Db) {
           data: {
             shareLinkId: link.id,
             avatarAgentId: input.avatarAgentId,
-            participantEmail: input.participantEmail,
+            participantEmail,
             ...(input.participantUserId ? { participantUserId: input.participantUserId } : {}),
             consentedAt: input.consentedAt,
             expiresAt,
@@ -101,7 +100,7 @@ export function createExternalSessionPolicyRepository(db: Db) {
             avatarAgentId: input.avatarAgentId,
             shareLinkId: link.id,
             publicSessionId: publicSession.id,
-            participantEmail: input.participantEmail,
+            participantEmail,
             visibility: "public",
             mode: "voice",
           },
@@ -135,6 +134,15 @@ export function createExternalSessionPolicyRepository(db: Db) {
       }) => Date
     ) {
       return db.$transaction(async (transaction) => {
+        const avatars = await transaction.$queryRaw<Array<{ id: string }>>`
+          SELECT "id"
+          FROM "AvatarAgent"
+          WHERE "id" = ${input.avatarAgentId}
+            AND "status" = 'active'::"AvatarStatus"
+          FOR UPDATE
+        `;
+        if (!avatars[0]) return null;
+
         const grants = await transaction.$queryRaw<
           Array<{
             id: string;
@@ -149,17 +157,16 @@ export function createExternalSessionPolicyRepository(db: Db) {
             access_grant."maxSessionDurationSeconds",
             access_grant."maxSessionsPer24Hours"
           FROM "AccessGrant" AS access_grant
-          INNER JOIN "AvatarAgent" AS avatar_agent
-            ON avatar_agent."id" = access_grant."avatarAgentId"
           WHERE access_grant."id" = ${input.accessGrantId}
             AND access_grant."avatarAgentId" = ${input.avatarAgentId}
             AND access_grant."participantUserId" = ${input.participantUserId}
             AND access_grant."status" = 'active'::"AccessGrantStatus"
-            AND avatar_agent."status" = 'active'::"AvatarStatus"
-          FOR UPDATE OF access_grant, avatar_agent
+          FOR UPDATE
         `;
         const grant = grants[0];
         if (!grant) return null;
+
+        const participantEmail = await lockExternalParticipant(transaction, grant.participantEmail);
 
         const [usage, participantActive, avatarActive] = await Promise.all([
           transaction.realtimeSession.findMany({
@@ -171,19 +178,8 @@ export function createExternalSessionPolicyRepository(db: Db) {
             select: { id: true, startedAt: true, endedAt: true },
             orderBy: { startedAt: "asc" },
           }),
-          transaction.realtimeSession.count({
-            where: {
-              status: { in: [...activeStatuses] },
-              accessGrantId: input.accessGrantId,
-            },
-          }),
-          transaction.realtimeSession.count({
-            where: {
-              avatarAgentId: input.avatarAgentId,
-              status: { in: [...activeStatuses] },
-              OR: [{ publicSessionId: { not: null } }, { accessGrantId: { not: null } }],
-            },
-          }),
+          countActiveExternalSessionsForParticipant(transaction, participantEmail),
+          countActiveExternalSessionsForAvatar(transaction, input.avatarAgentId),
         ]);
         const expiresAt = decideExpiresAt({
           limits: {
@@ -199,7 +195,7 @@ export function createExternalSessionPolicyRepository(db: Db) {
             ownerId: input.participantUserId,
             avatarAgentId: input.avatarAgentId,
             accessGrantId: grant.id,
-            participantEmail: grant.participantEmail,
+            participantEmail,
             visibility: "private",
             mode: "voice",
           },

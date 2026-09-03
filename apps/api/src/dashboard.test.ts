@@ -122,6 +122,12 @@ function createSummaryData(): CreatorDashboardSummaryData {
       { avatarAgentId: "avatar-1", lastActivityAt: new Date("2026-08-10T10:00:00.000Z") },
       { avatarAgentId: "avatar-2", lastActivityAt: new Date("2026-08-15T10:00:00.000Z") },
     ],
+    groups: [],
+    groupActivityBuckets: [],
+    groupGrants: [],
+    groupVoiceSessions: [],
+    interruptedGroupConversations: [],
+    groupLastActivity: [],
   };
 }
 
@@ -188,6 +194,32 @@ function voiceSession(
   };
 }
 
+function dashboardGroup(): CreatorDashboardSummaryData["groups"][number] {
+  return {
+    id: "group-1",
+    ownerId: "owner-1",
+    name: "Consejo",
+    deletedAt: null,
+    members: ["avatar-a", "avatar-b", "avatar-c"].map((id) => ({
+      accessGrantId: null,
+      avatarAgent: {
+        id,
+        ownerId: "owner-1",
+        status: "active" as const,
+        liveAvatarConfig: {
+          provider: "liveavatar",
+          avatarId: `live-${id}`,
+          mode: "lite",
+          sandbox: true,
+        },
+        voiceConfig: { provider: "elevenlabs", voiceId: `voice-${id}`, speakingRate: 1 },
+        groupProviderAgentId: `provider-${id}`,
+        groupProviderSyncStatus: "synced" as const,
+      },
+    })),
+  };
+}
+
 function createRepository(data = createSummaryData()): CreatorDashboardRepository {
   return { getSummaryData: vi.fn().mockResolvedValue(data) };
 }
@@ -225,6 +257,196 @@ describe("@yuni/api creator dashboard service", () => {
       conversationId: "voice-no-transcript",
       participantKey: createParticipantKey("other@example.com"),
     });
+  });
+
+  it("counts a shared group once, deduplicates its participant and keeps it out of avatar metrics", async () => {
+    const data = createSummaryData();
+    data.groups = [dashboardGroup()];
+    data.groupActivityBuckets = [
+      {
+        conversationId: "group-direct",
+        avatarGroupId: "group-1",
+        avatarGroupName: "Consejo",
+        participantEmail: "person@example.com",
+        participantName: "Persona",
+        origin: "access_grant",
+        mode: "voice",
+        status: "ended",
+        title: "Consulta al consejo",
+        activityDate: "2026-08-11",
+        lastActivityAt: new Date("2026-08-11T12:00:00.000Z"),
+        participantTurns: 2,
+      },
+      {
+        conversationId: "group-direct",
+        avatarGroupId: "group-1",
+        avatarGroupName: "Consejo",
+        participantEmail: "person@example.com",
+        participantName: "Persona",
+        origin: "access_grant",
+        mode: "voice",
+        status: "ended",
+        title: "Consulta al consejo",
+        activityDate: "2026-08-12",
+        lastActivityAt: new Date("2026-08-12T12:00:00.000Z"),
+        participantTurns: 1,
+      },
+      {
+        conversationId: "group-public",
+        avatarGroupId: "group-1",
+        avatarGroupName: "Consejo",
+        participantEmail: "person@example.com",
+        participantName: "Persona",
+        origin: "public_link",
+        mode: "voice",
+        status: "ended",
+        title: "Consulta pública al consejo",
+        activityDate: "2026-08-16",
+        lastActivityAt: new Date("2026-08-16T12:00:00.000Z"),
+        participantTurns: 0,
+      },
+    ];
+    data.groupGrants = [
+      {
+        id: "group-grant-1",
+        avatarGroupId: "group-1",
+        avatarGroupName: "Consejo",
+        participantEmail: "person@example.com",
+        participantName: "Persona",
+        status: "active",
+        createdAt: new Date("2026-07-25T10:00:00.000Z"),
+        firstDirectActivityAt: new Date("2026-07-26T10:00:00.000Z"),
+        latestParticipantActivityAt: new Date("2026-08-16T12:00:00.000Z"),
+      },
+    ];
+    data.groupVoiceSessions = [
+      {
+        id: "group-session-1",
+        conversationId: "group-direct",
+        avatarGroupId: "group-1",
+        status: "ended",
+        startedAt: new Date("2026-08-12T11:59:00.000Z"),
+        activatedAt: new Date("2026-08-12T12:00:00.000Z"),
+        endedAt: new Date("2026-08-12T12:10:00.000Z"),
+      },
+      {
+        id: "group-session-pre-activation",
+        conversationId: "group-reservation-only",
+        avatarGroupId: "group-1",
+        status: "errored",
+        startedAt: new Date("2026-08-13T12:00:00.000Z"),
+        activatedAt: null,
+        endedAt: new Date("2026-08-13T12:00:05.000Z"),
+      },
+    ];
+    data.groupLastActivity = [
+      { avatarGroupId: "group-1", lastActivityAt: new Date("2026-08-16T12:00:00.000Z") },
+    ];
+
+    const repository = createRepository(data);
+    const summary = await createCreatorDashboardService({
+      repository,
+      now: () => now,
+      groupAnalyticsEnabled: true,
+    }).getSummary("owner-1", { days: 30, timeZone: "UTC" });
+
+    expect(repository.getSummaryData).toHaveBeenCalledWith(
+      "owner-1",
+      expect.objectContaining({ includeGroupAnalytics: true })
+    );
+    expect(summary.overview.activeParticipants.value).toBe(2);
+    expect(summary.overview.engagedConversations.value).toBe(5);
+    expect(summary.avatars.reduce((total, avatar) => total + avatar.engagedConversations, 0)).toBe(3);
+    expect(summary.groups).toEqual([
+      expect.objectContaining({
+        groupId: "group-1",
+        engagedConversations: 2,
+        activeParticipants: 1,
+        health: "available",
+      }),
+    ]);
+    expect(summary.trend.points.reduce((total, point) => total + point.engagedConversations, 0)).toBe(5);
+    expect(summary.interaction.medianVoiceDurationSeconds).toBe(450);
+    expect(summary.voiceHealth.errors).toMatchObject({ value: 1, total: 3 });
+    expect(summary.recentActivity[0]).toMatchObject({
+      conversationId: "group-public",
+      resourceKind: "group",
+      groupId: "group-1",
+      resourceName: "Consejo",
+      resource: { type: "group", id: "group-1", name: "Consejo" },
+    });
+  });
+
+  it("uses sharing eligibility and provider configuration for group health", async () => {
+    const mixedData = createSummaryData();
+    const mixedGroup = dashboardGroup();
+    mixedGroup.members[0]!.accessGrantId = "direct-grant-1";
+    mixedData.groups = [mixedGroup];
+
+    const invalidConfigData = createSummaryData();
+    const invalidConfigGroup = dashboardGroup();
+    invalidConfigGroup.members[0]!.avatarAgent.voiceConfig = { provider: "elevenlabs" };
+    invalidConfigData.groups = [invalidConfigGroup];
+
+    const [mixedSummary, invalidConfigSummary] = await Promise.all(
+      [mixedData, invalidConfigData].map((data) =>
+        createCreatorDashboardService({
+          repository: createRepository(data),
+          now: () => now,
+          groupAnalyticsEnabled: true,
+        }).getSummary("owner-1", { days: 30, timeZone: "UTC" })
+      )
+    );
+
+    expect(mixedSummary?.groups?.[0]?.health).toBe("unavailable");
+    expect(invalidConfigSummary?.groups?.[0]?.health).toBe("unavailable");
+  });
+
+  it("keeps the legacy payload and excludes group rows when analytics is disabled", async () => {
+    const data = createSummaryData();
+    data.groups = [
+      {
+        id: "group-ignored",
+        ownerId: "owner-1",
+        name: "Ignorado",
+        deletedAt: null,
+        members: [],
+      },
+    ];
+    data.groupActivityBuckets = [
+      {
+        conversationId: "group-ignored-conversation",
+        avatarGroupId: "group-ignored",
+        avatarGroupName: "Ignorado",
+        participantEmail: "new@example.com",
+        participantName: null,
+        origin: "public_link",
+        mode: "voice",
+        status: "ended",
+        title: null,
+        activityDate: "2026-08-15",
+        lastActivityAt: new Date("2026-08-15T12:00:00.000Z"),
+        participantTurns: 0,
+      },
+    ];
+    const repository = createRepository(data);
+    const summary = await createCreatorDashboardService({ repository, now: () => now }).getSummary(
+      "owner-1",
+      {
+        days: 30,
+        timeZone: "UTC",
+      }
+    );
+
+    expect(repository.getSummaryData).toHaveBeenCalledWith(
+      "owner-1",
+      expect.objectContaining({ includeGroupAnalytics: false })
+    );
+    expect(summary.overview.engagedConversations.value).toBe(3);
+    expect(summary).not.toHaveProperty("groups");
+    expect(summary).not.toHaveProperty("hasOwnedResources");
+    expect(summary.recentActivity.every((item) => !("resourceKind" in item))).toBe(true);
+    expect(summary.recentActivity.every((item) => !("resource" in item))).toBe(true);
   });
 
   it("flags an inactive participant after public-only activity without treating it as direct activation", async () => {

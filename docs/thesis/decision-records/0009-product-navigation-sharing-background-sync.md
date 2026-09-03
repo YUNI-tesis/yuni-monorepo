@@ -84,5 +84,8 @@ El creador puede crear un avatar, cargar contexto, compartirlo con alumnos y rev
 ## Open questions
 
 - Si el alumno debe poder ocultar su historial al creador en algun modo futuro.
-- Si conviene agregar grupos/cursos como capa sobre access grants por email.
 - Que umbral convierte fallos repetidos de sync en alerta visible para soporte.
+
+La pregunta sobre grupos como capa de sharing fue resuelta por
+[ADR 0025](0025-shareable-avatar-groups.md): los grupos se comparten como un recurso propio,
+con grants y links separados de los permisos individuales.
