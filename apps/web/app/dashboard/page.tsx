@@ -15,6 +15,7 @@ import { ActivityTrend } from "./components/ActivityTrend";
 import { AttentionPanel } from "./components/AttentionPanel";
 import { AvatarPerformance } from "./components/AvatarPerformance";
 import { DashboardHeader } from "./components/DashboardHeader";
+import { GroupPerformance } from "./components/GroupPerformance";
 import { InteractionCharacteristics } from "./components/InteractionCharacteristics";
 import { Methodology } from "./components/Methodology";
 import { OriginBreakdown } from "./components/OriginBreakdown";
@@ -79,7 +80,7 @@ export function CreatorDashboardContent({
   onDaysChange?: (days: ApiDashboardDays) => void;
   onNavigate: (path: string) => void;
 }) {
-  if (!summary.hasOwnedAvatars) {
+  if (!(summary.hasOwnedResources ?? summary.hasOwnedAvatars)) {
     return (
       <div className={styles.layout}>
         <DashboardHeader
@@ -143,6 +144,7 @@ export function CreatorDashboardContent({
         <InteractionCharacteristics summary={summary} />
       </div>
       <AvatarPerformance summary={summary} onNavigate={onNavigate} />
+      <GroupPerformance summary={summary} onNavigate={onNavigate} />
       <RecentActivity summary={summary} onNavigate={onNavigate} />
       <Methodology summary={summary} />
     </div>

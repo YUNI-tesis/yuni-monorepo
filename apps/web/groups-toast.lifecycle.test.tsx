@@ -35,6 +35,13 @@ vi.mock("./hooks/useAvatarList", () => ({
         interactionAvailability: "ready",
         access: { type: "owner" },
       },
+      {
+        id: "avatar-3",
+        name: "Grace",
+        status: "disabled",
+        interactionAvailability: "unavailable",
+        access: { type: "owner" },
+      },
     ],
   }),
 }));
@@ -55,6 +62,7 @@ const group = {
       name: "Ada",
       description: "",
       thumbnailUrl: null,
+      viewerAccess: "owned",
       accessType: "owner",
       position: 0,
       available: true,
@@ -64,6 +72,7 @@ const group = {
       name: "Turing",
       description: "",
       thumbnailUrl: null,
+      viewerAccess: "owned",
       accessType: "owner",
       position: 1,
       available: true,
@@ -71,6 +80,19 @@ const group = {
   ],
   createdAt: "2026-08-24T00:00:00.000Z",
   updatedAt: "2026-08-24T00:00:00.000Z",
+  access: {
+    type: "owner",
+    canEdit: true,
+    canDelete: true,
+    canShare: true,
+    canInteract: true,
+    limits: null,
+    consent: null,
+  },
+  interactionAvailability: { status: "ready", readyMembers: 2, totalMembers: 2 },
+  sharingEligibility: { status: "eligible" },
+  membershipVersion: 1,
+  hasActiveSharingChannels: false,
 };
 
 let dom: JSDOM;
@@ -176,6 +198,51 @@ describe("group toast feedback", () => {
       expect(screen.getByRole("alert").textContent).toContain("No pudimos actualizar el grupo")
     );
     expect(screen.getByRole("dialog", { name: "Editar grupo" }).hasAttribute("open")).toBe(true);
+  });
+
+  it("keeps an unavailable current member visible so the owner can replace it", async () => {
+    const unavailableGroup = {
+      ...group,
+      members: [
+        group.members[0],
+        {
+          ...group.members[1],
+          id: "avatar-3",
+          name: "Grace",
+          available: false,
+        },
+      ],
+      interactionAvailability: {
+        status: "unavailable",
+        reason: "inactive_member",
+        readyMembers: 1,
+        totalMembers: 2,
+      },
+    };
+    groupMocks.listAvatarGroups.mockResolvedValue({ groups: [unavailableGroup] });
+    groupMocks.updateAvatarGroup.mockResolvedValue({ group });
+    render(
+      <ToastProvider>
+        <GroupsHub />
+      </ToastProvider>
+    );
+    await waitFor(() => expect(screen.getByText("Consejo")).toBeTruthy());
+
+    fireEvent.click(screen.getByRole("button", { name: "Más acciones para Consejo" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Editar" }));
+
+    const unavailableMember = screen.getByRole("checkbox", { name: /Grace/ });
+    expect(unavailableMember).toHaveProperty("checked", true);
+    fireEvent.click(unavailableMember);
+    fireEvent.click(screen.getByRole("checkbox", { name: /Turing/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Guardar cambios" }));
+
+    await waitFor(() =>
+      expect(groupMocks.updateAvatarGroup).toHaveBeenCalledWith("group-1", {
+        name: "Consejo",
+        avatarIds: ["avatar-1", "avatar-2"],
+      })
+    );
   });
 
   it("announces a confirmed group deletion", async () => {

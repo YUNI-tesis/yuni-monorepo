@@ -14,6 +14,10 @@ export type RateLimitConfig = {
   maxExternalSessionStartsPerParticipantTargetHour: number;
   maxPublicSessionStartsPerLinkHour: number;
   maxExternalSessionStartsPerAvatarHour: number;
+  maxPublicGroupRuntimeCommandsPerSessionMinute: number;
+  maxPublicGroupRuntimeCommandsPerSessionIpMinute: number;
+  maxPublicGroupEndRequestsPerSessionMinute: number;
+  maxPublicGroupEndRequestsPerSessionIpMinute: number;
 };
 
 export function createRateLimitConfig(env: RawEnv): RateLimitConfig {
@@ -31,6 +35,11 @@ export function createRateLimitConfig(env: RawEnv): RateLimitConfig {
       env.MAX_EXTERNAL_SESSION_STARTS_PER_PARTICIPANT_TARGET_HOUR,
     maxPublicSessionStartsPerLinkHour: env.MAX_PUBLIC_SESSION_STARTS_PER_LINK_HOUR,
     maxExternalSessionStartsPerAvatarHour: env.MAX_EXTERNAL_SESSION_STARTS_PER_AVATAR_HOUR,
+    maxPublicGroupRuntimeCommandsPerSessionMinute: env.MAX_PUBLIC_GROUP_RUNTIME_COMMANDS_PER_SESSION_MINUTE,
+    maxPublicGroupRuntimeCommandsPerSessionIpMinute:
+      env.MAX_PUBLIC_GROUP_RUNTIME_COMMANDS_PER_SESSION_IP_MINUTE,
+    maxPublicGroupEndRequestsPerSessionMinute: env.MAX_PUBLIC_GROUP_END_REQUESTS_PER_SESSION_MINUTE,
+    maxPublicGroupEndRequestsPerSessionIpMinute: env.MAX_PUBLIC_GROUP_END_REQUESTS_PER_SESSION_IP_MINUTE,
   };
 }
 

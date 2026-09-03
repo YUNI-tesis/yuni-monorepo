@@ -6,6 +6,7 @@ import styles from "./Interact.module.css";
 
 export type SharedCallPrivacyDialogProps = {
   sharedAvatarNames: string[];
+  subjectKind?: "avatar" | "group";
   rememberChoice: boolean;
   onRememberChoiceChange: (checked: boolean) => void;
   onConfirm: () => void;
@@ -15,10 +16,21 @@ export type SharedCallPrivacyDialogProps = {
 
 export const SharedCallPrivacyDialog = forwardRef<HTMLDialogElement, SharedCallPrivacyDialogProps>(
   function SharedCallPrivacyDialog(
-    { sharedAvatarNames, rememberChoice, onRememberChoiceChange, onConfirm, onCancel, limitsSummary },
+    {
+      sharedAvatarNames,
+      subjectKind = "avatar",
+      rememberChoice,
+      onRememberChoiceChange,
+      onConfirm,
+      onCancel,
+      limitsSummary,
+    },
     ref
   ) {
-    const disclosure = formatSharedAvatarDisclosure(sharedAvatarNames);
+    const disclosure =
+      subjectKind === "group"
+        ? `El creador de ${sharedAvatarNames[0] ?? "este grupo"} podrá consultar esta información en la sección Actividad.`
+        : formatSharedAvatarDisclosure(sharedAvatarNames);
 
     return (
       <Dialog
@@ -38,7 +50,12 @@ export const SharedCallPrivacyDialog = forwardRef<HTMLDialogElement, SharedCallP
             onChange={(event) => onRememberChoiceChange(event.target.checked)}
           />
           <span>
-            No volver a mostrar para {sharedAvatarNames.length === 1 ? "este avatar" : "estos avatares"}
+            No volver a mostrar para{" "}
+            {subjectKind === "group"
+              ? "este grupo"
+              : sharedAvatarNames.length === 1
+                ? "este avatar"
+                : "estos avatares"}
           </span>
         </label>
       </Dialog>
@@ -48,6 +65,10 @@ export const SharedCallPrivacyDialog = forwardRef<HTMLDialogElement, SharedCallP
 
 export function getSharedCallConsentStorageKey(userId: string, avatarId: string) {
   return `yuni:shared-call-consent:v1:${userId}:${avatarId}`;
+}
+
+export function getSharedGroupConsentStorageKey(userId: string, scopeId: string, consentVersion: string) {
+  return `yuni:shared-group-consent:v1:${userId}:${scopeId}:${consentVersion}`;
 }
 
 export function readRememberedPrivacyChoice(storageKey: string) {

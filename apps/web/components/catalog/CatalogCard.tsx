@@ -18,7 +18,7 @@ export type CatalogCardProps = {
   id: string;
   title: string;
   description: string;
-  href: string;
+  href: string | null;
   hrefLabel: string;
   headingLevel: "h2" | "h3";
   artwork: CatalogCardArtwork;
@@ -60,15 +60,17 @@ export function CatalogCard({
       aria-labelledby={`catalog-card-title-${id}`}
       {...(compactOnMobile ? { "data-mobile-layout": "compact" } : {})}
     >
-      <a
-        className={styles.profileLink}
-        href={href}
-        aria-label={hrefLabel}
-        onClick={(event) => {
-          event.preventDefault();
-          onNavigate(href);
-        }}
-      />
+      {href ? (
+        <a
+          className={styles.profileLink}
+          href={href}
+          aria-label={hrefLabel}
+          onClick={(event) => {
+            event.preventDefault();
+            onNavigate(href);
+          }}
+        />
+      ) : null}
 
       <div className={`${styles.media} ${hasMenu ? styles.mediaWithMenu : ""}`}>
         <CatalogArtworkView artwork={artwork} />

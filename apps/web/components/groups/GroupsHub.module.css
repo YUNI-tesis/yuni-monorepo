@@ -8,6 +8,42 @@
   line-height: 1.5;
 }
 
+.filterBar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--yuni-space-2);
+  margin-top: calc(var(--yuni-space-2) * -1);
+}
+
+.filterButton {
+  min-height: 44px;
+  border: 1px solid var(--yuni-color-border);
+  border-radius: 999px;
+  padding: 0 var(--yuni-space-4);
+  background: var(--yuni-color-surface-soft);
+  color: var(--yuni-color-text-muted);
+  font: inherit;
+  font-size: var(--yuni-font-sm);
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.filterButton:hover {
+  border-color: var(--yuni-color-border-strong);
+  color: var(--yuni-color-text);
+}
+
+.filterButton:focus-visible {
+  outline: none;
+  box-shadow: var(--yuni-focus-ring);
+}
+
+.filterButtonActive {
+  border-color: color-mix(in srgb, var(--yuni-color-accent) 42%, transparent);
+  background: color-mix(in srgb, var(--yuni-color-accent) 14%, var(--yuni-color-surface-soft));
+  color: var(--yuni-color-text);
+}
+
 .groupForm,
 .groupForm > label,
 .groupForm fieldset {
@@ -184,6 +220,24 @@
 }
 
 @media (max-width: 520px) {
+  .filterBar {
+    flex-wrap: nowrap;
+    max-width: 100%;
+    margin-top: 0;
+    overflow-x: auto;
+    padding-bottom: var(--yuni-space-1);
+    scrollbar-width: none;
+  }
+
+  .filterBar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .filterButton {
+    flex: 0 0 auto;
+    padding: 0 var(--yuni-space-3);
+  }
+
   .mobileHeader :global(.yuni-page-header) {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;

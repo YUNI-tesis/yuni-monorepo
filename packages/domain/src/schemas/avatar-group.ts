@@ -22,6 +22,14 @@ export const UpdateAvatarGroupInputSchema = z
     "No hay cambios para guardar"
   );
 
+export const StartGroupVoiceSessionInputSchema = z.union([
+  z.strictObject({}),
+  z.strictObject({
+    consentScopeId: z.string().trim().min(1),
+    consentVersion: z.string().trim().min(1),
+  }),
+]);
+
 export const GroupVoiceTurnInputSchema = z.strictObject({
   sourceEventId: z.string().trim().min(1).max(160),
   content: z.string().trim().min(1).max(8_000),
@@ -84,6 +92,7 @@ export const EndGroupVoiceSessionInputSchema = z.strictObject({
 
 export type CreateAvatarGroupInput = z.infer<typeof CreateAvatarGroupInputSchema>;
 export type UpdateAvatarGroupInput = z.infer<typeof UpdateAvatarGroupInputSchema>;
+export type StartGroupVoiceSessionInput = z.infer<typeof StartGroupVoiceSessionInputSchema>;
 export type GroupVoiceTurnInput = z.infer<typeof GroupVoiceTurnInputSchema>;
 export type GroupProviderEventInput = z.infer<typeof GroupProviderEventInputSchema>;
 export type InterruptGroupVoiceSessionInput = z.infer<typeof InterruptGroupVoiceSessionInputSchema>;

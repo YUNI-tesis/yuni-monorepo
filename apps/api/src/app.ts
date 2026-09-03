@@ -7,6 +7,7 @@ import {
   liveAvatarConfig,
   rateLimitConfig,
   hasS3Config,
+  featureConfig,
   serverConfig,
 } from "@yuni/config";
 import { LiveAvatarProvider } from "@yuni/avatars";
@@ -19,6 +20,8 @@ import {
   createJobRepository,
   createAvatarGroupRepository,
   createExternalSessionPolicyRepository,
+  createGroupPublicRateLimitRepository,
+  createGroupSharingRepository,
   prisma,
 } from "@yuni/db";
 import { S3ObjectStorage } from "@yuni/storage";
@@ -69,6 +72,11 @@ import {
 } from "./domains/activity/controller.js";
 import { createAvatarActivityDataRepository } from "./domains/activity/repository.js";
 import {
+  createAvatarGroupActivityController,
+  type AvatarGroupActivityControllerDependencies,
+} from "./domains/activity/group-controller.js";
+import { createAvatarGroupActivityDataRepository } from "./domains/activity/group-repository.js";
+import {
   createCreatorDashboardController,
   type CreatorDashboardControllerDependencies,
 } from "./domains/dashboard/controller.js";
@@ -95,6 +103,15 @@ import {
 import { createAvatarGroupsService } from "./domains/avatar-groups/service.js";
 import { createExternalSessionPolicyService } from "./domains/external-sessions/policy.js";
 import { createClientIpResolver } from "./middleware/client-ip.js";
+import {
+  createGroupSharingController,
+  createPublicGroupSharingController,
+  type GroupSharingControllerDependencies,
+} from "./domains/group-sharing/controller.js";
+import { createPublicGroupSessionsController } from "./domains/group-public-sessions/controller.js";
+import type { PublicGroupSessionsDependencies } from "./domains/group-public-sessions/service.js";
+import { createPublicGroupTokenService } from "./domains/group-public-sessions/tokens.js";
+import { createDurableGroupRateLimiter } from "./domains/group-public-sessions/durable-rate-limiter.js";
 
 export type AppDependencies = {
   auth: AuthControllerDependencies;
@@ -106,10 +123,13 @@ export type AppDependencies = {
   share?: ShareLinksControllerDependencies;
   accessGrants?: AccessGrantsControllerDependencies;
   activity?: AvatarActivityControllerDependencies;
+  groupActivity?: AvatarGroupActivityControllerDependencies;
   dashboard?: CreatorDashboardControllerDependencies;
   publicSessions?: PublicSessionsControllerDependencies;
   context?: AvatarContextControllerDependencies;
   avatarGroups?: AvatarGroupsControllerDependencies;
+  groupSharing?: GroupSharingControllerDependencies;
+  publicGroupSessions?: PublicGroupSessionsDependencies;
 };
 
 const liveAvatarProvider = new LiveAvatarProvider();
@@ -127,12 +147,20 @@ const externalSessionPolicyService = createExternalSessionPolicyService({
 const providerTokenProtector = createProviderTokenProtector(authConfig.secret);
 const resolveClientIp = createClientIpResolver(serverConfig.trustProxyHops);
 const allowedWebOrigin = normalizeBrowserOrigin(clientEnv.NEXT_PUBLIC_WEB_URL);
+const compositeAccessGrantLinker = {
+  linkActiveForUser(userId: string, participantEmail: string) {
+    return prisma.$transaction(async (transaction) => {
+      await createAccessGrantRepository(transaction).linkActiveForUser(userId, participantEmail);
+      await createGroupSharingRepository(transaction).linkActiveForUser(userId, participantEmail);
+    });
+  },
+};
 
 const defaultDependencies: AppDependencies = {
   auth: {
     repository: createAuthRepository(prisma),
     passwords: passwordService,
-    accessGrantLinker: createAccessGrantRepository(prisma),
+    accessGrantLinker: compositeAccessGrantLinker,
   },
   avatars: {
     repository: createAvatarsRepository(prisma),
@@ -183,8 +211,16 @@ const defaultDependencies: AppDependencies = {
   activity: {
     repository: createAvatarActivityDataRepository(prisma),
   },
+  ...(featureConfig.groupSharingAnalyticsEnabled
+    ? {
+        groupActivity: {
+          repository: createAvatarGroupActivityDataRepository(prisma),
+        },
+      }
+    : {}),
   dashboard: {
     repository: createCreatorDashboardDataRepository(prisma),
+    groupAnalyticsEnabled: featureConfig.groupSharingAnalyticsEnabled,
   },
   publicSessions: {
     repository: createPublicSessionRepository(prisma),
@@ -217,7 +253,46 @@ const defaultDependencies: AppDependencies = {
     orchestrator: groupOrchestrator,
     providerTokenProtector,
     maxMinutes: 10,
+    sharedMaxMinutes: rateLimitConfig.maxExternalSessionMinutes,
+    externalCapacity: {
+      maxConcurrentPerParticipant: rateLimitConfig.maxExternalConcurrentPerParticipant,
+      maxConcurrentPerAvatar: rateLimitConfig.maxExternalConcurrentPerAvatar,
+    },
+    accountSharingEnabled: () => featureConfig.groupAccountSharingEnabled,
+    publicSharingEnabled: () => featureConfig.groupPublicSharingEnabled,
+    groupActivityEnabled: () => featureConfig.groupSharingAnalyticsEnabled,
   },
+  groupSharing: {
+    repository: createGroupSharingRepository(prisma),
+    publicBaseUrl: allowedWebOrigin,
+    accountSharingEnabled: () => featureConfig.groupAccountSharingEnabled,
+    publicSharingEnabled: () => featureConfig.groupPublicSharingEnabled,
+  },
+};
+
+defaultDependencies.publicGroupSessions = {
+  repository: createGroupSharingRepository(prisma),
+  avatarGroups: defaultDependencies.avatarGroups!,
+  tokenService: createPublicGroupTokenService(),
+  rateLimiter: externalSessionRateLimiter,
+  durableRateLimiter: createDurableGroupRateLimiter({
+    repository: createGroupPublicRateLimitRepository(prisma),
+    secret: authConfig.secret,
+  }),
+  enabled: () => featureConfig.groupPublicSharingEnabled,
+  rateLimits: {
+    identifyIpLink: rateLimitConfig.maxPublicIdentificationsPerIpLink15Minutes,
+    identifyEmailLink: rateLimitConfig.maxPublicIdentificationsPerEmailLink15Minutes,
+    startIpTarget: rateLimitConfig.maxExternalSessionStartsPerIpTargetHour,
+    startParticipantTarget: rateLimitConfig.maxExternalSessionStartsPerParticipantTargetHour,
+    startLink: rateLimitConfig.maxPublicSessionStartsPerLinkHour,
+    startAvatar: rateLimitConfig.maxExternalSessionStartsPerAvatarHour,
+    runtimeSession: rateLimitConfig.maxPublicGroupRuntimeCommandsPerSessionMinute,
+    runtimeSessionIp: rateLimitConfig.maxPublicGroupRuntimeCommandsPerSessionIpMinute,
+    endSession: rateLimitConfig.maxPublicGroupEndRequestsPerSessionMinute,
+    endSessionIp: rateLimitConfig.maxPublicGroupEndRequestsPerSessionIpMinute,
+  },
+  resolveClientIp,
 };
 
 const logger = createLogger("@yuni/api");
@@ -276,6 +351,12 @@ export function createApp(dependencies: AppDependencies = defaultDependencies) {
   if (dependencies.publicSessions) {
     app.route("/", createPublicSessionsController(dependencies.publicSessions));
   }
+  if (dependencies.groupSharing) {
+    app.route("/", createPublicGroupSharingController(dependencies.groupSharing));
+  }
+  if (dependencies.publicGroupSessions) {
+    app.route("/", createPublicGroupSessionsController(dependencies.publicGroupSessions));
+  }
 
   const privateApi = new Hono<CreatorSessionEnv>();
   privateApi.use("*", createCreatorSessionMiddleware(dependencies.auth.repository));
@@ -298,8 +379,14 @@ export function createApp(dependencies: AppDependencies = defaultDependencies) {
   if (dependencies.accessGrants) {
     privateApi.route("/", createAccessGrantsController(dependencies.accessGrants));
   }
+  if (dependencies.groupSharing) {
+    privateApi.route("/", createGroupSharingController(dependencies.groupSharing));
+  }
   if (dependencies.activity) {
     privateApi.route("/", createAvatarActivityController(dependencies.activity));
+  }
+  if (dependencies.groupActivity) {
+    privateApi.route("/", createAvatarGroupActivityController(dependencies.groupActivity));
   }
   if (dependencies.dashboard) {
     privateApi.route("/", createCreatorDashboardController(dependencies.dashboard));
@@ -324,7 +411,8 @@ export function normalizeBrowserOrigin(value: string) {
 export function startExternalSessionMaintenance(intervalMs = 15_000) {
   const publicDependencies = defaultDependencies.publicSessions;
   const voiceDependencies = defaultDependencies.voiceSessions;
-  if (!publicDependencies && !voiceDependencies) return () => undefined;
+  const groupPublicRateLimiter = defaultDependencies.publicGroupSessions?.durableRateLimiter;
+  if (!publicDependencies && !voiceDependencies && !groupPublicRateLimiter) return () => undefined;
   const publicService = publicDependencies ? createPublicSessionsService(publicDependencies) : null;
   const voiceService = voiceDependencies ? createVoiceSessionsService(voiceDependencies) : null;
   let running = false;
@@ -332,7 +420,11 @@ export function startExternalSessionMaintenance(intervalMs = 15_000) {
     if (running) return;
     running = true;
     try {
-      await Promise.all([publicService?.cleanupExpired(), voiceService?.cleanupExternalSessions()]);
+      await Promise.all([
+        publicService?.cleanupExpired(),
+        voiceService?.cleanupExternalSessions(),
+        groupPublicRateLimiter?.cleanupExpired?.(),
+      ]);
     } catch (error) {
       logger.error("External session maintenance failed", {
         error: error instanceof Error ? error.message : "Unknown cleanup error",

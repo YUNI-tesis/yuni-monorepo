@@ -68,6 +68,14 @@ const RawEnvSchema = z.object({
   MAX_EXTERNAL_SESSION_STARTS_PER_PARTICIPANT_TARGET_HOUR: z.coerce.number().int().positive().default(20),
   MAX_PUBLIC_SESSION_STARTS_PER_LINK_HOUR: z.coerce.number().int().positive().default(120),
   MAX_EXTERNAL_SESSION_STARTS_PER_AVATAR_HOUR: z.coerce.number().int().positive().default(200),
+  MAX_PUBLIC_GROUP_RUNTIME_COMMANDS_PER_SESSION_MINUTE: z.coerce.number().int().positive().default(240),
+  MAX_PUBLIC_GROUP_RUNTIME_COMMANDS_PER_SESSION_IP_MINUTE: z.coerce.number().int().positive().default(120),
+  MAX_PUBLIC_GROUP_END_REQUESTS_PER_SESSION_MINUTE: z.coerce.number().int().positive().default(20),
+  MAX_PUBLIC_GROUP_END_REQUESTS_PER_SESSION_IP_MINUTE: z.coerce.number().int().positive().default(10),
+
+  GROUP_ACCOUNT_SHARING_ENABLED: BooleanStringSchema.default(true),
+  GROUP_PUBLIC_SHARING_ENABLED: BooleanStringSchema.default(true),
+  GROUP_SHARING_ANALYTICS_ENABLED: BooleanStringSchema.default(true),
 
   PRICING_OPENAI_INPUT_USD_PER_1M_TOKENS: z.coerce.number().nonnegative().default(0.15),
   PRICING_OPENAI_OUTPUT_USD_PER_1M_TOKENS: z.coerce.number().nonnegative().default(0.6),

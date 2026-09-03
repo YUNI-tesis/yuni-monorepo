@@ -1,7 +1,9 @@
 import type {
   ApiDashboardAttentionItem,
   ApiDashboardCountMetric,
+  ApiDashboardGroupResource,
   ApiDashboardRateMetric,
+  ApiDashboardResource,
 } from "./api/dashboard-api";
 
 export function formatDashboardCountDelta(metric: ApiDashboardCountMetric) {
@@ -54,6 +56,19 @@ export function formatDashboardPeriod(from: string, to: string, timeZone = "UTC"
 }
 
 export function getDashboardAttentionPath(item: ApiDashboardAttentionItem) {
+  if (isDashboardGroupResource(item)) {
+    const groupId = getDashboardResourceId(item);
+    if (item.type === "unavailable_group" || item.type === "unused_direct_access") {
+      return `/groups/${encodeURIComponent(groupId)}/share`;
+    }
+    if (!item.participantKey) {
+      return `/groups/${encodeURIComponent(groupId)}/activity`;
+    }
+    const participantPath = `/groups/${encodeURIComponent(groupId)}/activity/${encodeURIComponent(item.participantKey)}`;
+    return item.conversationId
+      ? `${participantPath}?conversation=${encodeURIComponent(item.conversationId)}`
+      : participantPath;
+  }
   if (item.type === "unavailable_avatar") {
     return `/avatars/${encodeURIComponent(item.avatarId)}/edit`;
   }
@@ -71,6 +86,33 @@ export function getDashboardAttentionPath(item: ApiDashboardAttentionItem) {
 
 export function getDashboardTranscriptPath(avatarId: string, participantKey: string, conversationId: string) {
   return `/avatars/${encodeURIComponent(avatarId)}/activity/${encodeURIComponent(participantKey)}?conversation=${encodeURIComponent(conversationId)}`;
+}
+
+export function getDashboardResourceTranscriptPath(
+  resource: ApiDashboardResource,
+  participantKey: string,
+  conversationId: string
+) {
+  if (isDashboardGroupResource(resource)) {
+    return `/groups/${encodeURIComponent(getDashboardResourceId(resource))}/activity/${encodeURIComponent(participantKey)}?conversation=${encodeURIComponent(conversationId)}`;
+  }
+  return getDashboardTranscriptPath(resource.avatarId, participantKey, conversationId);
+}
+
+export function getDashboardResourceName(resource: ApiDashboardResource) {
+  return (
+    resource.resource?.name ?? (isDashboardGroupResource(resource) ? resource.groupName : resource.avatarName)
+  );
+}
+
+export function getDashboardResourceId(resource: ApiDashboardResource) {
+  return resource.resource?.id ?? (isDashboardGroupResource(resource) ? resource.groupId : resource.avatarId);
+}
+
+export function isDashboardGroupResource(
+  resource: ApiDashboardResource
+): resource is ApiDashboardGroupResource {
+  return resource.resource?.type === "group" || resource.resourceKind === "group";
 }
 
 function formatNumber(value: number) {

@@ -57,7 +57,7 @@ export function createConversationRepository(db: Db) {
 
     findLatestPrivate(ownerId: string, avatarAgentId: string) {
       return db.conversation.findFirst({
-        where: { ownerId, avatarAgentId, visibility: "private" },
+        where: { ownerId, avatarAgentId, avatarGroupId: null, visibility: "private" },
         orderBy: [{ lastMessageAt: "desc" }, { createdAt: "desc" }],
       });
     },
@@ -67,6 +67,7 @@ export function createConversationRepository(db: Db) {
         where: {
           ownerId,
           avatarAgentId,
+          avatarGroupId: null,
           visibility: "private",
           accessGrantId,
         },
@@ -76,7 +77,7 @@ export function createConversationRepository(db: Db) {
 
     listPrivateForAvatar(ownerId: string, avatarAgentId: string) {
       return db.conversation.findMany({
-        where: { ownerId, avatarAgentId, visibility: "private" },
+        where: { ownerId, avatarAgentId, avatarGroupId: null, visibility: "private" },
         orderBy: [{ lastMessageAt: "desc" }, { createdAt: "desc" }],
       });
     },
@@ -86,6 +87,7 @@ export function createConversationRepository(db: Db) {
         where: {
           ownerId,
           avatarAgentId,
+          avatarGroupId: null,
           visibility: "private",
           accessGrantId,
         },
@@ -95,7 +97,7 @@ export function createConversationRepository(db: Db) {
 
     findPrivateIdentityById(conversationId: string) {
       return db.conversation.findFirst({
-        where: { id: conversationId, visibility: "private" },
+        where: { id: conversationId, avatarGroupId: null, visibility: "private" },
         select: {
           id: true,
           ownerId: true,
@@ -107,7 +109,7 @@ export function createConversationRepository(db: Db) {
 
     findPrivateById(ownerId: string, conversationId: string) {
       return db.conversation.findFirst({
-        where: { id: conversationId, ownerId, visibility: "private" },
+        where: { id: conversationId, ownerId, avatarGroupId: null, visibility: "private" },
         include: { messages: { orderBy: { createdAt: "asc" } } },
       });
     },
@@ -117,6 +119,7 @@ export function createConversationRepository(db: Db) {
         where: {
           id: conversationId,
           ownerId,
+          avatarGroupId: null,
           visibility: "private",
           accessGrantId,
         },

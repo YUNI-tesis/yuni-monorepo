@@ -154,12 +154,28 @@ const group = {
   name: "Consejo",
   createdAt: "2026-08-21T12:00:00.000Z",
   updatedAt: "2026-08-21T12:00:00.000Z",
+  access: {
+    type: "owner" as const,
+    canEdit: true,
+    canDelete: true,
+    canShare: true,
+    canInteract: true,
+    limits: null,
+    consent: null,
+  },
+  interactionAvailability: { status: "ready" as const, readyMembers: 2, totalMembers: 2 },
+  sharingEligibility: { status: "eligible" as const },
+  sharingChannels: { account: true, public: true },
+  activityEnabled: true,
+  membershipVersion: 1,
+  hasActiveSharingChannels: false,
   members: [
     {
       id: "avatar-1",
       name: "Ada",
       description: "Matemática",
       thumbnailUrl: null,
+      viewerAccess: "owned" as const,
       accessType: "owner" as const,
       position: 0,
       available: true,
@@ -169,6 +185,7 @@ const group = {
       name: "Grace",
       description: "Programación",
       thumbnailUrl: null,
+      viewerAccess: "owned" as const,
       accessType: "owner" as const,
       position: 1,
       available: true,
@@ -186,6 +203,51 @@ const participants = group.members.map((avatar, index) => ({
   sessionId: `live-${index + 1}`,
   error: null,
 }));
+
+const thirdMember = {
+  id: "avatar-3",
+  name: "Lin",
+  description: "Sistemas",
+  thumbnailUrl: null,
+  viewerAccess: "owned" as const,
+  accessType: "owner" as const,
+  position: 2,
+  available: true,
+};
+
+const threeParticipantGroup = {
+  ...group,
+  members: [...group.members, thirdMember],
+  interactionAvailability: { status: "ready" as const, readyMembers: 3, totalMembers: 3 },
+};
+
+const threeParticipants = [
+  ...participants,
+  {
+    id: "participant-3",
+    participantAttemptId: "attempt-3",
+    avatar: thirdMember,
+    realtimeSessionId: "realtime-3",
+    status: "active" as const,
+    sessionToken: "token-3",
+    sessionId: "live-3",
+    error: null,
+  },
+];
+
+function mockThreeParticipantStart() {
+  apiMocks.getAvatarGroup.mockResolvedValueOnce({ group: threeParticipantGroup });
+  apiMocks.startGroupVoiceSession.mockResolvedValueOnce({
+    voiceSession: {
+      id: "group-session-1",
+      groupId: group.id,
+      conversationId: "conversation-1",
+      status: "active",
+      expiresAt: "2026-08-21T12:10:00.000Z",
+      participants: threeParticipants,
+    },
+  });
+}
 
 function TestGroupInteractCall({ groupId }: { groupId: string }) {
   return (
@@ -352,6 +414,31 @@ describe("GroupInteractCall lifecycle", () => {
     cleanup();
     vi.clearAllTimers();
     vi.useRealTimers();
+  });
+
+  it("keeps the group header accessible without transcript or turn overlays", async () => {
+    const { container, unmount } = await renderActiveCall();
+    const historyButton = screen.getByRole("button", { name: "Historial" });
+
+    expect(screen.getByRole("button", { name: "Grupos" }).querySelector("svg")).toBeTruthy();
+    expect(historyButton.querySelector("svg")).toBeTruthy();
+    expect(historyButton.querySelector('[class*="topbarControlLabel"]')).toBeTruthy();
+    expect(container.querySelectorAll('[data-history-open="false"]')).toHaveLength(2);
+    expect(screen.queryByText(/^Tu turno · (podés hablar|activá el micrófono para hablar)$/)).toBeNull();
+
+    await act(async () => {
+      scribeMocks.connection?.emit("partial_transcript", { text: "Esto no se muestra" });
+      await flushAsyncWork();
+    });
+    expect(screen.queryByText(/^Vos: Esto no se muestra$/)).toBeNull();
+
+    await act(async () => {
+      fireEvent.click(historyButton);
+      await flushAsyncWork();
+    });
+    expect(container.querySelectorAll('[data-history-open="true"]')).toHaveLength(2);
+    expect(screen.getByRole("complementary", { name: "Historial" })).toBeTruthy();
+    unmount();
   });
 
   it("runs the three independent liveness loops and removes them on unmount", async () => {
@@ -831,17 +918,153 @@ describe("GroupInteractCall lifecycle", () => {
     unmount();
   });
 
+  it("shows the server expiry countdown while the call is active", async () => {
+    const { unmount } = await renderActiveCall();
+
+    expect(screen.getByText("Tiempo · 10:00")).toBeTruthy();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
+    });
+    expect(screen.getByText("Tiempo · 9:59")).toBeTruthy();
+    unmount();
+  });
+
+  it("sends the versioned group consent when a shared recipient starts a call", async () => {
+    const sharedGroup = {
+      ...group,
+      access: {
+        ...group.access,
+        type: "shared" as const,
+        canEdit: false,
+        canDelete: false,
+        canShare: false,
+        consent: { scopeId: "group-access-grant:grant-1", version: "3" },
+      },
+    };
+    apiMocks.getAvatarGroup.mockResolvedValueOnce({ group: sharedGroup });
+
+    const view = render(<TestGroupInteractCall groupId="group-1" />);
+    await act(flushAsyncWork);
+    fireEvent.click(screen.getByRole("button", { name: "Iniciar llamada" }));
+    await act(flushAsyncWork);
+    const dialog = screen.getByRole("dialog", { name: "Antes de iniciar la llamada" });
+    expect(dialog.textContent).toContain("El creador de Consejo podrá consultar");
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Iniciar llamada" }));
+    await act(flushAsyncWork);
+
+    expect(apiMocks.startGroupVoiceSession).toHaveBeenCalledWith("group-1", {
+      consentScopeId: "group-access-grant:grant-1",
+      consentVersion: "3",
+    });
+    view.unmount();
+  });
+
+  it("aborts an authenticated shared start when any roster member fails in the browser", async () => {
+    const sharedGroup = {
+      ...group,
+      access: {
+        ...group.access,
+        type: "shared" as const,
+        canEdit: false,
+        canDelete: false,
+        canShare: false,
+        consent: { scopeId: "group-access-grant:grant-1", version: "3" },
+      },
+    };
+    apiMocks.getAvatarGroup.mockResolvedValueOnce({ group: sharedGroup });
+    liveAvatarMocks.startBehaviors.set("token-2", async () => {
+      throw new Error("shared participant failed");
+    });
+
+    const view = render(<TestGroupInteractCall groupId="group-1" />);
+    await act(flushAsyncWork);
+    fireEvent.click(screen.getByRole("button", { name: "Iniciar llamada" }));
+    await act(flushAsyncWork);
+    fireEvent.click(
+      within(screen.getByRole("dialog", { name: "Antes de iniciar la llamada" })).getByRole("button", {
+        name: "Iniciar llamada",
+      })
+    );
+    await act(flushAsyncWork);
+
+    expect(apiMocks.endGroupVoiceSession).toHaveBeenCalledWith("group-session-1", "no_participants");
+    expect(apiMocks.reportGroupParticipantFailure).not.toHaveBeenCalled();
+    expect(screen.queryByText("En vivo · parcial")).toBeNull();
+    view.unmount();
+  });
+
+  it("refreshes the group and reopens privacy when shared consent is stale", async () => {
+    const sharedGroup = {
+      ...group,
+      access: {
+        ...group.access,
+        type: "shared" as const,
+        canEdit: false,
+        canDelete: false,
+        canShare: false,
+        consent: { scopeId: "group-access-grant:grant-1", version: "3" },
+      },
+    };
+    const refreshedGroup = {
+      ...sharedGroup,
+      membershipVersion: 4,
+      access: {
+        ...sharedGroup.access,
+        consent: { scopeId: "group-access-grant:grant-1", version: "4" },
+      },
+    };
+    apiMocks.getAvatarGroup
+      .mockResolvedValueOnce({ group: sharedGroup })
+      .mockResolvedValueOnce({ group: refreshedGroup });
+    apiMocks.startGroupVoiceSession.mockRejectedValueOnce(
+      new ApiClientError("El grupo cambió.", 409, "CONFLICT", "CONSENT_VERSION_STALE")
+    );
+
+    const view = render(<TestGroupInteractCall groupId="group-1" />);
+    await act(flushAsyncWork);
+    fireEvent.click(screen.getByRole("button", { name: "Iniciar llamada" }));
+    await act(flushAsyncWork);
+    fireEvent.click(
+      within(screen.getByRole("dialog", { name: "Antes de iniciar la llamada" })).getByRole("button", {
+        name: "Iniciar llamada",
+      })
+    );
+    await act(flushAsyncWork);
+
+    const refreshedDialog = screen.getByRole("dialog", { name: "Antes de iniciar la llamada" });
+    expect(refreshedDialog.hasAttribute("open")).toBe(true);
+    expect(apiMocks.getAvatarGroup).toHaveBeenCalledTimes(2);
+    expect(apiMocks.startGroupVoiceSession).toHaveBeenLastCalledWith("group-1", {
+      consentScopeId: "group-access-grant:grant-1",
+      consentVersion: "3",
+    });
+
+    fireEvent.click(within(refreshedDialog).getByRole("button", { name: "Iniciar llamada" }));
+    await act(flushAsyncWork);
+    expect(apiMocks.startGroupVoiceSession).toHaveBeenLastCalledWith("group-1", {
+      consentScopeId: "group-access-grant:grant-1",
+      consentVersion: "4",
+    });
+    view.unmount();
+  });
+
   it("discloses only available shared avatars and prompts again when a new shared member is added", async () => {
     const mixedGroup = {
       ...group,
       members: [
         group.members[0]!,
-        { ...group.members[1]!, accessType: "shared" as const },
+        {
+          ...group.members[1]!,
+          viewerAccess: "direct_grant" as const,
+          accessType: "shared" as const,
+        },
         {
           id: "avatar-3",
           name: "Lin",
           description: "Sistemas",
           thumbnailUrl: null,
+          viewerAccess: "direct_grant" as const,
           accessType: "shared" as const,
           position: 2,
           available: true,
@@ -875,7 +1098,14 @@ describe("GroupInteractCall lifecycle", () => {
     apiMocks.getAvatarGroup.mockResolvedValueOnce({
       group: {
         ...group,
-        members: [group.members[0]!, { ...group.members[1]!, accessType: "shared" as const }],
+        members: [
+          group.members[0]!,
+          {
+            ...group.members[1]!,
+            viewerAccess: "direct_grant" as const,
+            accessType: "shared" as const,
+          },
+        ],
       },
     });
     let resolveUser: (value: unknown) => void = () => undefined;
@@ -927,6 +1157,7 @@ describe("GroupInteractCall lifecycle", () => {
   });
 
   it("does not install a LiveAvatar session when an errored participant has no attempt id", async () => {
+    apiMocks.getAvatarGroup.mockResolvedValueOnce({ group: threeParticipantGroup });
     apiMocks.startGroupVoiceSession.mockResolvedValueOnce({
       voiceSession: {
         id: "group-session-1",
@@ -944,6 +1175,7 @@ describe("GroupInteractCall lifecycle", () => {
             sessionId: null,
             error: "No se pudo crear el intento.",
           },
+          threeParticipants[2]!,
         ],
       },
     });
@@ -959,11 +1191,11 @@ describe("GroupInteractCall lifecycle", () => {
     fireEvent.click(screen.getByRole("button", { name: "Iniciar llamada" }));
     await act(flushAsyncWork);
     expect(screen.getByText("En vivo · parcial")).toBeTruthy();
-    expect(liveAvatarMocks.instances).toHaveLength(1);
+    expect(liveAvatarMocks.instances).toHaveLength(2);
     expect(apiMocks.reportGroupParticipantFailure).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Reintentar" }));
     await act(flushAsyncWork);
-    expect(liveAvatarMocks.instances).toHaveLength(1);
+    expect(liveAvatarMocks.instances).toHaveLength(2);
     expect(
       screen.getAllByText("El participante sigue sin conexión. Podés volver a intentarlo desde su tarjeta.")
     ).toHaveLength(2);
@@ -991,6 +1223,34 @@ describe("GroupInteractCall lifecycle", () => {
       }),
       expect.objectContaining({ signal: expect.anything() })
     );
+    expect(apiMocks.endGroupVoiceSession).toHaveBeenCalledWith("group-session-1", "no_participants");
+    unmount();
+  });
+
+  it("keeps three participants degraded after one failure and ends after the second", async () => {
+    mockThreeParticipantStart();
+    apiMocks.reportGroupParticipantFailure.mockImplementation(async (_sessionId, avatarId) => ({
+      phase: "listening",
+      directive: null,
+      floor: null,
+      participant: { avatarId, status: "errored", error: "Sin conexión" },
+    }));
+    const { unmount } = await renderActiveCall();
+
+    liveAvatarMocks.instances[0]!.emit("session.disconnected", { reason: "network" });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+      await flushAsyncWork();
+    });
+    expect(screen.getByText("En vivo · parcial")).toBeTruthy();
+    expect(apiMocks.endGroupVoiceSession).not.toHaveBeenCalled();
+
+    liveAvatarMocks.instances[1]!.emit("session.disconnected", { reason: "network" });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+      await flushAsyncWork();
+    });
+    expect(apiMocks.endGroupVoiceSession).toHaveBeenCalledWith("group-session-1", "no_participants");
     unmount();
   });
 
@@ -1061,6 +1321,7 @@ describe("GroupInteractCall lifecycle", () => {
   });
 
   it("blocks new Scribe turns until a participant retry is fully ready", async () => {
+    mockThreeParticipantStart();
     const { unmount } = await renderActiveCall();
     liveAvatarMocks.instances[0]!.emit("session.disconnected", { reason: "network" });
     await act(async () => {
@@ -1102,6 +1363,7 @@ describe("GroupInteractCall lifecycle", () => {
   });
 
   it("bounds participant startup at 20 seconds and continues in degraded mode", async () => {
+    mockThreeParticipantStart();
     liveAvatarMocks.startBehaviors.set("token-2", () => new Promise<void>(() => undefined));
     apiMocks.reportGroupParticipantFailure.mockResolvedValueOnce({
       phase: "listening",
@@ -1127,6 +1389,56 @@ describe("GroupInteractCall lifecycle", () => {
       expect.objectContaining({ participantAttemptId: "attempt-2", reason: "stream_error" }),
       expect.objectContaining({ signal: expect.anything() })
     );
+    view.unmount();
+  });
+
+  it("ends a two-participant owner start when one browser connection fails", async () => {
+    liveAvatarMocks.startBehaviors.set("token-2", async () => {
+      throw new Error("owner participant failed");
+    });
+
+    const view = render(<TestGroupInteractCall groupId="group-1" />);
+    await act(flushAsyncWork);
+    fireEvent.click(screen.getByRole("button", { name: "Iniciar llamada" }));
+    await act(flushAsyncWork);
+
+    expect(apiMocks.endGroupVoiceSession).toHaveBeenCalledWith("group-session-1", "no_participants");
+    expect(screen.queryByText("En vivo · parcial")).toBeNull();
+    view.unmount();
+  });
+
+  it("cleans up a strict external start without exposing degraded recovery", async () => {
+    apiMocks.startGroupVoiceSession.mockResolvedValueOnce({
+      voiceSession: {
+        id: "public-group-session-1",
+        groupId: group.id,
+        conversationId: "public-conversation-1",
+        status: "connecting",
+        expiresAt: "2026-08-21T12:10:00.000Z",
+        participants,
+      },
+    });
+    liveAvatarMocks.startBehaviors.set("token-2", async () => {
+      throw new Error("public participant failed");
+    });
+
+    const view = render(
+      <ToastProvider>
+        <GroupInteractCall
+          groupId={group.id}
+          initialGroup={group}
+          privacyPrompt="handled"
+          historyEnabled={false}
+        />
+      </ToastProvider>
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Iniciar llamada" }));
+    await act(flushAsyncWork);
+
+    expect(apiMocks.endGroupVoiceSession).toHaveBeenCalledWith("public-group-session-1", "no_participants");
+    expect(apiMocks.reportGroupParticipantFailure).not.toHaveBeenCalled();
+    expect(screen.queryByText("En vivo · parcial")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Reintentar" })).toBeNull();
     view.unmount();
   });
 
@@ -1444,6 +1756,7 @@ describe("GroupInteractCall lifecycle", () => {
   });
 
   it("does not install a retry response after the call epoch has changed", async () => {
+    mockThreeParticipantStart();
     const { unmount } = await renderActiveCall();
     liveAvatarMocks.instances[0]!.emit("session.disconnected", { reason: "network" });
     await act(async () => {
@@ -1463,7 +1776,7 @@ describe("GroupInteractCall lifecycle", () => {
     fireEvent.click(screen.getByRole("button", { name: "Finalizar llamada" }));
     await act(flushAsyncWork);
 
-    const nextParticipants = participants.map((participant, index) => ({
+    const nextParticipants = threeParticipants.map((participant, index) => ({
       ...participant,
       participantAttemptId: `attempt-next-${index + 1}`,
       sessionToken: `token-next-${index + 1}`,
@@ -1480,9 +1793,9 @@ describe("GroupInteractCall lifecycle", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Iniciar llamada" }));
     await act(flushAsyncWork);
-    expect(liveAvatarMocks.instances).toHaveLength(4);
+    expect(liveAvatarMocks.instances).toHaveLength(6);
 
-    liveAvatarMocks.instances[2]!.emit("session.disconnected", { reason: "new-network" });
+    liveAvatarMocks.instances[3]!.emit("session.disconnected", { reason: "new-network" });
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
       await flushAsyncWork();
@@ -1508,7 +1821,7 @@ describe("GroupInteractCall lifecycle", () => {
       });
       await flushAsyncWork();
     });
-    expect(liveAvatarMocks.instances).toHaveLength(4);
+    expect(liveAvatarMocks.instances).toHaveLength(6);
     expect(liveAvatarMocks.instances.some((instance) => instance.token === "token-stale-retry")).toBe(false);
     expect(screen.queryByRole("button", { name: "Reintentar" })).toBeNull();
     expect((screen.getByRole("button", { name: "Silenciar micrófono" }) as HTMLButtonElement).disabled).toBe(

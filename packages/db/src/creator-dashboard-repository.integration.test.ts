@@ -1,6 +1,7 @@
 import { PrismaClient } from "@prisma/client";
 import { afterAll, describe, expect, it } from "vitest";
 import { createAvatarActivityRepository } from "./repositories/avatar-activity-repository";
+import { createAvatarGroupActivityRepository } from "./repositories/avatar-group-activity-repository";
 import { createCreatorDashboardRepository } from "./repositories/creator-dashboard-repository";
 
 const testDatabaseUrl = process.env.TEST_DATABASE_URL;
@@ -34,6 +35,24 @@ integration("creator dashboard repository integration", () => {
       const [avatar, foreignAvatar] = await Promise.all([
         createAvatar(owner.id, `Dashboard avatar ${suffix}`),
         createAvatar(foreignOwner.id, `Foreign avatar ${suffix}`),
+      ]);
+      const [shareLink, foreignShareLink] = await Promise.all([
+        db.shareLink.create({
+          data: {
+            ownerId: owner.id,
+            avatarAgentId: avatar.id,
+            slug: `dashboard-${suffix}`,
+            name: "Dashboard integration",
+          },
+        }),
+        db.shareLink.create({
+          data: {
+            ownerId: foreignOwner.id,
+            avatarAgentId: foreignAvatar.id,
+            slug: `dashboard-foreign-${suffix}`,
+            name: "Foreign dashboard integration",
+          },
+        }),
       ]);
       const [directGrant, voiceGrant, recoveredGrant, interruptedGrant, publicOnlyGrant] = await Promise.all([
         createGrant(owner.id, avatar.id, `Person-${suffix}@Example.com`, "2026-07-01T10:00:00.000Z"),
@@ -77,6 +96,7 @@ integration("creator dashboard repository integration", () => {
       const publicOnlyConversation = await createConversation({
         avatarAgentId: avatar.id,
         visibility: "public",
+        shareLinkId: shareLink.id,
         participantEmail: publicOnlyGrant.participantEmail,
         createdAt: new Date("2026-08-08T10:00:00.000Z"),
       });
@@ -92,6 +112,7 @@ integration("creator dashboard repository integration", () => {
       const publicConversation = await createConversation({
         avatarAgentId: avatar.id,
         visibility: "public",
+        shareLinkId: shareLink.id,
         participantEmail: `PERSON-${suffix}@EXAMPLE.COM`,
         createdAt: new Date("2026-08-11T10:00:00.000Z"),
       });
@@ -209,12 +230,14 @@ integration("creator dashboard repository integration", () => {
         avatarAgentId: avatar.id,
         participantEmail: ` ${owner.email.toUpperCase()} `,
         visibility: "public",
+        shareLinkId: shareLink.id,
         createdAt: new Date("2026-08-10T10:00:00.000Z"),
       });
       const foreignConversation = await createConversation({
         avatarAgentId: foreignAvatar.id,
         participantEmail: `foreign-participant-${suffix}@example.com`,
         visibility: "public",
+        shareLinkId: foreignShareLink.id,
         createdAt: new Date("2026-08-10T10:00:00.000Z"),
       });
       await db.message.createMany({
@@ -322,6 +345,182 @@ integration("creator dashboard repository integration", () => {
       );
     } finally {
       await db.user.deleteMany({ where: { id: { in: [foreignOwner.id, owner.id] } } });
+    }
+  });
+
+  it("counts an activated group conversation once and excludes primary-avatar fan-out and pre-activation failures", async () => {
+    if (!db) throw new Error("TEST_DATABASE_URL is required");
+    const suffix = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const [owner, participant] = await Promise.all([
+      db.user.create({
+        data: {
+          email: `group-dashboard-owner-${suffix}@integration.yuni.test`,
+          passwordHash: "integration-only",
+          name: "Group dashboard owner",
+        },
+      }),
+      db.user.create({
+        data: {
+          email: `group-dashboard-participant-${suffix}@integration.yuni.test`,
+          passwordHash: "integration-only",
+          name: "Group participant",
+        },
+      }),
+    ]);
+
+    try {
+      const [primaryAvatar, secondaryAvatar] = await Promise.all([
+        createAvatar(owner.id, `Group primary ${suffix}`),
+        createAvatar(owner.id, `Group secondary ${suffix}`),
+      ]);
+      const group = await db.avatarGroup.create({
+        data: {
+          ownerId: owner.id,
+          name: `Consejo ${suffix}`,
+          members: {
+            create: [
+              { avatarAgentId: primaryAvatar.id, position: 0 },
+              { avatarAgentId: secondaryAvatar.id, position: 1 },
+            ],
+          },
+        },
+      });
+      const grant = await db.groupAccessGrant.create({
+        data: {
+          avatarGroupId: group.id,
+          ownerId: owner.id,
+          participantEmail: participant.email,
+          participantUserId: participant.id,
+          avatarGroupOwnerIdSnapshot: owner.id,
+          avatarGroupNameSnapshot: group.name,
+          groupMembershipVersion: 1,
+        },
+      });
+
+      const createGroupConversation = async (
+        id: string,
+        status: "ended" | "errored",
+        activatedAt: Date | null,
+        endedAt: Date
+      ) => {
+        const conversation = await db.conversation.create({
+          data: {
+            id: `group-dashboard-${suffix}-${id}`,
+            ownerId: participant.id,
+            avatarAgentId: primaryAvatar.id,
+            avatarGroupId: group.id,
+            groupAccessGrantId: grant.id,
+            participantEmail: participant.email,
+            avatarGroupOwnerIdSnapshot: owner.id,
+            avatarGroupNameSnapshot: group.name,
+            groupMembershipVersion: 1,
+            avatarGroupRosterSnapshot: [
+              { id: primaryAvatar.id, name: primaryAvatar.name, position: 0 },
+              { id: secondaryAvatar.id, name: secondaryAvatar.name, position: 1 },
+            ],
+            visibility: "private",
+            mode: "voice",
+            status: "ended",
+            title: id,
+            createdAt: new Date(endedAt.getTime() - 5 * 60_000),
+          },
+        });
+        const session = await db.groupVoiceSession.create({
+          data: {
+            id: `${conversation.id}-session`,
+            avatarGroupId: group.id,
+            conversationId: conversation.id,
+            ownerId: owner.id,
+            initiatorUserId: participant.id,
+            groupAccessGrantId: grant.id,
+            status,
+            expiresAt: new Date(endedAt.getTime() + 60_000),
+            startedAt: new Date(endedAt.getTime() - 5 * 60_000),
+            activatedAt,
+            endedAt,
+            errorMessage: status === "errored" ? "integration failure" : null,
+          },
+        });
+        await db.message.create({
+          data: {
+            conversationId: conversation.id,
+            role: "user",
+            content: `Mensaje ${id}`,
+            createdAt: new Date(endedAt.getTime() - 4 * 60_000),
+          },
+        });
+        return { conversation, session };
+      };
+
+      const activated = await createGroupConversation(
+        "activated",
+        "ended",
+        new Date("2026-08-10T10:00:05.000Z"),
+        new Date("2026-08-10T10:05:05.000Z")
+      );
+      const preActivationFailure = await createGroupConversation(
+        "pre-activation",
+        "errored",
+        null,
+        new Date("2026-08-11T10:00:05.000Z")
+      );
+      const activatedFailure = await createGroupConversation(
+        "activated-error",
+        "errored",
+        new Date("2026-08-12T10:00:05.000Z"),
+        new Date("2026-08-12T10:01:05.000Z")
+      );
+
+      const result = await createCreatorDashboardRepository(db).getSummaryData(owner.id, {
+        activityFrom: new Date("2026-08-01T00:00:00.000Z"),
+        activityTo: new Date("2026-09-01T00:00:00.000Z"),
+        cohortFrom: new Date("2026-07-01T00:00:00.000Z"),
+        cohortTo: new Date("2026-09-01T00:00:00.000Z"),
+        timeZone: "UTC",
+        includeGroupAnalytics: true,
+      });
+
+      expect(result.activityBuckets).not.toContainEqual(
+        expect.objectContaining({ conversationId: activated.conversation.id })
+      );
+      expect(new Set(result.groupActivityBuckets.map((row) => row.conversationId))).toEqual(
+        new Set([activated.conversation.id, activatedFailure.conversation.id])
+      );
+      expect(result.groupActivityBuckets).not.toContainEqual(
+        expect.objectContaining({ conversationId: preActivationFailure.conversation.id })
+      );
+      expect(result.groupVoiceSessions.map((session) => session.id)).toEqual(
+        expect.arrayContaining([activated.session.id, activatedFailure.session.id])
+      );
+      expect(result.groupVoiceSessions).not.toContainEqual(
+        expect.objectContaining({ id: preActivationFailure.session.id })
+      );
+      expect(result.interruptedGroupConversations).toEqual([
+        expect.objectContaining({ conversationId: activatedFailure.conversation.id, totalCount: 1 }),
+      ]);
+
+      const primaryAvatarActivity = await createAvatarActivityRepository(db).listParticipants(
+        owner.id,
+        primaryAvatar.id
+      );
+      expect(primaryAvatarActivity).not.toContainEqual(
+        expect.objectContaining({ participantEmail: participant.email })
+      );
+
+      const groupActivity = createAvatarGroupActivityRepository(db);
+      const participants = await groupActivity.listParticipants(owner.id, group.id);
+      expect(participants.participants).toEqual([
+        expect.objectContaining({ participantEmail: participant.email, totalConversations: 2 }),
+      ]);
+      const conversations = await groupActivity.listConversations(owner.id, group.id, participant.email, {
+        limit: 10,
+      });
+      expect(new Set(conversations.conversations.map((conversation) => conversation.id))).toEqual(
+        new Set([activated.conversation.id, activatedFailure.conversation.id])
+      );
+    } finally {
+      await db.groupVoiceSession.deleteMany({ where: { initiatorUserId: participant.id } });
+      await db.user.deleteMany({ where: { id: { in: [participant.id, owner.id] } } });
     }
   });
 
@@ -436,6 +635,7 @@ integration("creator dashboard repository integration", () => {
     participantEmail: string;
     accessGrantId?: string;
     visibility?: "private" | "public";
+    shareLinkId?: string;
     mode?: "text" | "voice";
     createdAt: Date;
   }) {
@@ -444,6 +644,7 @@ integration("creator dashboard repository integration", () => {
         avatarAgentId: input.avatarAgentId,
         participantEmail: input.participantEmail,
         accessGrantId: input.accessGrantId ?? null,
+        shareLinkId: input.shareLinkId ?? null,
         visibility: input.visibility ?? "private",
         mode: input.mode ?? "text",
         createdAt: input.createdAt,

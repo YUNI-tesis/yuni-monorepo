@@ -31,3 +31,4 @@ export { createS3Config, hasS3Config, requireS3Config, s3Config, type S3Config }
 export { authConfig, createAuthConfig, requireAuthConfig, type AuthConfig } from "./auth";
 export { createRateLimitConfig, rateLimitConfig, type RateLimitConfig } from "./rate-limits";
 export { createPricingConfig, pricingConfig, type PricingConfig } from "./pricing";
+export { createFeatureConfig, featureConfig, type FeatureConfig } from "./features";

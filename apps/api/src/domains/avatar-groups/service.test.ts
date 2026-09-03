@@ -14,6 +14,8 @@ function avatar(id: string) {
     groupProviderAgentId: null,
     groupProviderSyncFingerprint: null,
     groupProviderSyncStatus: "not_synced",
+    groupProviderSyncRevision: null,
+    avatarGroupMembers: [],
     providerContextDocumentId: null,
     providerContextSyncStatus: "pending",
     status: "active",
@@ -53,6 +55,78 @@ function listeningDirectiveState() {
 }
 
 describe("avatar group voice service", () => {
+  it("does not expose non-HTTP thumbnail URLs in group DTOs", async () => {
+    const unsafeAvatar = {
+      ...avatar("unsafe-thumbnail"),
+      liveAvatarConfig: {
+        provider: "liveavatar",
+        avatarId: "live-unsafe-thumbnail",
+        mode: "lite",
+        sandbox: true,
+        thumbnailUrl: "ftp://files.example.test/avatar.png",
+      },
+    };
+    const dependencies = {
+      repository: {
+        listOwned: vi.fn().mockResolvedValue([
+          {
+            id: "group-1",
+            ownerId: "user-1",
+            name: "Grupo",
+            membershipVersion: 1,
+            createdAt: new Date("2030-01-01T00:00:00.000Z"),
+            updatedAt: new Date("2030-01-01T00:00:00.000Z"),
+            members: [{ position: 0, avatarAgent: unsafeAvatar, accessGrant: null }],
+          },
+        ]),
+      },
+    } as unknown as AvatarGroupsServiceDependencies;
+
+    const [group] = await createAvatarGroupsService(dependencies).list("user-1");
+
+    expect(group?.members[0]?.thumbnailUrl).toBeNull();
+  });
+
+  it("advertises independently enabled sharing channels and disables sharing when both are off", async () => {
+    const groupRecord = {
+      id: "group-1",
+      ownerId: "user-1",
+      name: "Grupo",
+      membershipVersion: 1,
+      createdAt: new Date("2030-01-01T00:00:00.000Z"),
+      updatedAt: new Date("2030-01-01T00:00:00.000Z"),
+      members: ["one", "two"].map((id, position) => ({
+        position,
+        accessGrantId: null,
+        avatarAgent: avatar(id),
+        accessGrant: null,
+      })),
+    };
+    const repository = { listOwned: vi.fn().mockResolvedValue([groupRecord]) };
+
+    const [publicOnly] = await createAvatarGroupsService({
+      repository,
+      accountSharingEnabled: () => false,
+      publicSharingEnabled: () => true,
+    } as unknown as AvatarGroupsServiceDependencies).list("user-1");
+    const [disabled] = await createAvatarGroupsService({
+      repository,
+      accountSharingEnabled: () => false,
+      publicSharingEnabled: () => false,
+      groupActivityEnabled: () => false,
+    } as unknown as AvatarGroupsServiceDependencies).list("user-1");
+
+    expect(publicOnly).toMatchObject({
+      sharingChannels: { account: false, public: true },
+      access: { canShare: true },
+    });
+    expect(disabled).toMatchObject({
+      sharingChannels: { account: false, public: false },
+      activityEnabled: false,
+      access: { canShare: false },
+    });
+  });
+
   it("marks a disabled group member unavailable even when the user owns it", async () => {
     const disabled = { ...avatar("disabled"), status: "disabled" };
     const dependencies = {
@@ -75,8 +149,31 @@ describe("avatar group voice service", () => {
     expect(group?.members[0]).toMatchObject({ id: "disabled", available: false });
   });
 
-  it("keeps a partially connected group alive and reports the failed participant", async () => {
-    const participants = ["one", "two"].map((id) => ({
+  it("returns the immutable group name snapshot in conversation history", async () => {
+    const dependencies = {
+      repository: {
+        findConversationForCreator: vi.fn().mockResolvedValue({
+          id: "conversation-1",
+          title: "Charla histórica",
+          avatarGroupId: "group-1",
+          avatarGroupNameSnapshot: "Nombre al momento de la llamada",
+          avatarGroup: { id: "group-1", name: "Nombre actual" },
+          groupParticipantSnapshots: [],
+          conversationAvatars: [],
+          messages: [],
+        }),
+      },
+    } as unknown as AvatarGroupsServiceDependencies;
+
+    await expect(
+      createAvatarGroupsService(dependencies).getConversation("user-1", "conversation-1")
+    ).resolves.toMatchObject({
+      group: { id: "group-1", name: "Nombre al momento de la llamada" },
+    });
+  });
+
+  it("keeps an owner group reserved while the client confirms the connected participants", async () => {
+    const participants = ["one", "two", "three"].map((id) => ({
       id: `participant-${id}`,
       avatarAgentId: id,
       realtimeSessionId: null,
@@ -85,6 +182,10 @@ describe("avatar group voice service", () => {
       realtimeSession: null,
     }));
     const repository = {
+      findAccessible: vi.fn().mockResolvedValue({
+        id: "group-1",
+        ownerId: "user-1",
+      }),
       createVoiceSession: vi.fn().mockResolvedValue({
         id: "group-session-1",
         conversationId: "conversation-1",
@@ -94,6 +195,7 @@ describe("avatar group voice service", () => {
         id: "group-session-1",
         conversationId: "conversation-1",
         status: "connecting",
+        activatedAt: null,
         expiresAt: new Date("2030-01-01T00:10:00.000Z"),
         participants,
       }),
@@ -106,12 +208,11 @@ describe("avatar group voice service", () => {
       activateParticipantConnection: vi.fn().mockResolvedValue(true),
       abandonParticipantConnection: vi.fn().mockResolvedValue(undefined),
       markParticipantErrored: vi.fn().mockResolvedValue({}),
-      markSessionActive: vi.fn().mockResolvedValue(true),
       endSession: vi.fn().mockResolvedValue({}),
     };
     const liveAvatarProvider = {
       createLiteSessionToken: vi.fn().mockImplementation(({ avatarId }: { avatarId: string }) => {
-        if (avatarId === "live-two") throw new Error("Provider unavailable");
+        if (avatarId === "live-three") throw new Error("Provider unavailable");
         return Promise.resolve({ sessionToken: "token-one", sessionId: "live-session-one" });
       }),
       stopSession: vi.fn(),
@@ -135,10 +236,281 @@ describe("avatar group voice service", () => {
 
     const result = await createAvatarGroupsService(dependencies).start("user-1", "group-1");
 
-    expect(result.status).toBe("degraded");
-    expect(result.participants.map((participant) => participant.status)).toEqual(["active", "errored"]);
-    expect(repository.markSessionActive).toHaveBeenCalledWith("group-session-1");
+    expect(result.status).toBe("connecting");
+    expect(result.participants.map((participant) => participant.status)).toEqual([
+      "active",
+      "active",
+      "errored",
+    ]);
     expect(repository.endSession).not.toHaveBeenCalled();
+  });
+
+  it("does not overwrite a provider projection managed by an active sharing channel", async () => {
+    const participants = ["one", "two"].map((id) => ({
+      id: `participant-${id}`,
+      avatarAgentId: id,
+      realtimeSessionId: null,
+      status: "connecting",
+      avatarAgent: {
+        ...avatar(id),
+        groupProviderAgentId: `agent-${id}`,
+        groupProviderSyncFingerprint: `fingerprint-${id}`,
+        groupProviderSyncStatus: "synced",
+        groupProviderSyncRevision: `shared-revision-${id}`,
+        avatarGroupMembers: [{ id: `membership-${id}` }],
+      },
+      realtimeSession: null,
+    }));
+    const repository = {
+      findAccessible: vi.fn().mockResolvedValue({ id: "group-1", ownerId: "user-1" }),
+      createVoiceSession: vi.fn().mockResolvedValue({
+        id: "group-session-1",
+        conversationId: "conversation-1",
+        expiresAt: new Date("2030-01-01T00:10:00.000Z"),
+      }),
+      findVoiceSessionForOwner: vi.fn().mockResolvedValue({
+        id: "group-session-1",
+        conversationId: "conversation-1",
+        status: "connecting",
+        activatedAt: null,
+        expiresAt: new Date("2030-01-01T00:10:00.000Z"),
+        participants,
+      }),
+      createRealtimeParticipant: vi
+        .fn()
+        .mockImplementation((participantId: string) =>
+          Promise.resolve({ realtimeSessionId: `realtime-${participantId}` })
+        ),
+      updateGroupProvider: vi.fn().mockResolvedValue(true),
+      activateParticipantConnection: vi.fn().mockResolvedValue(true),
+      abandonParticipantConnection: vi.fn().mockResolvedValue(undefined),
+      markParticipantErrored: vi.fn().mockResolvedValue(true),
+      endSession: vi.fn().mockResolvedValue({}),
+    };
+    const syncAvatarAgent = vi.fn();
+    const dependencies = {
+      repository,
+      messagesRepository: {},
+      liveAvatarProvider: {
+        createLiteSessionToken: vi.fn().mockResolvedValue({
+          sessionToken: "provider-token",
+          sessionId: "provider-session",
+        }),
+        stopSession: vi.fn(),
+      },
+      elevenLabsAgentProvider: { syncAvatarAgent },
+      providerTokenProtector: { encrypt: (token: string) => `encrypted:${token}`, decrypt: vi.fn() },
+    } as unknown as AvatarGroupsServiceDependencies;
+
+    const result = await createAvatarGroupsService(dependencies).start("user-1", "group-1");
+
+    expect(result.participants.every((participant) => participant.status === "active")).toBe(true);
+    expect(syncAvatarAgent).not.toHaveBeenCalled();
+    expect(repository.updateGroupProvider).not.toHaveBeenCalled();
+  });
+
+  it("aborts an owner start when an inline provider revision is superseded", async () => {
+    const participants = ["one", "two"].map((id) => ({
+      id: `participant-${id}`,
+      avatarAgentId: id,
+      realtimeSessionId: null,
+      status: "connecting",
+      avatarAgent: avatar(id),
+      realtimeSession: null,
+    }));
+    const repository = {
+      findAccessible: vi.fn().mockResolvedValue({ id: "group-1", ownerId: "user-1" }),
+      createVoiceSession: vi.fn().mockResolvedValue({
+        id: "group-session-1",
+        conversationId: "conversation-1",
+        expiresAt: new Date("2030-01-01T00:10:00.000Z"),
+      }),
+      findVoiceSessionForOwner: vi.fn().mockResolvedValue({
+        id: "group-session-1",
+        conversationId: "conversation-1",
+        status: "connecting",
+        activatedAt: null,
+        expiresAt: new Date("2030-01-01T00:10:00.000Z"),
+        participants,
+      }),
+      createRealtimeParticipant: vi
+        .fn()
+        .mockImplementation((participantId: string) =>
+          Promise.resolve({ realtimeSessionId: `realtime-${participantId}` })
+        ),
+      updateGroupProvider: vi
+        .fn()
+        .mockImplementation((avatarId: string, input: { status: string }) =>
+          Promise.resolve(!(avatarId === "one" && input.status === "synced"))
+        ),
+      activateParticipantConnection: vi.fn().mockResolvedValue(true),
+      abandonParticipantConnection: vi.fn().mockResolvedValue(undefined),
+      markParticipantErrored: vi.fn().mockResolvedValue(true),
+      endSession: vi.fn().mockResolvedValue({}),
+    };
+    const liveAvatarProvider = {
+      createLiteSessionToken: vi.fn().mockResolvedValue({
+        sessionToken: "provider-token",
+        sessionId: "provider-session",
+      }),
+      stopSession: vi.fn(),
+    };
+    const dependencies = {
+      repository,
+      messagesRepository: {},
+      liveAvatarProvider,
+      elevenLabsAgentProvider: {
+        syncAvatarAgent: vi.fn().mockImplementation(({ id }: { id: string }) =>
+          Promise.resolve({
+            providerAgentId: `agent-${id}`,
+            providerSyncFingerprint: `fingerprint-${id}`,
+            synced: true,
+          })
+        ),
+      },
+      providerTokenProtector: { encrypt: (token: string) => `encrypted:${token}`, decrypt: vi.fn() },
+    } as unknown as AvatarGroupsServiceDependencies;
+
+    await expect(createAvatarGroupsService(dependencies).start("user-1", "group-1")).rejects.toThrow(
+      "al menos dos participantes"
+    );
+
+    expect(repository.endSession).toHaveBeenCalledWith("user-1", "group-session-1", "errored");
+    expect(repository.activateParticipantConnection).toHaveBeenCalledTimes(1);
+  });
+
+  it("aborts a shared start before activation when any roster member fails", async () => {
+    const participants = ["one", "two"].map((id) => ({
+      id: `participant-${id}`,
+      avatarAgentId: id,
+      realtimeSessionId: null,
+      status: "connecting",
+      avatarAgent: {
+        ...avatar(id),
+        groupProviderAgentId: `agent-${id}`,
+        groupProviderSyncFingerprint: `fingerprint-${id}`,
+        groupProviderSyncStatus: "synced",
+      },
+      realtimeSession: null,
+    }));
+    const repository = {
+      findAccessible: vi.fn().mockResolvedValue({ id: "group-1", ownerId: "owner-1" }),
+      createSharedVoiceSession: vi.fn().mockResolvedValue({
+        id: "group-session-1",
+        conversationId: "conversation-1",
+        expiresAt: new Date("2030-01-01T00:10:00.000Z"),
+      }),
+      findVoiceSessionForOwner: vi.fn().mockResolvedValue({
+        id: "group-session-1",
+        avatarGroupId: "group-1",
+        conversationId: "conversation-1",
+        status: "connecting",
+        activatedAt: null,
+        groupAccessGrantId: "grant-1",
+        groupPublicSessionId: null,
+        expiresAt: new Date("2030-01-01T00:10:00.000Z"),
+        participants,
+      }),
+      createRealtimeParticipant: vi
+        .fn()
+        .mockImplementation((participantId: string) =>
+          Promise.resolve({ realtimeSessionId: `realtime-${participantId}` })
+        ),
+      activateParticipantConnection: vi.fn().mockResolvedValue(true),
+      abandonParticipantConnection: vi.fn().mockResolvedValue(undefined),
+      markParticipantErrored: vi.fn().mockResolvedValue(true),
+      updateGroupProvider: vi.fn().mockResolvedValue({}),
+      endSession: vi.fn().mockResolvedValue({}),
+    };
+    const dependencies = {
+      repository,
+      messagesRepository: {},
+      liveAvatarProvider: {
+        createLiteSessionToken: vi.fn().mockImplementation(({ avatarId }: { avatarId: string }) => {
+          if (avatarId === "live-two") throw new Error("Provider unavailable");
+          return Promise.resolve({ sessionToken: "token-one", sessionId: "live-session-one" });
+        }),
+        stopSession: vi.fn(),
+      },
+      elevenLabsAgentProvider: { syncAvatarAgent: vi.fn() },
+      providerTokenProtector: { encrypt: (token: string) => `encrypted:${token}`, decrypt: vi.fn() },
+    } as unknown as AvatarGroupsServiceDependencies;
+
+    await expect(
+      createAvatarGroupsService(dependencies).start("user-1", "group-1", {
+        consentScopeId: "scope-1",
+        consentVersion: "1",
+      })
+    ).rejects.toThrow("No pudimos conectar el roster completo");
+
+    expect(repository.endSession).toHaveBeenCalledWith("user-1", "group-session-1", "errored");
+    expect(repository.activateParticipantConnection).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops a provider session directly when durable cleanup cannot be registered", async () => {
+    const participant = {
+      id: "participant-one",
+      avatarAgentId: "one",
+      realtimeSessionId: null,
+      status: "connecting",
+      avatarAgent: {
+        ...avatar("one"),
+        groupProviderAgentId: "agent-one",
+        groupProviderSyncFingerprint: "fingerprint-one",
+        groupProviderSyncStatus: "synced",
+      },
+      realtimeSession: null,
+    };
+    const repository = {
+      findAccessible: vi.fn().mockResolvedValue({ id: "group-1", ownerId: "owner-1" }),
+      createSharedVoiceSession: vi.fn().mockResolvedValue({
+        id: "group-session-1",
+        conversationId: "conversation-1",
+        expiresAt: new Date("2030-01-01T00:10:00.000Z"),
+      }),
+      findVoiceSessionForOwner: vi.fn().mockResolvedValue({
+        id: "group-session-1",
+        avatarGroupId: "group-1",
+        conversationId: "conversation-1",
+        status: "connecting",
+        activatedAt: null,
+        groupAccessGrantId: "grant-1",
+        groupPublicSessionId: null,
+        expiresAt: new Date("2030-01-01T00:10:00.000Z"),
+        participants: [participant],
+      }),
+      createRealtimeParticipant: vi.fn().mockResolvedValue({ realtimeSessionId: "realtime-one" }),
+      activateParticipantConnection: vi.fn().mockRejectedValue(new Error("database unavailable")),
+      abandonParticipantConnection: vi.fn().mockRejectedValue(new Error("database unavailable")),
+      markParticipantErrored: vi.fn().mockRejectedValue(new Error("database unavailable")),
+      updateGroupProvider: vi.fn(),
+      endSession: vi.fn().mockResolvedValue({}),
+    };
+    const stopSession = vi.fn().mockResolvedValue(undefined);
+    const dependencies = {
+      repository,
+      messagesRepository: {},
+      liveAvatarProvider: {
+        createLiteSessionToken: vi.fn().mockResolvedValue({
+          sessionToken: "provider-token-one",
+          sessionId: "provider-session-one",
+        }),
+        stopSession,
+      },
+      elevenLabsAgentProvider: { syncAvatarAgent: vi.fn() },
+      providerTokenProtector: { encrypt: (token: string) => `encrypted:${token}`, decrypt: vi.fn() },
+    } as unknown as AvatarGroupsServiceDependencies;
+
+    await expect(
+      createAvatarGroupsService(dependencies).start("user-1", "group-1", {
+        consentScopeId: "scope-1",
+        consentVersion: "1",
+      })
+    ).rejects.toThrow("No pudimos conectar el roster completo");
+
+    expect(stopSession).toHaveBeenCalledTimes(1);
+    expect(stopSession).toHaveBeenCalledWith("provider-token-one");
+    expect(repository.endSession).toHaveBeenCalledWith("user-1", "group-session-1", "errored");
   });
 
   it("does not plan the same final human transcript twice", async () => {
@@ -148,6 +520,7 @@ describe("avatar group voice service", () => {
           id: "session-1",
           conversationId: "conversation-1",
           status: "active",
+          activatedAt: new Date("2030-01-01T00:00:00.000Z"),
           expiresAt: new Date("2030-01-01T00:10:00.000Z"),
           participants: [],
         }),
@@ -198,6 +571,7 @@ describe("avatar group voice service", () => {
           id: "session-1",
           conversationId: "conversation-1",
           status: "active",
+          activatedAt: new Date("2030-01-01T00:00:00.000Z"),
           expiresAt: new Date("2030-01-01T00:10:00.000Z"),
           participants,
         }),
@@ -235,6 +609,7 @@ describe("avatar group voice service", () => {
             id: "session-1",
             conversationId: "conversation-1",
             status: "active",
+            activatedAt: new Date("2030-01-01T00:00:00.000Z"),
             expiresAt: new Date("2030-01-01T00:10:00.000Z"),
             participants: [
               {
@@ -283,6 +658,7 @@ describe("avatar group voice service", () => {
           id: "session-1",
           conversationId: "conversation-1",
           status: "active",
+          activatedAt: new Date("2030-01-01T00:00:00.000Z"),
           expiresAt: new Date("2030-01-01T00:10:00.000Z"),
           participants: [],
         }),
@@ -330,6 +706,7 @@ describe("avatar group voice service", () => {
           id: "session-1",
           conversationId: "conversation-1",
           status: "active",
+          activatedAt: new Date("2030-01-01T00:00:00.000Z"),
           rollingSummary: "",
           expiresAt: new Date("2030-01-01T00:10:00.000Z"),
           participants,
@@ -439,6 +816,7 @@ describe("avatar group voice service", () => {
           id: "session-1",
           conversationId: "conversation-1",
           status: "active",
+          activatedAt: new Date("2030-01-01T00:00:00.000Z"),
           rollingSummary: "",
           expiresAt: new Date("2030-01-01T00:10:00.000Z"),
           participants: [participant],
@@ -490,9 +868,9 @@ describe("avatar group voice service", () => {
     });
   });
 
-  it("ends expired sessions and leaves provider cleanup to the durable worker", async () => {
+  it("claims expired sessions and leaves provider cleanup to the durable worker", async () => {
     const stopSession = vi.fn().mockResolvedValue(undefined);
-    const endSession = vi.fn().mockResolvedValue({});
+    const expireVoiceSessionIfStale = vi.fn().mockResolvedValue(true);
     const dependencies = {
       repository: {
         recoverStaleDeliberatingRounds: vi.fn().mockResolvedValue(0),
@@ -511,7 +889,7 @@ describe("avatar group voice service", () => {
             ],
           },
         ]),
-        endSession,
+        expireVoiceSessionIfStale,
         enqueuePendingSessionCleanups: vi.fn().mockResolvedValue(1),
       },
       liveAvatarProvider: { stopSession },
@@ -520,7 +898,48 @@ describe("avatar group voice service", () => {
 
     await expect(createAvatarGroupsService(dependencies).cleanupExpired()).resolves.toBe(1);
     expect(stopSession).not.toHaveBeenCalled();
-    expect(endSession).toHaveBeenCalledWith("user-1", "session-expired");
+    expect(expireVoiceSessionIfStale).toHaveBeenCalledWith("user-1", "session-expired", expect.any(Date));
+  });
+
+  it("does not close or count a candidate that heartbeated after the cleanup scan", async () => {
+    const now = new Date("2030-01-01T00:02:00.000Z");
+    const expireVoiceSessionIfStale = vi.fn().mockResolvedValue(false);
+    const dependencies = {
+      repository: {
+        recoverStaleDeliberatingRounds: vi.fn().mockResolvedValue(0),
+        listExpiredFloorSessions: vi.fn().mockResolvedValue([]),
+        listExpiredVoiceSessions: vi.fn().mockResolvedValue([
+          {
+            id: "session-refreshed",
+            ownerId: "user-1",
+            groupPublicSessionId: null,
+          },
+        ]),
+        expireVoiceSessionIfStale,
+        enqueuePendingSessionCleanups: vi.fn().mockResolvedValue(0),
+      },
+    } as unknown as AvatarGroupsServiceDependencies;
+
+    await expect(createAvatarGroupsService(dependencies).cleanupExpired(now)).resolves.toBe(0);
+    expect(expireVoiceSessionIfStale).toHaveBeenCalledWith("user-1", "session-refreshed", now);
+  });
+
+  it("does not acknowledge a heartbeat after cleanup claimed the session", async () => {
+    const dependencies = {
+      repository: {
+        findVoiceSessionForOwner: vi.fn().mockResolvedValue({
+          id: "session-ended-concurrently",
+          status: "active",
+          activatedAt: new Date("2030-01-01T00:00:00.000Z"),
+          expiresAt: new Date("2030-01-01T00:10:00.000Z"),
+        }),
+        heartbeat: vi.fn().mockResolvedValue({ count: 0 }),
+      },
+    } as unknown as AvatarGroupsServiceDependencies;
+
+    await expect(
+      createAvatarGroupsService(dependencies).heartbeat("user-1", "session-ended-concurrently")
+    ).rejects.toThrow("La llamada ya terminó");
   });
 
   it("suppresses an unauthorized speaker without interrupting the valid floor", async () => {
@@ -529,6 +948,7 @@ describe("avatar group voice service", () => {
       id: "session-1",
       conversationId: "conversation-1",
       status: "active",
+      activatedAt: new Date("2030-01-01T00:00:00.000Z"),
       orchestrationPhase: "queued",
       floorOwnerAvatarId: "avatar-valid",
       floorTurnId: "turn-valid",
@@ -572,6 +992,7 @@ describe("avatar group voice service", () => {
       id: "session-1",
       conversationId: "conversation-1",
       status: "active",
+      activatedAt: new Date("2030-01-01T00:00:00.000Z"),
       orchestrationPhase: "queued",
       floorOwnerAvatarId: "avatar-valid",
       floorTurnId: "turn-valid",
@@ -649,6 +1070,7 @@ describe("avatar group voice service", () => {
       id: "session-1",
       conversationId: "conversation-1",
       status: "active",
+      activatedAt: new Date("2030-01-01T00:00:00.000Z"),
       orchestrationPhase: "queued",
       floorOwnerAvatarId: "new",
       floorTurnId: "turn-new",
@@ -688,6 +1110,7 @@ describe("avatar group voice service", () => {
       id: "session-1",
       conversationId: "conversation-1",
       status: "ended",
+      activatedAt: new Date("2029-01-01T00:00:00.000Z"),
       orchestrationPhase: "ended",
       floorOwnerAvatarId: null,
       floorTurnId: null,
@@ -735,6 +1158,7 @@ describe("avatar group voice service", () => {
       id: "session-1",
       conversationId: "conversation-1",
       status: "active",
+      activatedAt: new Date("2030-01-01T00:00:00.000Z"),
       orchestrationPhase: "queued",
       floorOwnerAvatarId: "avatar-one",
       floorTurnId: "turn-new",
@@ -780,6 +1204,7 @@ describe("avatar group voice service", () => {
       id: "session-1",
       conversationId: "conversation-1",
       status: "active",
+      activatedAt: new Date("2030-01-01T00:00:00.000Z"),
       orchestrationPhase: "speaking",
       floorOwnerAvatarId: "avatar-new",
       floorTurnId: "turn-new",
@@ -823,6 +1248,7 @@ describe("avatar group voice service", () => {
       id: "session-1",
       conversationId: "conversation-1",
       status: "active",
+      activatedAt: new Date("2030-01-01T00:00:00.000Z"),
       orchestrationPhase: "speaking",
       floorOwnerAvatarId: "one",
       floorTurnId: "turn-one",
@@ -901,6 +1327,7 @@ describe("avatar group voice service", () => {
       id: "session-1",
       conversationId: "conversation-1",
       status: "active",
+      activatedAt: new Date("2030-01-01T00:00:00.000Z"),
       orchestrationPhase: "speaking",
       floorOwnerAvatarId: "one",
       floorTurnId: "turn-one",
@@ -957,6 +1384,7 @@ describe("avatar group voice service", () => {
           id: "session-1",
           conversationId: "conversation-1",
           status: "active",
+          activatedAt: new Date("2030-01-01T00:00:00.000Z"),
           expiresAt: new Date("2030-01-01T00:10:00.000Z"),
           participants: [participant],
         }),
@@ -973,16 +1401,20 @@ describe("avatar group voice service", () => {
 
   it("confirms the current participant attempt after the client starts", async () => {
     const confirmParticipantStarted = vi.fn().mockResolvedValue(true);
+    const markSessionActive = vi.fn().mockResolvedValue(true);
     const dependencies = {
       repository: {
         findVoiceSessionForOwner: vi.fn().mockResolvedValue({
           id: "session-1",
           conversationId: "conversation-1",
-          status: "active",
+          avatarGroupId: "group-1",
+          status: "connecting",
+          activatedAt: null,
           expiresAt: new Date("2030-01-01T00:10:00.000Z"),
           participants: [],
         }),
         confirmParticipantStarted,
+        markSessionActive,
       },
     } as unknown as AvatarGroupsServiceDependencies;
 
@@ -990,8 +1422,34 @@ describe("avatar group voice service", () => {
       createAvatarGroupsService(dependencies).confirmParticipantStarted("user-1", "session-1", "avatar-1", {
         participantAttemptId: "realtime-1",
       })
-    ).resolves.toEqual({ ok: true });
+    ).resolves.toEqual({ ok: true, status: "active" });
     expect(confirmParticipantStarted).toHaveBeenCalledWith("user-1", "session-1", "avatar-1", "realtime-1");
+    expect(markSessionActive).toHaveBeenCalledWith("session-1");
+  });
+
+  it("keeps the session connecting until the repository confirms the full roster", async () => {
+    const markSessionActive = vi.fn().mockResolvedValue(false);
+    const dependencies = {
+      repository: {
+        findVoiceSessionForOwner: vi.fn().mockResolvedValue({
+          id: "session-1",
+          conversationId: "conversation-1",
+          status: "connecting",
+          activatedAt: null,
+          expiresAt: new Date("2030-01-01T00:10:00.000Z"),
+          participants: [],
+        }),
+        confirmParticipantStarted: vi.fn().mockResolvedValue(true),
+        markSessionActive,
+      },
+    } as unknown as AvatarGroupsServiceDependencies;
+
+    await expect(
+      createAvatarGroupsService(dependencies).confirmParticipantStarted("user-1", "session-1", "avatar-1", {
+        participantAttemptId: "realtime-1",
+      })
+    ).resolves.toEqual({ ok: true, status: "connecting" });
+    expect(markSessionActive).toHaveBeenCalledWith("session-1");
   });
 
   it("rejects a stale participant start confirmation", async () => {
@@ -1000,7 +1458,8 @@ describe("avatar group voice service", () => {
         findVoiceSessionForOwner: vi.fn().mockResolvedValue({
           id: "session-1",
           conversationId: "conversation-1",
-          status: "active",
+          status: "connecting",
+          activatedAt: null,
           expiresAt: new Date("2030-01-01T00:10:00.000Z"),
           participants: [],
         }),

@@ -41,7 +41,7 @@ import {
 import { endVoiceSession } from "./lib/api/avatar-api";
 import { getAvatarCardActionMode } from "./lib/avatar-dashboard";
 import { readSessionValue, removeSessionValue, storeSessionValue } from "./lib/browser-storage";
-import { InteractionLimitsFields } from "./components/avatar-profile/InteractionLimitsFields";
+import { InteractionLimitsFields } from "./components/sharing/InteractionLimitsFields";
 import { formatPublicCountdown, formatPublicSessionStartError } from "./app/a/[slug]/PublicAvatarView";
 
 afterEach(() => {

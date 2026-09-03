@@ -47,6 +47,11 @@ La solución respeta los contratos publicados por ambos providers y evita mezcla
 
 El MVP no ofrece links públicos de grupos, edición del grupo durante una llamada ni más de tres participantes. La lista y el detalle del historial aplican el permiso acordado para todos los creadores de avatares participantes, incluso si el grupo original fue eliminado.
 
+> Nota adicional (2026-08-31): [ADR 0025](0025-shareable-avatar-groups.md) reemplaza la exclusión de
+> sharing público, la autorización histórica basada en dueños de avatares miembros y el lifecycle
+> destructivo del grupo. Este ADR continúa superseded: ADR 0018 y ADR 0019 contienen las decisiones
+> vigentes de proyección de Agents, floor, degradación y orquestación.
+
 ## Referencias
 
 - [LiveAvatar ElevenLabs Agent Connector](https://docs.liveavatar.com/docs/lite-mode/connectors/elevenlabs-agent)

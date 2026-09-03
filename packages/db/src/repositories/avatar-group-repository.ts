@@ -1,5 +1,18 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
-import { NotFoundError } from "@yuni/domain";
+import {
+  GroupSharingIneligibleError,
+  groupConsentScopeId,
+  LiveAvatarConfigSchema,
+  NotFoundError,
+  VoiceConfigSchema,
+} from "@yuni/domain";
+import { enqueueGroupProviderSyncJob } from "./group-provider-sync-job";
+import {
+  countActiveExternalSessionsForAvatar,
+  countActiveExternalSessionsForParticipant,
+  lockExternalParticipant,
+  normalizeExternalParticipantEmail,
+} from "./external-session-capacity";
 
 type Db = PrismaClient;
 
@@ -57,6 +70,10 @@ async function lockAvatarGroups(tx: Prisma.TransactionClient, groupIds: string[]
   );
 }
 
+function sameOrderedIds(left: string[], right: string[]) {
+  return left.length === right.length && left.every((id, index) => id === right[index]);
+}
+
 async function lockAccessGrants(tx: Prisma.TransactionClient, accessGrantIds: string[]) {
   const ids = [...new Set(accessGrantIds)].sort();
   if (ids.length === 0) return;
@@ -93,6 +110,21 @@ const avatarWithKnowledgeInclude = {
     where: { deletedAt: null, status: "ready" as const },
     include: { providerSync: true },
   },
+  avatarGroupMembers: {
+    where: {
+      avatarGroup: {
+        is: {
+          deletedAt: null,
+          OR: [
+            { shareLinks: { some: { isEnabled: true, deletedAt: null } } },
+            { accessGrants: { some: { status: "active" as const } } },
+          ],
+        },
+      },
+    },
+    select: { id: true },
+    take: 1,
+  },
 } satisfies Prisma.AvatarAgentInclude;
 
 const memberInclude = {
@@ -106,6 +138,69 @@ const groupInclude = {
     orderBy: { position: "asc" as const },
   },
 } satisfies Prisma.AvatarGroupInclude;
+
+const accessibleGroupInclude = {
+  ...groupInclude,
+  owner: { select: { name: true } },
+  _count: {
+    select: {
+      accessGrants: { where: { status: "active" as const } },
+      shareLinks: { where: { isEnabled: true, deletedAt: null } },
+    },
+  },
+} satisfies Prisma.AvatarGroupInclude;
+
+const publicSessionPrincipalPrefix = "group-public:";
+
+function sessionPrincipalWhere(principalId: string) {
+  return principalId.startsWith(publicSessionPrincipalPrefix)
+    ? { groupPublicSessionId: principalId.slice(publicSessionPrincipalPrefix.length) }
+    : { initiatorUserId: principalId };
+}
+
+function sessionPrincipalId(session: {
+  initiatorUserId: string | null;
+  groupPublicSessionId: string | null;
+}) {
+  if (session.groupPublicSessionId) return groupPublicSessionPrincipal(session.groupPublicSessionId);
+  if (session.initiatorUserId) return session.initiatorUserId;
+  throw new Error("Group voice session has no authorization principal");
+}
+
+export function groupPublicSessionPrincipal(groupPublicSessionId: string) {
+  return `${publicSessionPrincipalPrefix}${groupPublicSessionId}`;
+}
+
+export class GroupVoiceUsageLimitError extends Error {
+  constructor(readonly retryAfterSeconds: number) {
+    super("Group share session count limit reached");
+  }
+}
+
+export class GroupVoiceActiveSessionError extends Error {
+  constructor() {
+    super("An active group share session already exists");
+  }
+}
+
+export class GroupVoiceCapacityError extends Error {
+  constructor(readonly retryAfterSeconds = 60) {
+    super("External group session capacity reached");
+  }
+}
+
+export class GroupVoiceRosterUnavailableError extends Error {
+  constructor() {
+    super("The complete group roster is not ready");
+    this.name = "GroupVoiceRosterUnavailableError";
+  }
+}
+
+export class GroupConsentVersionStaleError extends Error {
+  constructor() {
+    super("Group consent version is stale");
+  }
+}
 
 export function createAvatarGroupRepository(db: Db) {
   async function resolveMembers(tx: Prisma.TransactionClient, userId: string, avatarIds: string[]) {
@@ -148,14 +243,59 @@ export function createAvatarGroupRepository(db: Db) {
   return {
     listOwned(ownerId: string) {
       return db.avatarGroup.findMany({
-        where: { ownerId },
-        include: groupInclude,
+        where: { ownerId, deletedAt: null },
+        include: accessibleGroupInclude,
         orderBy: { updatedAt: "desc" },
       });
     },
 
     findOwned(ownerId: string, groupId: string) {
-      return db.avatarGroup.findFirst({ where: { id: groupId, ownerId }, include: groupInclude });
+      return db.avatarGroup.findFirst({
+        where: { id: groupId, ownerId, deletedAt: null },
+        include: accessibleGroupInclude,
+      });
+    },
+
+    listAccessible(userId: string) {
+      return db.avatarGroup.findMany({
+        where: {
+          deletedAt: null,
+          OR: [
+            { ownerId: userId },
+            { accessGrants: { some: { participantUserId: userId, status: "active" } } },
+          ],
+        },
+        include: {
+          ...accessibleGroupInclude,
+          accessGrants: {
+            where: { participantUserId: userId, status: "active" },
+            orderBy: { createdAt: "desc" },
+            take: 1,
+          },
+        },
+        orderBy: { updatedAt: "desc" },
+      });
+    },
+
+    findAccessible(userId: string, groupId: string) {
+      return db.avatarGroup.findFirst({
+        where: {
+          id: groupId,
+          deletedAt: null,
+          OR: [
+            { ownerId: userId },
+            { accessGrants: { some: { participantUserId: userId, status: "active" } } },
+          ],
+        },
+        include: {
+          ...accessibleGroupInclude,
+          accessGrants: {
+            where: { participantUserId: userId, status: "active" },
+            orderBy: { createdAt: "desc" },
+            take: 1,
+          },
+        },
+      });
     },
 
     async create(ownerId: string, input: { name: string; avatarIds: string[] }) {
@@ -176,9 +316,16 @@ export function createAvatarGroupRepository(db: Db) {
 
     async update(ownerId: string, groupId: string, input: { name?: string; avatarIds?: string[] }) {
       return db.$transaction(async (tx) => {
+        await lockAvatarGroups(tx, [groupId]);
+        await lockGroupSharingChannels(tx, groupId);
         const snapshot = await tx.avatarGroup.findFirst({
-          where: { id: groupId, ownerId },
-          include: { members: { select: { avatarAgentId: true } } },
+          where: { id: groupId, ownerId, deletedAt: null },
+          include: {
+            members: {
+              select: { avatarAgentId: true },
+              orderBy: { position: "asc" },
+            },
+          },
         });
         if (!snapshot) throw new NotFoundError("Grupo no encontrado");
         await lockAvatarAgents(tx, [
@@ -192,33 +339,76 @@ export function createAvatarGroupRepository(db: Db) {
             ...(input.avatarIds ?? []),
           ])
         );
-        await lockAvatarGroups(tx, [groupId]);
-        const group = await tx.avatarGroup.findFirst({ where: { id: groupId, ownerId } });
+        const group = await tx.avatarGroup.findFirst({
+          where: { id: groupId, ownerId, deletedAt: null },
+        });
         if (!group) throw new NotFoundError("Grupo no encontrado");
 
-        const members = input.avatarIds ? await resolveMembers(tx, ownerId, input.avatarIds) : null;
+        const requestedAvatarIds = input.avatarIds;
+        const membershipChanged = Boolean(
+          requestedAvatarIds &&
+          !sameOrderedIds(
+            requestedAvatarIds,
+            snapshot.members.map((member) => member.avatarAgentId)
+          )
+        );
+        const members =
+          membershipChanged && requestedAvatarIds
+            ? await resolveMembers(tx, ownerId, requestedAvatarIds)
+            : null;
         if (members) {
+          const hasActiveSharingChannels =
+            (await tx.groupShareLink.count({
+              where: { avatarGroupId: groupId, isEnabled: true, deletedAt: null },
+            })) +
+              (await tx.groupAccessGrant.count({
+                where: { avatarGroupId: groupId, status: "active" },
+              })) >
+            0;
+          if (members.some((member) => member.accessGrantId !== null) && hasActiveSharingChannels) {
+            throw new GroupSharingIneligibleError(
+              "No podés agregar avatares ajenos mientras el grupo tenga accesos compartidos activos"
+            );
+          }
           await tx.avatarGroupMember.deleteMany({ where: { avatarGroupId: groupId } });
         }
 
-        return tx.avatarGroup.update({
-          where: { id: groupId },
-          data: {
-            ...(input.name ? { name: input.name } : {}),
-            ...(members ? { members: { create: members } } : {}),
-          },
-          include: groupInclude,
-        });
+        return tx.avatarGroup
+          .update({
+            where: { id: groupId },
+            data: {
+              ...(input.name ? { name: input.name } : {}),
+              ...(members ? { members: { create: members } } : {}),
+              ...(members ? { membershipVersion: { increment: 1 } } : {}),
+            },
+            include: groupInclude,
+          })
+          .then(async (updated) => {
+            if (members && !members.some((member) => member.accessGrantId !== null)) {
+              await enqueueSharedGroupPreparation(tx, updated);
+            }
+            return updated;
+          });
       });
     },
 
     async delete(ownerId: string, groupId: string) {
       return db.$transaction(async (tx) => {
+        await lockAvatarGroups(tx, [groupId]);
+        await lockGroupSharingChannels(tx, groupId);
         const snapshot = await tx.avatarGroup.findFirst({
-          where: { id: groupId, ownerId },
+          where: { id: groupId, ownerId, deletedAt: null },
           include: { members: { select: { avatarAgentId: true } } },
         });
         if (!snapshot) throw new NotFoundError("Grupo no encontrado");
+        const activeSessionIds = await tx.groupVoiceSession.findMany({
+          where: { avatarGroupId: groupId, status: { in: ["connecting", "active"] } },
+          select: { id: true },
+        });
+        await lockGroupVoiceSessions(
+          tx,
+          activeSessionIds.map((session) => session.id)
+        );
         await lockAvatarAgents(
           tx,
           snapshot.members.map((member) => member.avatarAgentId)
@@ -231,19 +421,34 @@ export function createAvatarGroupRepository(db: Db) {
             snapshot.members.map((member) => member.avatarAgentId)
           )
         );
-        await lockAvatarGroups(tx, [groupId]);
-        const group = await tx.avatarGroup.findFirst({ where: { id: groupId, ownerId } });
+        const group = await tx.avatarGroup.findFirst({
+          where: { id: groupId, ownerId, deletedAt: null },
+        });
         if (!group) throw new NotFoundError("Grupo no encontrado");
-        await endGroupSessionsForDeletion(tx, ownerId, groupId);
-        await tx.avatarGroup.delete({ where: { id: groupId } });
-        return group;
+        await terminateGroupVoiceSessionsForDeletion(tx, {
+          sessionIds: activeSessionIds.map((session) => session.id),
+          errorMessage: "avatar_group_deleted",
+        });
+        const deletedAt = new Date();
+        await Promise.all([
+          tx.groupShareLink.updateMany({
+            where: { avatarGroupId: groupId, deletedAt: null },
+            data: { isEnabled: false, deletedAt },
+          }),
+          tx.groupAccessGrant.updateMany({
+            where: { avatarGroupId: groupId, status: "active" },
+            data: { status: "revoked", revokedAt: deletedAt },
+          }),
+        ]);
+        return tx.avatarGroup.update({ where: { id: groupId }, data: { deletedAt } });
       });
     },
 
     async createVoiceSession(ownerId: string, groupId: string, maxMinutes = 10) {
       return db.$transaction(async (tx) => {
+        await lockAvatarGroups(tx, [groupId]);
         const snapshot = await tx.avatarGroup.findFirst({
-          where: { id: groupId, ownerId },
+          where: { id: groupId, ownerId, deletedAt: null },
           include: groupInclude,
         });
         if (!snapshot) throw new NotFoundError("Grupo no encontrado");
@@ -259,9 +464,8 @@ export function createAvatarGroupRepository(db: Db) {
             snapshot.members.map((member) => member.avatarAgentId)
           )
         );
-        await lockAvatarGroups(tx, [groupId]);
         const group = await tx.avatarGroup.findFirst({
-          where: { id: groupId, ownerId },
+          where: { id: groupId, ownerId, deletedAt: null },
           include: groupInclude,
         });
         if (!group) throw new NotFoundError("Grupo no encontrado");
@@ -281,15 +485,29 @@ export function createAvatarGroupRepository(db: Db) {
           availableMembers.map((member) => member.avatarAgentId)
         );
         const primary = availableMembers[0]!;
+        const rosterSnapshot = availableMembers.map((member) => ({
+          id: member.avatarAgent.id,
+          name: member.avatarAgent.name,
+          description: member.avatarAgent.description,
+          thumbnailUrl: avatarThumbnailUrl(member.avatarAgent.liveAvatarConfig),
+          position: member.position,
+        }));
 
         const conversation = await tx.conversation.create({
           data: {
             ownerId,
             avatarAgentId: primary.avatarAgentId,
             avatarGroupId: group.id,
+            avatarGroupOwnerIdSnapshot: group.ownerId,
+            avatarGroupNameSnapshot: group.name,
+            groupMembershipVersion: group.membershipVersion,
+            avatarGroupRosterSnapshot: rosterSnapshot,
             visibility: "private",
             mode: "voice",
             conversationAvatars: { create: resolved },
+            groupParticipantSnapshots: {
+              create: toParticipantSnapshots(availableMembers),
+            },
           },
         });
         const session = await tx.groupVoiceSession.create({
@@ -297,6 +515,7 @@ export function createAvatarGroupRepository(db: Db) {
             avatarGroupId: group.id,
             conversationId: conversation.id,
             ownerId,
+            initiatorUserId: ownerId,
             expiresAt: new Date(Date.now() + maxMinutes * 60_000),
             participants: {
               create: resolved.map((member) => ({ avatarAgentId: member.avatarAgentId })),
@@ -315,9 +534,253 @@ export function createAvatarGroupRepository(db: Db) {
       });
     },
 
+    async createSharedVoiceSession(
+      initiatorUserId: string,
+      groupId: string,
+      consent: { scopeId: string; version: string } | null,
+      maxMinutes = 60,
+      capacity?: { maxConcurrentPerParticipant: number; maxConcurrentPerAvatar: number }
+    ) {
+      return db.$transaction(async (tx) => {
+        await lockAvatarGroups(tx, [groupId]);
+        const grantSnapshot = await tx.groupAccessGrant.findFirst({
+          where: {
+            avatarGroupId: groupId,
+            participantUserId: initiatorUserId,
+            status: "active",
+            avatarGroup: { is: { deletedAt: null } },
+          },
+          orderBy: { createdAt: "desc" },
+          select: { id: true },
+        });
+        if (!grantSnapshot) throw new NotFoundError("Grupo no encontrado");
+        await tx.$queryRaw(
+          Prisma.sql`SELECT "id" FROM "GroupAccessGrant" WHERE "id" = ${grantSnapshot.id} FOR UPDATE`
+        );
+        const grant = await tx.groupAccessGrant.findFirst({
+          where: {
+            id: grantSnapshot.id,
+            avatarGroupId: groupId,
+            participantUserId: initiatorUserId,
+            status: "active",
+          },
+        });
+        if (!grant) throw new NotFoundError("Grupo no encontrado");
+        const participantEmail = normalizeExternalParticipantEmail(grant.participantEmail);
+        const group = await lockAndReadStrictSharedGroup(tx, groupId, grant.ownerId);
+        if (!group || group.ownerId !== grant.ownerId) throw new NotFoundError("Grupo no encontrado");
+        if (
+          !consent ||
+          consent.scopeId !== groupConsentScopeId("access-grant", grant.id) ||
+          consent.version !== String(group.membershipVersion)
+        ) {
+          throw new GroupConsentVersionStaleError();
+        }
+        await tx.groupAccessConsent.upsert({
+          where: {
+            groupAccessGrantId_participantUserId_membershipVersion: {
+              groupAccessGrantId: grant.id,
+              participantUserId: initiatorUserId,
+              membershipVersion: group.membershipVersion,
+            },
+          },
+          create: {
+            groupAccessGrantId: grant.id,
+            participantUserId: initiatorUserId,
+            scopeId: consent.scopeId,
+            membershipVersion: group.membershipVersion,
+          },
+          update: { scopeId: consent.scopeId, consentedAt: new Date() },
+        });
+        await assertGroupUsageAvailable(tx, {
+          groupAccessGrantId: grant.id,
+          maxSessionsPer24Hours: grant.maxSessionsPer24Hours,
+        });
+        if (capacity) {
+          await assertGroupExternalCapacity(tx, {
+            participantEmail,
+            avatarIds: group.members.map((member) => member.avatarAgentId),
+            ...capacity,
+          });
+        }
+        const seconds = effectiveGroupSessionSeconds(maxMinutes, grant.maxSessionDurationSeconds);
+        const expiresAt = new Date(Date.now() + seconds * 1000);
+        const rosterSnapshot = toRosterSnapshot(group.members);
+        const primary = group.members[0]!;
+        const conversation = await tx.conversation.create({
+          data: {
+            ownerId: initiatorUserId,
+            avatarAgentId: primary.avatarAgentId,
+            avatarGroupId: group.id,
+            groupAccessGrantId: grant.id,
+            participantEmail,
+            avatarGroupOwnerIdSnapshot: group.ownerId,
+            avatarGroupNameSnapshot: group.name,
+            groupMembershipVersion: group.membershipVersion,
+            avatarGroupRosterSnapshot: rosterSnapshot,
+            visibility: "private",
+            mode: "voice",
+            conversationAvatars: {
+              create: group.members.map((member) => ({
+                avatarAgentId: member.avatarAgentId,
+                position: member.position,
+              })),
+            },
+            groupParticipantSnapshots: {
+              create: toParticipantSnapshots(group.members),
+            },
+          },
+        });
+        return tx.groupVoiceSession.create({
+          data: {
+            avatarGroupId: group.id,
+            conversationId: conversation.id,
+            ownerId: group.ownerId,
+            initiatorUserId,
+            groupAccessGrantId: grant.id,
+            expiresAt,
+            participants: {
+              create: group.members.map((member) => ({ avatarAgentId: member.avatarAgentId })),
+            },
+          },
+          include: {
+            participants: {
+              include: { avatarAgent: { include: avatarWithKnowledgeInclude } },
+              orderBy: { createdAt: "asc" },
+            },
+            avatarGroup: true,
+          },
+        });
+      });
+    },
+
+    async createPublicVoiceSession(input: {
+      shareLinkId: string;
+      participantEmail: string;
+      consentedAt: Date;
+      consentScopeId: string;
+      consentVersion: number;
+      maxMinutes?: number;
+      capacity?: { maxConcurrentPerParticipant: number; maxConcurrentPerAvatar: number };
+    }) {
+      return db.$transaction(async (tx) => {
+        const linkSnapshot = await tx.groupShareLink.findFirst({
+          where: {
+            id: input.shareLinkId,
+            isEnabled: true,
+            deletedAt: null,
+            avatarGroupId: { not: null },
+            avatarGroup: { is: { deletedAt: null } },
+          },
+          select: { avatarGroupId: true },
+        });
+        if (!linkSnapshot?.avatarGroupId) throw new NotFoundError("Public group not found");
+        await lockAvatarGroups(tx, [linkSnapshot.avatarGroupId]);
+        await tx.$queryRaw(
+          Prisma.sql`SELECT "id" FROM "GroupShareLink" WHERE "id" = ${input.shareLinkId} FOR UPDATE`
+        );
+        const link = await tx.groupShareLink.findFirst({
+          where: {
+            id: input.shareLinkId,
+            avatarGroupId: linkSnapshot.avatarGroupId,
+            isEnabled: true,
+            deletedAt: null,
+          },
+        });
+        if (!link?.avatarGroupId) throw new NotFoundError("Public group not found");
+        const participantEmail = normalizeExternalParticipantEmail(input.participantEmail);
+        const group = await lockAndReadStrictSharedGroup(tx, link.avatarGroupId, link.ownerId);
+        if (group.membershipVersion !== input.consentVersion) {
+          throw new GroupConsentVersionStaleError();
+        }
+        if (input.consentScopeId !== groupConsentScopeId("share-link", link.id)) {
+          throw new GroupConsentVersionStaleError();
+        }
+        await assertGroupUsageAvailable(tx, {
+          groupShareLinkId: link.id,
+          participantEmail,
+          maxSessionsPer24Hours: link.maxSessionsPer24Hours,
+        });
+        if (input.capacity) {
+          await assertGroupExternalCapacity(tx, {
+            participantEmail,
+            avatarIds: group.members.map((member) => member.avatarAgentId),
+            ...input.capacity,
+          });
+        }
+        const seconds = effectiveGroupSessionSeconds(input.maxMinutes ?? 60, link.maxSessionDurationSeconds);
+        const expiresAt = new Date(Date.now() + seconds * 1000);
+        const participant = await tx.user.findUnique({
+          where: { email: participantEmail },
+          select: { id: true },
+        });
+        const publicSession = await tx.groupPublicSession.create({
+          data: {
+            groupShareLinkId: link.id,
+            avatarGroupId: group.id,
+            participantEmail,
+            participantUserId: participant?.id ?? null,
+            consentScopeId: input.consentScopeId,
+            consentVersion: input.consentVersion,
+            consentedAt: input.consentedAt,
+            expiresAt,
+            avatarGroupOwnerIdSnapshot: group.ownerId,
+            avatarGroupNameSnapshot: group.name,
+            groupMembershipVersion: group.membershipVersion,
+          },
+        });
+        const rosterSnapshot = toRosterSnapshot(group.members);
+        const primary = group.members[0]!;
+        const conversation = await tx.conversation.create({
+          data: {
+            avatarAgentId: primary.avatarAgentId,
+            avatarGroupId: group.id,
+            groupPublicSessionId: publicSession.id,
+            groupShareLinkId: link.id,
+            participantEmail,
+            avatarGroupOwnerIdSnapshot: group.ownerId,
+            avatarGroupNameSnapshot: group.name,
+            groupMembershipVersion: group.membershipVersion,
+            avatarGroupRosterSnapshot: rosterSnapshot,
+            visibility: "public",
+            mode: "voice",
+            conversationAvatars: {
+              create: group.members.map((member) => ({
+                avatarAgentId: member.avatarAgentId,
+                position: member.position,
+              })),
+            },
+            groupParticipantSnapshots: {
+              create: toParticipantSnapshots(group.members),
+            },
+          },
+        });
+        const voiceSession = await tx.groupVoiceSession.create({
+          data: {
+            avatarGroupId: group.id,
+            conversationId: conversation.id,
+            ownerId: group.ownerId,
+            groupPublicSessionId: publicSession.id,
+            expiresAt,
+            participants: {
+              create: group.members.map((member) => ({ avatarAgentId: member.avatarAgentId })),
+            },
+          },
+          include: {
+            participants: {
+              include: { avatarAgent: { include: avatarWithKnowledgeInclude } },
+              orderBy: { createdAt: "asc" },
+            },
+            avatarGroup: true,
+          },
+        });
+        return { publicSession, voiceSession };
+      });
+    },
+
     async findVoiceSessionForOwner(ownerId: string, sessionId: string) {
       const session = await db.groupVoiceSession.findFirst({
-        where: { id: sessionId, ownerId },
+        where: { id: sessionId, ...sessionPrincipalWhere(ownerId) },
         include: {
           avatarGroup: {
             include: {
@@ -358,8 +821,7 @@ export function createAvatarGroupRepository(db: Db) {
       return db.conversation.findFirst({
         where: {
           id: conversationId,
-          conversationAvatars: { some: {} },
-          OR: [{ ownerId: userId }, { conversationAvatars: { some: { avatarAgent: { ownerId: userId } } } }],
+          ...groupConversationHistoryAccess(userId),
         },
         include: {
           avatarGroup: true,
@@ -367,7 +829,11 @@ export function createAvatarGroupRepository(db: Db) {
             include: { avatarAgent: true },
             orderBy: { position: "asc" },
           },
-          messages: { include: { speakerAvatar: true }, orderBy: { createdAt: "asc" } },
+          groupParticipantSnapshots: { orderBy: { position: "asc" } },
+          messages: {
+            include: { speakerAvatar: true, groupParticipantSnapshot: true },
+            orderBy: { createdAt: "asc" },
+          },
         },
       });
     },
@@ -375,8 +841,7 @@ export function createAvatarGroupRepository(db: Db) {
     listConversationsForCreator(userId: string) {
       return db.conversation.findMany({
         where: {
-          conversationAvatars: { some: {} },
-          OR: [{ ownerId: userId }, { conversationAvatars: { some: { avatarAgent: { ownerId: userId } } } }],
+          ...groupConversationHistoryAccess(userId),
         },
         include: {
           avatarGroup: true,
@@ -384,6 +849,7 @@ export function createAvatarGroupRepository(db: Db) {
             include: { avatarAgent: true },
             orderBy: { position: "asc" },
           },
+          groupParticipantSnapshots: { orderBy: { position: "asc" } },
           _count: { select: { messages: true } },
         },
         orderBy: [{ lastMessageAt: "desc" }, { createdAt: "desc" }],
@@ -501,7 +967,10 @@ export function createAvatarGroupRepository(db: Db) {
             avatarAgentId: avatarId,
             realtimeSessionId: participantAttemptId,
             status: "active",
-            groupVoiceSession: { ownerId, status: { in: ["connecting", "active"] } },
+            groupVoiceSession: {
+              ...sessionPrincipalWhere(ownerId),
+              status: { in: ["connecting", "active"] },
+            },
           },
           select: { id: true },
         });
@@ -534,10 +1003,17 @@ export function createAvatarGroupRepository(db: Db) {
       errorMessage: string
     ) {
       return db.$transaction(async (tx) => {
+        const locator = await tx.groupVoiceParticipant.findUnique({
+          where: { id: participantId },
+          select: { groupVoiceSessionId: true },
+        });
+        if (!locator) return;
+        await lockGroupVoiceSessions(tx, [locator.groupVoiceSessionId]);
         const current = await tx.groupVoiceParticipant.findUnique({
           where: { id: participantId },
           include: { groupVoiceSession: true },
         });
+        if (!current || current.groupVoiceSessionId !== locator.groupVoiceSessionId) return;
         await tx.groupVoiceParticipant.updateMany({
           where: {
             id: participantId,
@@ -592,7 +1068,10 @@ export function createAvatarGroupRepository(db: Db) {
           where: {
             groupVoiceSessionId: sessionId,
             avatarAgentId: avatarId,
-            groupVoiceSession: { ownerId, status: { in: ["connecting", "active"] } },
+            groupVoiceSession: {
+              ...sessionPrincipalWhere(ownerId),
+              status: { in: ["connecting", "active"] },
+            },
           },
           include: { realtimeSession: true, groupVoiceSession: true },
         });
@@ -602,7 +1081,10 @@ export function createAvatarGroupRepository(db: Db) {
             id: current.id,
             status: "errored",
             realtimeSessionId: current.realtimeSessionId,
-            groupVoiceSession: { ownerId, status: { in: ["connecting", "active"] } },
+            groupVoiceSession: {
+              ...sessionPrincipalWhere(ownerId),
+              status: { in: ["connecting", "active"] },
+            },
           },
           data: { status: "connecting", errorMessage: null, endedAt: null },
         });
@@ -611,7 +1093,7 @@ export function createAvatarGroupRepository(db: Db) {
           await enqueueSessionCleanup(tx, {
             realtimeSessionId: current.realtimeSession.id,
             providerSessionTokenCiphertext: current.realtimeSession.providerSessionTokenCiphertext,
-            ownerId,
+            ownerId: current.groupVoiceSession.ownerId,
             avatarAgentId: avatarId,
           });
           await tx.realtimeSession.updateMany({
@@ -651,7 +1133,9 @@ export function createAvatarGroupRepository(db: Db) {
       try {
         return await db.$transaction(async (tx) => {
           await lockGroupVoiceSessions(tx, [sessionId]);
-          const session = await tx.groupVoiceSession.findFirst({ where: { id: sessionId, ownerId } });
+          const session = await tx.groupVoiceSession.findFirst({
+            where: { id: sessionId, ...sessionPrincipalWhere(ownerId) },
+          });
           if (!session) throw new NotFoundError("Llamada grupal no encontrada");
           const participant = await tx.groupVoiceParticipant.findFirst({
             where: { groupVoiceSessionId: sessionId, avatarAgentId: avatarId },
@@ -697,7 +1181,7 @@ export function createAvatarGroupRepository(db: Db) {
               realtimeSessionId: participant.realtimeSessionId,
               providerSessionTokenCiphertext:
                 participant.realtimeSession?.providerSessionTokenCiphertext ?? null,
-              ownerId,
+              ownerId: session.ownerId,
               avatarAgentId: avatarId,
             });
             await tx.realtimeSession.updateMany({
@@ -742,7 +1226,7 @@ export function createAvatarGroupRepository(db: Db) {
             const released = await tx.groupVoiceSession.updateMany({
               where: {
                 id: sessionId,
-                ownerId,
+                ...sessionPrincipalWhere(ownerId),
                 floorTurnId: session.floorTurnId,
                 floorOwnerAvatarId: avatarId,
                 orchestrationPhase: session.orchestrationPhase,
@@ -765,7 +1249,7 @@ export function createAvatarGroupRepository(db: Db) {
           const committing = await tx.groupVoiceSession.updateMany({
             where: {
               id: sessionId,
-              ownerId,
+              ...sessionPrincipalWhere(ownerId),
               floorTurnId: turn.id,
               floorOwnerAvatarId: avatarId,
               orchestrationPhase: { in: ["queued", "speaking"] },
@@ -808,7 +1292,7 @@ export function createAvatarGroupRepository(db: Db) {
             const released = await tx.groupVoiceSession.updateMany({
               where: {
                 id: sessionId,
-                ownerId,
+                ...sessionPrincipalWhere(ownerId),
                 orchestrationPhase: "committing",
                 floorTurnId: turn.id,
                 floorOwnerAvatarId: avatarId,
@@ -843,7 +1327,7 @@ export function createAvatarGroupRepository(db: Db) {
           const advanced = await tx.groupVoiceSession.updateMany({
             where: {
               id: sessionId,
-              ownerId,
+              ...sessionPrincipalWhere(ownerId),
               orchestrationPhase: "committing",
               floorTurnId: turn.id,
               floorOwnerAvatarId: avatarId,
@@ -866,7 +1350,9 @@ export function createAvatarGroupRepository(db: Db) {
       } catch (error) {
         if (!isUniqueConstraintError(error)) throw error;
         const [session, participant, receipt] = await Promise.all([
-          db.groupVoiceSession.findFirst({ where: { id: sessionId, ownerId } }),
+          db.groupVoiceSession.findFirst({
+            where: { id: sessionId, ...sessionPrincipalWhere(ownerId) },
+          }),
           db.groupVoiceParticipant.findFirst({
             where: { groupVoiceSessionId: sessionId, avatarAgentId: avatarId },
             include: { realtimeSession: true },
@@ -887,40 +1373,52 @@ export function createAvatarGroupRepository(db: Db) {
       input: {
         agentId?: string;
         fingerprint?: string;
+        revision?: string | null;
         status: "not_synced" | "syncing" | "synced" | "failed";
         error?: string | null;
-      }
+      },
+      expectedRevision?: string | null
     ) {
-      return db.avatarAgent.update({
-        where: { id: avatarId },
-        data: {
-          groupProviderSyncStatus: input.status,
-          ...(input.agentId !== undefined ? { groupProviderAgentId: input.agentId } : {}),
-          ...(input.fingerprint !== undefined ? { groupProviderSyncFingerprint: input.fingerprint } : {}),
-          ...(input.error !== undefined ? { groupProviderSyncError: input.error } : {}),
-          ...(input.status === "synced" ? { groupProviderSyncedAt: new Date() } : {}),
-        },
-      });
+      const data = {
+        groupProviderSyncStatus: input.status,
+        ...(input.agentId !== undefined ? { groupProviderAgentId: input.agentId } : {}),
+        ...(input.fingerprint !== undefined ? { groupProviderSyncFingerprint: input.fingerprint } : {}),
+        ...(input.revision !== undefined ? { groupProviderSyncRevision: input.revision } : {}),
+        ...(input.error !== undefined ? { groupProviderSyncError: input.error } : {}),
+        ...(input.status === "synced" ? { groupProviderSyncedAt: new Date() } : {}),
+      };
+      if (expectedRevision === undefined) {
+        return db.avatarAgent.update({ where: { id: avatarId }, data }).then(() => true);
+      }
+      return db.avatarAgent
+        .updateMany({
+          where: { id: avatarId, groupProviderSyncRevision: expectedRevision },
+          data,
+        })
+        .then((updated) => updated.count === 1);
     },
 
     async beginRound(ownerId: string, sessionId: string, input: { sourceEventId: string; content: string }) {
       try {
         return await db.$transaction(async (tx) => {
           await lockGroupVoiceSessions(tx, [sessionId]);
+          const session = await tx.groupVoiceSession.findFirst({
+            where: {
+              id: sessionId,
+              ...sessionPrincipalWhere(ownerId),
+              status: { in: ["connecting", "active"] },
+            },
+          });
+          if (!session) throw new NotFoundError("Llamada grupal no encontrada");
           const existing = await tx.groupVoiceRound.findFirst({
             where: { groupVoiceSessionId: sessionId, sourceEventId: input.sourceEventId },
             include: { plannedTurns: { orderBy: { position: "asc" } } },
           });
           if (existing) return { kind: "duplicate" as const, round: existing };
-
-          const session = await tx.groupVoiceSession.findFirst({
-            where: { id: sessionId, ownerId, status: { in: ["connecting", "active"] } },
-          });
-          if (!session) throw new NotFoundError("Llamada grupal no encontrada");
           const claimed = await tx.groupVoiceSession.updateMany({
             where: {
               id: sessionId,
-              ownerId,
+              ...sessionPrincipalWhere(ownerId),
               orchestrationPhase: "listening",
               floorTurnId: null,
             },
@@ -1100,7 +1598,9 @@ export function createAvatarGroupRepository(db: Db) {
     async currentDirectiveState(ownerId: string, sessionId: string) {
       return db.$transaction(async (tx) => {
         await lockGroupVoiceSessions(tx, [sessionId]);
-        const session = await tx.groupVoiceSession.findFirst({ where: { id: sessionId, ownerId } });
+        const session = await tx.groupVoiceSession.findFirst({
+          where: { id: sessionId, ...sessionPrincipalWhere(ownerId) },
+        });
         if (!session?.floorTurnId) return { session, turn: null };
         const turn = await tx.groupPlannedTurn.findFirst({
           where: {
@@ -1141,7 +1641,9 @@ export function createAvatarGroupRepository(db: Db) {
       try {
         return await db.$transaction(async (tx) => {
           await lockGroupVoiceSessions(tx, [sessionId]);
-          const session = await tx.groupVoiceSession.findFirst({ where: { id: sessionId, ownerId } });
+          const session = await tx.groupVoiceSession.findFirst({
+            where: { id: sessionId, ...sessionPrincipalWhere(ownerId) },
+          });
           if (!session) throw new NotFoundError("Llamada grupal no encontrada");
           const duplicate = await tx.groupVoiceProviderEvent.findFirst({
             where: { groupVoiceSessionId: sessionId, sourceEventId: input.sourceEventId },
@@ -1157,16 +1659,6 @@ export function createAvatarGroupRepository(db: Db) {
                 include: { round: true },
               })
             : null;
-          await tx.groupVoiceProviderEvent.create({
-            data: {
-              groupVoiceSessionId: sessionId,
-              sourceEventId: input.sourceEventId,
-              avatarAgentId: input.avatarId,
-              turnId: input.turnId,
-              type: input.type,
-              ...(input.content ? { payload: { content: input.content } } : {}),
-            },
-          });
           if (!turn) {
             return {
               kind: "unauthorized" as const,
@@ -1182,9 +1674,21 @@ export function createAvatarGroupRepository(db: Db) {
             session.floorOwnerAvatarId === input.avatarId &&
             Boolean(session.floorLeaseExpiresAt && session.floorLeaseExpiresAt > now);
           const responseText = input.content?.trim() || null;
+          const persistAuthorizedEvent = () =>
+            tx.groupVoiceProviderEvent.create({
+              data: {
+                groupVoiceSessionId: sessionId,
+                sourceEventId: input.sourceEventId,
+                avatarAgentId: input.avatarId,
+                turnId: turn.id,
+                type: input.type,
+                ...(input.content ? { payload: { content: input.content } } : {}),
+              },
+            });
 
           if (input.type === "agent_response" || input.type === "agent_response_correction") {
             if (turn.status === "completed") {
+              await persistAuthorizedEvent();
               if (responseText) {
                 const lateUpdate = await tx.groupPlannedTurn.updateMany({
                   where: {
@@ -1214,6 +1718,7 @@ export function createAvatarGroupRepository(db: Db) {
               };
             }
             if (input.type === "agent_response" && turn.responseText) {
+              await persistAuthorizedEvent();
               return { kind: "accepted" as const, session, next: null };
             }
             const responseUpdate = await tx.groupPlannedTurn.updateMany({
@@ -1232,6 +1737,7 @@ export function createAvatarGroupRepository(db: Db) {
                 next: null,
               };
             }
+            await persistAuthorizedEvent();
             return { kind: "accepted" as const, session, next: null };
           }
 
@@ -1252,7 +1758,7 @@ export function createAvatarGroupRepository(db: Db) {
             const floorClaim = await tx.groupVoiceSession.updateMany({
               where: {
                 id: sessionId,
-                ownerId,
+                ...sessionPrincipalWhere(ownerId),
                 floorTurnId: turn.id,
                 floorOwnerAvatarId: input.avatarId,
                 floorLeaseExpiresAt: { gt: now },
@@ -1278,6 +1784,7 @@ export function createAvatarGroupRepository(db: Db) {
               data: { status: "speaking" },
             });
             if (roundClaim.count !== 1) throw new ConditionalFloorClaimError();
+            await persistAuthorizedEvent();
             return {
               kind: "accepted" as const,
               session: {
@@ -1299,12 +1806,13 @@ export function createAvatarGroupRepository(db: Db) {
               };
             }
             const interrupted = await cancelRoundTransaction(tx, sessionId, turn.roundId, {
-              ownerId,
+              principalId: ownerId,
               avatarId: input.avatarId,
               turnId: turn.id,
               phases: ["speaking"],
               leaseAfter: now,
             });
+            if (interrupted) await persistAuthorizedEvent();
             return interrupted
               ? { kind: "interrupted" as const, session, next: null }
               : {
@@ -1327,7 +1835,7 @@ export function createAvatarGroupRepository(db: Db) {
           const committingClaim = await tx.groupVoiceSession.updateMany({
             where: {
               id: sessionId,
-              ownerId,
+              ...sessionPrincipalWhere(ownerId),
               orchestrationPhase: "speaking",
               floorTurnId: turn.id,
               floorOwnerAvatarId: input.avatarId,
@@ -1343,6 +1851,7 @@ export function createAvatarGroupRepository(db: Db) {
               next: null,
             };
           }
+          await persistAuthorizedEvent();
 
           const completedAt = new Date();
           const latestCorrection = await tx.groupVoiceProviderEvent.findFirst({
@@ -1389,7 +1898,7 @@ export function createAvatarGroupRepository(db: Db) {
             const released = await tx.groupVoiceSession.updateMany({
               where: {
                 id: sessionId,
-                ownerId,
+                ...sessionPrincipalWhere(ownerId),
                 orchestrationPhase: "committing",
                 floorTurnId: turn.id,
                 floorOwnerAvatarId: input.avatarId,
@@ -1420,7 +1929,7 @@ export function createAvatarGroupRepository(db: Db) {
           const advanced = await tx.groupVoiceSession.updateMany({
             where: {
               id: sessionId,
-              ownerId,
+              ...sessionPrincipalWhere(ownerId),
               orchestrationPhase: "committing",
               floorTurnId: turn.id,
               floorOwnerAvatarId: input.avatarId,
@@ -1438,7 +1947,9 @@ export function createAvatarGroupRepository(db: Db) {
       } catch (error) {
         if (!isUniqueConstraintError(error)) throw error;
         const [session, duplicate] = await Promise.all([
-          db.groupVoiceSession.findFirst({ where: { id: sessionId, ownerId } }),
+          db.groupVoiceSession.findFirst({
+            where: { id: sessionId, ...sessionPrincipalWhere(ownerId) },
+          }),
           db.groupVoiceProviderEvent.findFirst({
             where: { groupVoiceSessionId: sessionId, sourceEventId: input.sourceEventId },
           }),
@@ -1456,7 +1967,9 @@ export function createAvatarGroupRepository(db: Db) {
     ) {
       return db.$transaction(async (tx) => {
         await lockGroupVoiceSessions(tx, [sessionId]);
-        const session = await tx.groupVoiceSession.findFirst({ where: { id: sessionId, ownerId } });
+        const session = await tx.groupVoiceSession.findFirst({
+          where: { id: sessionId, ...sessionPrincipalWhere(ownerId) },
+        });
         if (!session) throw new NotFoundError("Llamada grupal no encontrada");
         if (
           (expected.avatarId !== undefined && session.floorOwnerAvatarId !== expected.avatarId) ||
@@ -1473,7 +1986,7 @@ export function createAvatarGroupRepository(db: Db) {
             return { kind: "stale" as const, session, avatarId: session.floorOwnerAvatarId };
           }
           const interrupted = await cancelRoundTransaction(tx, sessionId, turn.roundId, {
-            ownerId,
+            principalId: ownerId,
             avatarId: session.floorOwnerAvatarId,
             turnId: turn.id,
             phases: [phase],
@@ -1504,7 +2017,7 @@ export function createAvatarGroupRepository(db: Db) {
         const released = await tx.groupVoiceSession.updateMany({
           where: {
             id: sessionId,
-            ownerId,
+            ...sessionPrincipalWhere(ownerId),
             orchestrationPhase: session.orchestrationPhase,
             floorOwnerAvatarId: null,
             floorTurnId: null,
@@ -1522,24 +2035,152 @@ export function createAvatarGroupRepository(db: Db) {
 
     heartbeat(ownerId: string, sessionId: string) {
       return db.groupVoiceSession.updateMany({
-        where: { id: sessionId, ownerId, status: { in: ["connecting", "active"] } },
+        where: {
+          id: sessionId,
+          ...sessionPrincipalWhere(ownerId),
+          status: { in: ["connecting", "active"] },
+        },
         data: { lastHeartbeatAt: new Date() },
       });
     },
 
     async markSessionActive(sessionId: string) {
-      const activated = await db.groupVoiceSession.updateMany({
-        where: { id: sessionId, status: "connecting", participants: { some: { status: "active" } } },
-        data: { status: "active" },
+      return db.$transaction(async (tx) => {
+        const locator = await tx.groupVoiceSession.findUnique({
+          where: { id: sessionId },
+          select: {
+            avatarGroupId: true,
+            groupAccessGrantId: true,
+            groupPublicSessionId: true,
+          },
+        });
+        if (!locator) return false;
+        if (locator.avatarGroupId) {
+          await lockAvatarGroups(tx, [locator.avatarGroupId]);
+          if (locator.groupAccessGrantId || locator.groupPublicSessionId) {
+            await lockGroupSharingChannels(tx, locator.avatarGroupId);
+          }
+        }
+        await lockGroupVoiceSessions(tx, [sessionId]);
+        const session = await tx.groupVoiceSession.findUnique({
+          where: { id: sessionId },
+          include: {
+            participants: {
+              select: {
+                status: true,
+                realtimeSession: { select: { activatedAt: true } },
+                avatarAgent: {
+                  select: {
+                    status: true,
+                    groupProviderAgentId: true,
+                    groupProviderSyncStatus: true,
+                  },
+                },
+              },
+            },
+            avatarGroup: { select: { deletedAt: true, membershipVersion: true } },
+            conversation: { select: { groupMembershipVersion: true } },
+            groupAccessGrant: { select: { avatarGroupId: true, status: true } },
+            groupPublicSession: {
+              select: {
+                status: true,
+                expiresAt: true,
+                groupShareLinkId: true,
+                groupShareLink: {
+                  select: { avatarGroupId: true, isEnabled: true, deletedAt: true },
+                },
+              },
+            },
+          },
+        });
+        if (!session) return false;
+        if (
+          session.avatarGroupId !== locator.avatarGroupId ||
+          session.groupAccessGrantId !== locator.groupAccessGrantId ||
+          session.groupPublicSessionId !== locator.groupPublicSessionId
+        ) {
+          if (session.status === "connecting") {
+            await terminateGroupVoiceSessionsForDeletion(tx, {
+              sessionIds: [sessionId],
+              errorMessage: "sharing_target_changed_before_activation",
+            });
+          }
+          return false;
+        }
+        if (session.status === "active" && session.activatedAt) return true;
+        if (session.status !== "connecting" || session.activatedAt) return false;
+        const activatedAt = new Date();
+        const external = Boolean(session.groupAccessGrantId || session.groupPublicSessionId);
+        const rosterShapeValid = session.participants.length >= 2 && session.participants.length <= 3;
+        const accountTargetActive = Boolean(
+          session.groupAccessGrantId &&
+          session.groupAccessGrant?.status === "active" &&
+          session.groupAccessGrant.avatarGroupId === session.avatarGroupId
+        );
+        const publicTargetActive = Boolean(
+          session.groupPublicSessionId &&
+          session.groupPublicSession?.status === "active" &&
+          session.groupPublicSession.expiresAt > activatedAt &&
+          session.groupPublicSession.groupShareLink?.avatarGroupId === session.avatarGroupId &&
+          session.groupPublicSession.groupShareLink.isEnabled &&
+          session.groupPublicSession.groupShareLink.deletedAt === null
+        );
+        const externalRosterStillCurrent = Boolean(
+          session.avatarGroup &&
+          rosterShapeValid &&
+          session.avatarGroup.deletedAt === null &&
+          session.conversation.groupMembershipVersion === session.avatarGroup.membershipVersion &&
+          session.participants.every(
+            (participant) =>
+              participant.avatarAgent.status === "active" &&
+              participant.avatarAgent.groupProviderSyncStatus === "synced" &&
+              participant.avatarAgent.groupProviderAgentId !== null
+          )
+        );
+        if (
+          session.expiresAt <= activatedAt ||
+          !rosterShapeValid ||
+          (external && (!(accountTargetActive || publicTargetActive) || !externalRosterStillCurrent))
+        ) {
+          await terminateGroupVoiceSessionsForDeletion(tx, {
+            sessionIds: [sessionId],
+            errorMessage: "sharing_target_invalid_before_activation",
+          });
+          return false;
+        }
+        const confirmed = session.participants.filter(
+          (participant) =>
+            participant.status === "active" && Boolean(participant.realtimeSession?.activatedAt)
+        ).length;
+        const required = external ? session.participants.length : Math.min(2, session.participants.length);
+        if (confirmed < required) return false;
+        const activated = await tx.groupVoiceSession.updateMany({
+          where: { id: sessionId, status: "connecting", activatedAt: null },
+          data: { status: "active", activatedAt, lastHeartbeatAt: activatedAt },
+        });
+        if (activated.count !== 1) return false;
+        const shareLinkId = session.groupPublicSession?.groupShareLinkId;
+        if (shareLinkId) {
+          await tx.groupShareLink.updateMany({
+            where: { id: shareLinkId, deletedAt: null },
+            data: { lastUsedAt: activatedAt },
+          });
+        }
+        if (session.groupAccessGrantId) {
+          await tx.groupAccessGrant.updateMany({
+            where: { id: session.groupAccessGrantId, status: "active" },
+            data: { lastUsedAt: activatedAt },
+          });
+        }
+        return true;
       });
-      return activated.count === 1;
     },
 
     async endSession(ownerId: string, sessionId: string, status: "ended" | "errored" = "ended") {
       return db.$transaction(async (tx) => {
         await lockGroupVoiceSessions(tx, [sessionId]);
         const session = await tx.groupVoiceSession.findFirst({
-          where: { id: sessionId, ownerId },
+          where: { id: sessionId, ...sessionPrincipalWhere(ownerId) },
           include: { participants: { include: { realtimeSession: true } } },
         });
         if (!session) throw new NotFoundError("Llamada grupal no encontrada");
@@ -1549,7 +2190,7 @@ export function createAvatarGroupRepository(db: Db) {
           await enqueueSessionCleanup(tx, {
             realtimeSessionId: participant.realtimeSession.id,
             providerSessionTokenCiphertext: participant.realtimeSession.providerSessionTokenCiphertext,
-            ownerId,
+            ownerId: session.ownerId,
             avatarAgentId: participant.avatarAgentId,
           });
         }
@@ -1584,6 +2225,15 @@ export function createAvatarGroupRepository(db: Db) {
           where: { id: session.conversationId },
           data: { status: "ended" },
         });
+        if (session.groupPublicSessionId) {
+          await tx.groupPublicSession.updateMany({
+            where: { id: session.groupPublicSessionId, status: "active" },
+            data: {
+              status: status === "ended" ? "ended" : "errored",
+              endedAt,
+            },
+          });
+        }
         return tx.groupVoiceSession.update({
           where: { id: sessionId },
           data: {
@@ -1634,12 +2284,81 @@ export function createAvatarGroupRepository(db: Db) {
     },
 
     listExpiredVoiceSessions(now: Date) {
+      const connectingCutoff = new Date(now.getTime() - 5 * 60 * 1000);
+      const heartbeatCutoff = new Date(now.getTime() - 2 * 60 * 1000);
       return db.groupVoiceSession.findMany({
         where: {
           status: { in: ["connecting", "active"] },
-          expiresAt: { lte: now },
+          OR: [
+            { expiresAt: { lte: now } },
+            { status: "connecting", startedAt: { lte: connectingCutoff } },
+            { status: "active", lastHeartbeatAt: { lte: heartbeatCutoff } },
+          ],
         },
         include: { participants: { include: { realtimeSession: true } } },
+      });
+    },
+
+    async expireVoiceSessionIfStale(principalId: string, sessionId: string, now: Date) {
+      const connectingCutoff = new Date(now.getTime() - 5 * 60 * 1000);
+      const heartbeatCutoff = new Date(now.getTime() - 2 * 60 * 1000);
+      return db.$transaction(async (tx) => {
+        const claimed = await tx.groupVoiceSession.updateMany({
+          where: {
+            id: sessionId,
+            ...sessionPrincipalWhere(principalId),
+            status: { in: ["connecting", "active"] },
+            OR: [
+              { expiresAt: { lte: now } },
+              { status: "connecting", startedAt: { lte: connectingCutoff } },
+              { status: "active", lastHeartbeatAt: { lte: heartbeatCutoff } },
+            ],
+          },
+          data: {
+            status: "ended",
+            endedAt: now,
+            orchestrationPhase: "ended",
+            floorOwnerAvatarId: null,
+            floorTurnId: null,
+            floorLeaseExpiresAt: null,
+          },
+        });
+        if (claimed.count !== 1) return false;
+
+        const session = await tx.groupVoiceSession.findUniqueOrThrow({ where: { id: sessionId } });
+        await tx.groupPlannedTurn.updateMany({
+          where: {
+            round: { groupVoiceSessionId: sessionId },
+            status: { in: ["queued", "claimed", "speaking"] },
+          },
+          data: { status: "interrupted", completedAt: now },
+        });
+        await tx.groupVoiceRound.updateMany({
+          where: {
+            groupVoiceSessionId: sessionId,
+            status: { in: ["deliberating", "queued", "speaking"] },
+          },
+          data: { status: "cancelled", completedAt: now },
+        });
+        await tx.groupVoiceParticipant.updateMany({
+          where: { groupVoiceSessionId: sessionId, status: { in: ["connecting", "active"] } },
+          data: { status: "ended", endedAt: now },
+        });
+        await tx.realtimeSession.updateMany({
+          where: { groupVoiceParticipant: { groupVoiceSessionId: sessionId } },
+          data: { status: "ended", endedAt: now },
+        });
+        await tx.conversation.update({
+          where: { id: session.conversationId },
+          data: { status: "ended" },
+        });
+        if (session.groupPublicSessionId) {
+          await tx.groupPublicSession.updateMany({
+            where: { id: session.groupPublicSessionId, status: "active" },
+            data: { status: "ended", endedAt: now },
+          });
+        }
+        return true;
       });
     },
 
@@ -1710,7 +2429,7 @@ export function createAvatarGroupRepository(db: Db) {
           return released.count === 1;
         }
         return cancelRoundTransaction(tx, sessionId, turn.roundId, {
-          ownerId: session.ownerId,
+          principalId: sessionPrincipalId(session),
           avatarId: session.floorOwnerAvatarId,
           turnId: turn.id,
           phases: [session.orchestrationPhase],
@@ -1732,6 +2451,34 @@ export function createAvatarGroupRepository(db: Db) {
   };
 }
 
+function groupConversationHistoryAccess(userId: string): Prisma.ConversationWhereInput {
+  return {
+    avatarGroupId: { not: null },
+    OR: [
+      {
+        avatarGroupOwnerIdSnapshot: userId,
+        OR: [
+          { groupAccessGrantId: null, groupPublicSessionId: null },
+          { groupVoiceSession: { is: { activatedAt: { not: null } } } },
+        ],
+      },
+      {
+        ownerId: userId,
+        visibility: "private",
+        groupAccessGrantId: { not: null },
+        groupAccessGrant: { is: { participantUserId: userId, status: "active" } },
+        groupVoiceSession: { is: { activatedAt: { not: null } } },
+      },
+      {
+        ownerId: userId,
+        visibility: "private",
+        groupAccessGrantId: null,
+        groupPublicSessionId: null,
+      },
+    ],
+  };
+}
+
 type FloorPhase = "queued" | "speaking" | "committing";
 
 function isFloorPhase(phase: string): phase is FloorPhase {
@@ -1743,7 +2490,7 @@ async function cancelRoundTransaction(
   sessionId: string,
   roundId: string,
   expected: {
-    ownerId: string;
+    principalId: string;
     avatarId: string;
     turnId: string;
     phases: FloorPhase[];
@@ -1755,7 +2502,7 @@ async function cancelRoundTransaction(
   const released = await tx.groupVoiceSession.updateMany({
     where: {
       id: sessionId,
-      ownerId: expected.ownerId,
+      ...sessionPrincipalWhere(expected.principalId),
       floorOwnerAvatarId: expected.avatarId,
       floorTurnId: expected.turnId,
       orchestrationPhase: { in: expected.phases },
@@ -1788,6 +2535,15 @@ async function upsertAssistantTurnMessage(
   turn: { id: string; avatarAgentId: string; instructionText: string },
   content: string
 ) {
+  const participantSnapshot = await tx.groupConversationParticipantSnapshot.findUnique({
+    where: {
+      conversationId_sourceAvatarId: {
+        conversationId,
+        sourceAvatarId: turn.avatarAgentId,
+      },
+    },
+    select: { id: true },
+  });
   const message = await tx.message.upsert({
     where: {
       conversationId_sourceEventId: {
@@ -1800,12 +2556,14 @@ async function upsertAssistantTurnMessage(
       role: "assistant",
       content,
       speakerAvatarId: turn.avatarAgentId,
+      groupParticipantSnapshotId: participantSnapshot?.id ?? null,
       sourceEventId: `group-turn:${turn.id}`,
       metadata: { source: "elevenlabs_agent", instruction: turn.instructionText },
     },
     update: {
       content,
       speakerAvatarId: turn.avatarAgentId,
+      groupParticipantSnapshotId: participantSnapshot?.id ?? null,
       metadata: { source: "elevenlabs_agent", instruction: turn.instructionText },
     },
   });
@@ -1839,15 +2597,230 @@ async function buildCanonicalRollingSummary(tx: Prisma.TransactionClient, sessio
     .slice(-12_000);
 }
 
-async function endGroupSessionsForDeletion(tx: Prisma.TransactionClient, ownerId: string, groupId: string) {
-  const sessionIds = await tx.groupVoiceSession.findMany({
-    where: { avatarGroupId: groupId, ownerId },
-    select: { id: true },
+function assertStrictSharedRoster(group: {
+  ownerId: string;
+  members: Array<{
+    accessGrantId: string | null;
+    avatarAgent: {
+      id: string;
+      ownerId: string;
+      status: string;
+      liveAvatarConfig: unknown;
+      voiceConfig: unknown;
+      groupProviderAgentId: string | null;
+      groupProviderSyncStatus: string;
+    };
+  }>;
+}) {
+  if (
+    group.members.length < 2 ||
+    group.members.length > 3 ||
+    group.members.some(
+      (member) => member.accessGrantId !== null || member.avatarAgent.ownerId !== group.ownerId
+    )
+  ) {
+    throw new NotFoundError("El grupo compartido no tiene el roster completo disponible");
+  }
+  if (
+    group.members.some(
+      (member) =>
+        member.avatarAgent.status !== "active" ||
+        member.avatarAgent.groupProviderSyncStatus !== "synced" ||
+        !member.avatarAgent.groupProviderAgentId ||
+        !LiveAvatarConfigSchema.safeParse(member.avatarAgent.liveAvatarConfig).success ||
+        !VoiceConfigSchema.safeParse(member.avatarAgent.voiceConfig).success
+    )
+  ) {
+    throw new GroupVoiceRosterUnavailableError();
+  }
+}
+
+async function lockAndReadStrictSharedGroup(
+  tx: Prisma.TransactionClient,
+  groupId: string,
+  expectedOwnerId: string
+) {
+  const snapshot = await tx.avatarGroup.findFirst({
+    where: { id: groupId, ownerId: expectedOwnerId, deletedAt: null },
+    include: groupInclude,
   });
-  await terminateGroupVoiceSessionsForDeletion(tx, {
-    sessionIds: sessionIds.map((session) => session.id),
-    errorMessage: "avatar_group_deleted",
+  if (!snapshot) throw new NotFoundError("Grupo compartido no encontrado");
+
+  await lockAvatarAgents(
+    tx,
+    snapshot.members.map((member) => member.avatarAgentId)
+  );
+  const group = await tx.avatarGroup.findFirst({
+    where: { id: groupId, ownerId: expectedOwnerId, deletedAt: null },
+    include: groupInclude,
   });
+  if (!group) throw new NotFoundError("Grupo compartido no encontrado");
+  assertStrictSharedRoster(group);
+  return group;
+}
+
+function toRosterSnapshot(
+  members: Array<{
+    position: number;
+    avatarAgent: { id: string; name: string; description: string; liveAvatarConfig: unknown };
+  }>
+) {
+  return members.map((member) => ({
+    id: member.avatarAgent.id,
+    name: member.avatarAgent.name,
+    description: member.avatarAgent.description,
+    thumbnailUrl: avatarThumbnailUrl(member.avatarAgent.liveAvatarConfig),
+    position: member.position,
+  }));
+}
+
+function toParticipantSnapshots(
+  members: Array<{
+    position: number;
+    avatarAgent: { id: string; name: string; description: string; liveAvatarConfig: unknown };
+  }>
+) {
+  return members.map((member) => ({
+    sourceAvatarId: member.avatarAgent.id,
+    name: member.avatarAgent.name,
+    description: member.avatarAgent.description,
+    thumbnailUrl: avatarThumbnailUrl(member.avatarAgent.liveAvatarConfig),
+    position: member.position,
+  }));
+}
+
+function avatarThumbnailUrl(config: unknown) {
+  if (!config || typeof config !== "object" || Array.isArray(config)) return null;
+  const thumbnailUrl = (config as Record<string, unknown>).thumbnailUrl;
+  return typeof thumbnailUrl === "string" && thumbnailUrl.length > 0 ? thumbnailUrl : null;
+}
+
+function effectiveGroupSessionSeconds(maxMinutes: number, configuredSeconds: number | null) {
+  const platformSeconds = Math.max(1, Math.min(60, maxMinutes)) * 60;
+  return Math.max(10, Math.min(platformSeconds, configuredSeconds ?? platformSeconds));
+}
+
+async function assertGroupUsageAvailable(
+  tx: Prisma.TransactionClient,
+  input:
+    | { groupAccessGrantId: string; maxSessionsPer24Hours: number | null }
+    | {
+        groupShareLinkId: string;
+        participantEmail: string;
+        maxSessionsPer24Hours: number | null;
+      }
+) {
+  const activeWhere =
+    "groupAccessGrantId" in input
+      ? { groupAccessGrantId: input.groupAccessGrantId }
+      : {
+          groupPublicSession: {
+            is: {
+              groupShareLinkId: input.groupShareLinkId,
+              participantEmail: input.participantEmail,
+            },
+          },
+        };
+  const active = await tx.groupVoiceSession.count({
+    where: { ...activeWhere, status: { in: ["connecting", "active"] } },
+  });
+  if (active > 0) throw new GroupVoiceActiveSessionError();
+  if (input.maxSessionsPer24Hours === null) return;
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const usage = await tx.groupVoiceSession.findMany({
+    where: {
+      ...activeWhere,
+      activatedAt: { gt: since },
+    },
+    select: { activatedAt: true },
+    orderBy: { activatedAt: "asc" },
+  });
+  if (usage.length < input.maxSessionsPer24Hours) return;
+  const firstCounted = usage[Math.max(0, usage.length - input.maxSessionsPer24Hours)]?.activatedAt;
+  const retryAfterSeconds = firstCounted
+    ? Math.max(1, Math.ceil((firstCounted.getTime() + 24 * 60 * 60 * 1000 - Date.now()) / 1000))
+    : 60;
+  throw new GroupVoiceUsageLimitError(retryAfterSeconds);
+}
+
+async function assertGroupExternalCapacity(
+  tx: Prisma.TransactionClient,
+  input: {
+    participantEmail: string;
+    avatarIds: string[];
+    maxConcurrentPerParticipant: number;
+    maxConcurrentPerAvatar: number;
+  }
+) {
+  const participantEmail = await lockExternalParticipant(tx, input.participantEmail);
+  const participantActive = await countActiveExternalSessionsForParticipant(tx, participantEmail);
+  if (participantActive >= Math.max(1, input.maxConcurrentPerParticipant)) {
+    throw new GroupVoiceCapacityError();
+  }
+
+  for (const avatarId of [...new Set(input.avatarIds)].sort()) {
+    const avatarActive = await countActiveExternalSessionsForAvatar(tx, avatarId);
+    if (avatarActive >= Math.max(1, input.maxConcurrentPerAvatar)) {
+      throw new GroupVoiceCapacityError();
+    }
+  }
+}
+
+async function lockGroupSharingChannels(tx: Prisma.TransactionClient, groupId: string) {
+  await tx.$queryRaw(
+    Prisma.sql`SELECT "id" FROM "GroupShareLink" WHERE "avatarGroupId" = ${groupId} ORDER BY "id" FOR UPDATE`
+  );
+  await tx.$queryRaw(
+    Prisma.sql`SELECT "id" FROM "GroupAccessGrant" WHERE "avatarGroupId" = ${groupId} ORDER BY "id" FOR UPDATE`
+  );
+}
+
+async function enqueueSharedGroupPreparation(
+  tx: Prisma.TransactionClient,
+  group: {
+    id: string;
+    ownerId: string;
+    membershipVersion: number;
+    members: Array<{
+      avatarAgent: {
+        id: string;
+        status: string;
+        updatedAt: Date;
+        groupProviderAgentId: string | null;
+        groupProviderSyncStatus: string;
+      };
+    }>;
+  }
+) {
+  const hasSharing = await Promise.all([
+    tx.groupShareLink.count({
+      where: { avatarGroupId: group.id, isEnabled: true, deletedAt: null },
+    }),
+    tx.groupAccessGrant.count({ where: { avatarGroupId: group.id, status: "active" } }),
+  ]).then(([links, grants]) => links + grants > 0);
+  if (!hasSharing) return;
+  for (const { avatarAgent: avatar } of group.members) {
+    if (
+      avatar.status !== "active" ||
+      (avatar.groupProviderSyncStatus === "synced" && avatar.groupProviderAgentId)
+    ) {
+      continue;
+    }
+    const dedupeKey = `group-agent-sync:${avatar.id}:${avatar.updatedAt.getTime()}:${group.membershipVersion}`;
+    await tx.avatarAgent.update({
+      where: { id: avatar.id },
+      data: {
+        groupProviderSyncStatus: "syncing",
+        groupProviderSyncError: null,
+        groupProviderSyncRevision: dedupeKey,
+      },
+    });
+    await enqueueGroupProviderSyncJob(tx, {
+      ownerId: group.ownerId,
+      avatarAgentId: avatar.id,
+      dedupeKey,
+    });
+  }
 }
 
 export async function terminateGroupVoiceSessionsForDeletion(
@@ -1874,6 +2847,12 @@ export async function terminateGroupVoiceSessionsForDeletion(
         providerSessionTokenCiphertext: realtime.providerSessionTokenCiphertext,
         ownerId: session.ownerId,
         avatarAgentId: participant.avatarAgentId,
+      });
+    }
+    if (session.groupPublicSessionId) {
+      await tx.groupPublicSession.updateMany({
+        where: { id: session.groupPublicSessionId, status: "active" },
+        data: { status: "errored", endedAt },
       });
     }
     if (session.status !== "connecting" && session.status !== "active") continue;

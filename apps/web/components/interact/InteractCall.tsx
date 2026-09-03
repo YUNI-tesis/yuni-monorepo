@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Badge, Button, ErrorState, LoadingState, YuniIcon, useToast, type BadgeTone } from "@yuni/ui";
-import { useLiveAvatarSession, type LiveAvatarDiagnostics } from "../../hooks/useLiveAvatarSession";
+import { useLiveAvatarSession } from "../../hooks/useLiveAvatarSession";
 import {
   confirmVoiceSessionStarted,
   endVoiceSessionOnUnload,
@@ -346,19 +346,21 @@ export function InteractCall({ avatarId }: { avatarId: string }) {
           <Button
             variant="ghost"
             icon={<YuniIcon name="history" />}
+            aria-label="Historial"
             aria-controls="call-history-panel"
             aria-expanded={isHistoryOpen}
             onClick={toggleHistory}
           >
-            Historial
+            <span className={styles.topbarControlLabel}>Historial</span>
           </Button>
           {interactionContext.access.type === "owner" ? (
             <Button
               variant="ghost"
               icon={<YuniIcon name="user" />}
+              aria-label="Perfil"
               onClick={() => router.push(`/avatars/${avatar.id}`)}
             >
-              Perfil
+              <span className={styles.topbarControlLabel}>Perfil</span>
             </Button>
           ) : null}
         </>
@@ -378,34 +380,24 @@ export function InteractCall({ avatarId }: { avatarId: string }) {
         />
       }
       footer={
-        <>
-          <InteractDebugPanel
-            isVisible={shouldShowInteractDiagnostics()}
-            diagnostics={call.diagnostics}
-            callStatus={call.status}
-            providerSyncError={null}
-            onSendTextProbe={call.sendTextProbe}
+        interactionContext.access.type === "shared" ? (
+          <SharedCallPrivacyDialog
+            ref={privacyDialog}
+            sharedAvatarNames={[avatar.name]}
+            rememberChoice={rememberPrivacyChoice}
+            onRememberChoiceChange={setRememberPrivacyChoice}
+            onConfirm={confirmCallStart}
+            onCancel={() => {
+              setRememberPrivacyChoice(false);
+              setPrivacyStorageKey(null);
+            }}
+            limitsSummary={
+              hasConfiguredInteractionLimits(interactionContext.access.limits)
+                ? formatInteractionLimitsSummary(interactionContext.access.limits)
+                : null
+            }
           />
-
-          {interactionContext.access.type === "shared" ? (
-            <SharedCallPrivacyDialog
-              ref={privacyDialog}
-              sharedAvatarNames={[avatar.name]}
-              rememberChoice={rememberPrivacyChoice}
-              onRememberChoiceChange={setRememberPrivacyChoice}
-              onConfirm={confirmCallStart}
-              onCancel={() => {
-                setRememberPrivacyChoice(false);
-                setPrivacyStorageKey(null);
-              }}
-              limitsSummary={
-                hasConfiguredInteractionLimits(interactionContext.access.limits)
-                  ? formatInteractionLimitsSummary(interactionContext.access.limits)
-                  : null
-              }
-            />
-          ) : null}
-        </>
+        ) : undefined
       }
     >
       <CallParticipantStage
@@ -531,51 +523,6 @@ export function formatContextStatusTone(status: ApiInteractionContext["contextSt
   return "warning";
 }
 
-export function shouldShowInteractDiagnostics(environment = process.env.NODE_ENV) {
-  return environment === "development";
-}
-
-export function InteractDebugPanel({
-  isVisible,
-  diagnostics,
-  callStatus,
-  providerSyncError,
-  onSendTextProbe,
-}: {
-  isVisible: boolean;
-  diagnostics: LiveAvatarDiagnostics;
-  callStatus: ReturnType<typeof useLiveAvatarSession>["status"];
-  providerSyncError: string | null;
-  onSendTextProbe: () => void;
-}) {
-  if (!isVisible) {
-    return null;
-  }
-
-  return (
-    <details className={styles.debugPanel}>
-      <summary>Diagnostico tecnico</summary>
-      <div className={styles.debugGrid}>
-        <span>Microfono SDK: {diagnostics.voiceChatState}</span>
-        <span>Nivel mic: {formatMicrophoneLevel(diagnostics.microphoneLevel)}</span>
-        <span>Eventos recibidos: {diagnostics.eventCount}</span>
-        <span>Ultimo evento: {diagnostics.lastEventType ?? "Sin eventos"}</span>
-        <span>ElevenLabs: {diagnostics.lastElevenLabsEventType ?? "Sin eventos"}</span>
-        {providerSyncError ? <span>Sync provider: {providerSyncError}</span> : null}
-        <Button
-          variant="secondary"
-          onClick={onSendTextProbe}
-          disabled={callStatus !== "active" || diagnostics.textProbeStatus === "sending"}
-        >
-          {diagnostics.textProbeStatus === "sending" ? "Enviando prueba..." : "Probar agente por texto"}
-        </Button>
-        {diagnostics.textProbeStatus === "sent" ? <span>Prueba enviada por LiveAvatar.</span> : null}
-        {diagnostics.textProbeError ? <p className={styles.syncError}>{diagnostics.textProbeError}</p> : null}
-      </div>
-    </details>
-  );
-}
-
 function getContextStatusDescription(status: ApiInteractionContext["contextStatus"]) {
   if (status === "failed") {
     return "El contexto no se pudo actualizar. Si hay una version anterior valida, podes intentar iniciar la llamada.";
@@ -611,10 +558,4 @@ function conversationTone(state: ReturnType<typeof useLiveAvatarSession>["conver
   if (state === "speaking") return "success";
   if (state === "interrupted") return "danger";
   return "neutral";
-}
-
-function formatMicrophoneLevel(level: number | null) {
-  if (level === null) return "Sin medicion";
-
-  return `${Math.round(level * 100)}%`;
 }

@@ -60,6 +60,7 @@ export const JobTypeSchema = z.enum([
   "avatar_context_provider_sync",
   "document_provider_sync",
   "agent_provider_sync",
+  "group_agent_provider_sync",
   "provider_document_cleanup",
   "avatar_provider_cleanup",
 ]);

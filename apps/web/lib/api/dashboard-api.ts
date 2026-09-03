@@ -30,13 +30,36 @@ export type ApiDashboardAttentionType =
   | "unused_direct_access"
   | "inactive_participant"
   | "interrupted_interaction"
-  | "unavailable_avatar";
+  | "unavailable_avatar"
+  | "unavailable_group";
 
-export type ApiDashboardAttentionItem = {
-  type: ApiDashboardAttentionType;
-  id: string;
+export type ApiDashboardAvatarResource = {
+  resourceKind?: "avatar";
+  resourceId?: string;
+  resourceName?: string;
+  resource?: { type: "avatar"; id: string; name: string };
   avatarId: string;
   avatarName: string;
+  groupId?: never;
+  groupName?: never;
+};
+
+export type ApiDashboardGroupResource = {
+  resourceKind: "group";
+  resourceId: string;
+  resourceName: string;
+  resource: { type: "group"; id: string; name: string };
+  groupId: string;
+  groupName: string;
+  avatarId?: never;
+  avatarName?: never;
+};
+
+export type ApiDashboardResource = ApiDashboardAvatarResource | ApiDashboardGroupResource;
+
+export type ApiDashboardAttentionItem = ApiDashboardResource & {
+  type: ApiDashboardAttentionType;
+  id: string;
   participantKey: string | null;
   participantName: string | null;
   participantEmail: string | null;
@@ -59,6 +82,7 @@ export type ApiCreatorDashboardSummary = {
     previousTo: string;
   };
   hasOwnedAvatars: boolean;
+  hasOwnedResources?: boolean;
   overview: {
     activeParticipants: ApiDashboardCountMetric;
     engagedConversations: ApiDashboardCountMetric;
@@ -93,6 +117,7 @@ export type ApiCreatorDashboardSummary = {
     inactiveParticipants: ApiDashboardAttentionGroup;
     interruptedInteractions: ApiDashboardAttentionGroup;
     unavailableAvatars: ApiDashboardAttentionGroup;
+    unavailableGroups?: ApiDashboardAttentionGroup;
   };
   avatars: Array<{
     avatarId: string;
@@ -105,18 +130,29 @@ export type ApiCreatorDashboardSummary = {
     directAccessActivation: ApiDashboardSimpleRate;
     lastActivityAt: string | null;
   }>;
-  recentActivity: Array<{
-    conversationId: string;
-    avatarId: string;
-    avatarName: string;
-    participantKey: string;
-    participantName: string | null;
-    participantEmail: string;
-    origin: Exclude<ApiDashboardOrigin, "all">;
-    mode: "text" | "voice";
-    title: string | null;
-    occurredAt: string;
+  groups?: Array<{
+    groupId: string;
+    groupName: string;
+    status: "active" | "deleted";
+    health: "available" | "unavailable" | "deleted";
+    activeParticipants: number;
+    engagedConversations: number;
+    returningParticipants: ApiDashboardSimpleRate;
+    directAccessActivation: ApiDashboardSimpleRate;
+    lastActivityAt: string | null;
   }>;
+  recentActivity: Array<
+    ApiDashboardResource & {
+      conversationId: string;
+      participantKey: string;
+      participantName: string | null;
+      participantEmail: string;
+      origin: Exclude<ApiDashboardOrigin, "all">;
+      mode: "text" | "voice";
+      title: string | null;
+      occurredAt: string;
+    }
+  >;
   methodology: {
     activityDefinition: "participant_message_or_activated_voice";
     identity: "normalized_email";

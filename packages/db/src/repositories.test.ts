@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { prisma } from "./client";
 import { createAccessGrantRepository } from "./repositories/access-grant-repository";
+import { createAvatarGroupRepository } from "./repositories/avatar-group-repository";
+import { createConversationRepository } from "./repositories/conversation-repository";
 import { createMessageRepository } from "./repositories/message-repository";
 import { createExternalSessionPolicyRepository } from "./repositories/external-session-policy-repository";
 import { createPublicSessionRepository } from "./repositories/public-session-repository";
@@ -8,6 +10,143 @@ import { createRealtimeSessionRepository } from "./repositories/realtime-session
 import { createUserRepository } from "./repositories/user-repository";
 
 describe("@yuni/db repository contracts", () => {
+  it("keeps group conversations out of individual avatar history queries", async () => {
+    type ConversationQuery = { where: Record<string, unknown> };
+    const findFirst = vi.fn(async (_query: ConversationQuery) => null);
+    const findMany = vi.fn(async (_query: ConversationQuery) => []);
+    const repository = createConversationRepository({
+      conversation: { findFirst, findMany },
+    } as never);
+
+    await repository.findLatestPrivate("owner-1", "avatar-1");
+    await repository.findLatestPrivateForAccess("owner-1", "avatar-1", null);
+    await repository.listPrivateForAvatar("owner-1", "avatar-1");
+    await repository.listPrivateForAccess("owner-1", "avatar-1", null);
+    await repository.findPrivateIdentityById("conversation-1");
+    await repository.findPrivateById("owner-1", "conversation-1");
+    await repository.findPrivateByIdForAccess("owner-1", "conversation-1", null);
+
+    for (const [query] of [...findFirst.mock.calls, ...findMany.mock.calls]) {
+      expect(query.where).toMatchObject({ avatarGroupId: null });
+    }
+  });
+
+  it("expires abandoned connecting and active group calls before their hard deadline", async () => {
+    const findMany = vi.fn(async () => []);
+    const repository = createAvatarGroupRepository({ groupVoiceSession: { findMany } } as never);
+    const now = new Date("2030-01-01T12:00:00.000Z");
+
+    await repository.listExpiredVoiceSessions(now);
+
+    expect(findMany).toHaveBeenCalledWith({
+      where: {
+        status: { in: ["connecting", "active"] },
+        OR: [
+          { expiresAt: { lte: now } },
+          { status: "connecting", startedAt: { lte: new Date("2030-01-01T11:55:00.000Z") } },
+          { status: "active", lastHeartbeatAt: { lte: new Date("2030-01-01T11:58:00.000Z") } },
+        ],
+      },
+      include: { participants: { include: { realtimeSession: true } } },
+    });
+  });
+
+  it("revalidates a voice-session timeout atomically before claiming cleanup", async () => {
+    const updateMany = vi.fn(async () => ({ count: 0 }));
+    const findUniqueOrThrow = vi.fn();
+    const transaction = {
+      groupVoiceSession: { updateMany, findUniqueOrThrow },
+    };
+    const repository = createAvatarGroupRepository({
+      $transaction: vi.fn(async (operation: (tx: typeof transaction) => Promise<unknown>) =>
+        operation(transaction)
+      ),
+    } as never);
+    const now = new Date("2030-01-01T12:00:00.000Z");
+
+    await expect(repository.expireVoiceSessionIfStale("user-1", "session-refreshed", now)).resolves.toBe(
+      false
+    );
+
+    expect(updateMany).toHaveBeenCalledWith({
+      where: {
+        id: "session-refreshed",
+        initiatorUserId: "user-1",
+        status: { in: ["connecting", "active"] },
+        OR: [
+          { expiresAt: { lte: now } },
+          { status: "connecting", startedAt: { lte: new Date("2030-01-01T11:55:00.000Z") } },
+          { status: "active", lastHeartbeatAt: { lte: new Date("2030-01-01T11:58:00.000Z") } },
+        ],
+      },
+      data: {
+        status: "ended",
+        endedAt: now,
+        orchestrationPhase: "ended",
+        floorOwnerAvatarId: null,
+        floorTurnId: null,
+        floorLeaseExpiresAt: null,
+      },
+    });
+    expect(findUniqueOrThrow).not.toHaveBeenCalled();
+  });
+
+  it("closes the whole group call after atomically claiming an expired session", async () => {
+    const voiceSessionUpdate = vi.fn(async () => ({ count: 1 }));
+    const participantUpdate = vi.fn(async () => ({ count: 2 }));
+    const realtimeUpdate = vi.fn(async () => ({ count: 2 }));
+    const conversationUpdate = vi.fn(async () => ({ id: "conversation-1" }));
+    const publicSessionUpdate = vi.fn(async () => ({ count: 1 }));
+    const transaction = {
+      groupVoiceSession: {
+        updateMany: voiceSessionUpdate,
+        findUniqueOrThrow: vi.fn(async () => ({
+          id: "session-expired",
+          conversationId: "conversation-1",
+          groupPublicSessionId: "public-session-1",
+        })),
+      },
+      groupPlannedTurn: { updateMany: vi.fn(async () => ({ count: 1 })) },
+      groupVoiceRound: { updateMany: vi.fn(async () => ({ count: 1 })) },
+      groupVoiceParticipant: { updateMany: participantUpdate },
+      realtimeSession: { updateMany: realtimeUpdate },
+      conversation: { update: conversationUpdate },
+      groupPublicSession: { updateMany: publicSessionUpdate },
+    };
+    const repository = createAvatarGroupRepository({
+      $transaction: vi.fn(async (operation: (tx: typeof transaction) => Promise<unknown>) =>
+        operation(transaction)
+      ),
+    } as never);
+    const now = new Date("2030-01-01T12:00:00.000Z");
+
+    await expect(
+      repository.expireVoiceSessionIfStale("group-public:public-session-1", "session-expired", now)
+    ).resolves.toBe(true);
+
+    expect(voiceSessionUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ groupPublicSessionId: "public-session-1" }),
+      })
+    );
+    expect(participantUpdate).toHaveBeenCalledWith({
+      where: { groupVoiceSessionId: "session-expired", status: { in: ["connecting", "active"] } },
+      data: { status: "ended", endedAt: now },
+    });
+    expect(realtimeUpdate).toHaveBeenCalledWith({
+      where: { groupVoiceParticipant: { groupVoiceSessionId: "session-expired" } },
+      data: { status: "ended", endedAt: now },
+    });
+    expect(conversationUpdate).toHaveBeenCalledWith({
+      where: { id: "conversation-1" },
+      data: { status: "ended" },
+    });
+    expect(publicSessionUpdate).toHaveBeenCalledWith({
+      where: { id: "public-session-1", status: "active" },
+      data: { status: "ended", endedAt: now },
+    });
+  });
+
   it("does not expose update or delete flows for messages", () => {
     const messageRepository = createMessageRepository(prisma);
 
@@ -229,8 +368,12 @@ describe("@yuni/db repository contracts", () => {
     expect(shareLinkUpdate).not.toHaveBeenCalled();
   });
 
-  it("locks and revalidates an active grant before reserving shared session records", async () => {
-    const queryRaw = vi.fn(async (_query: TemplateStringsArray, ..._values: unknown[]) => []);
+  it("locks the active avatar before revalidating a shared access grant", async () => {
+    const queries: string[] = [];
+    const queryRaw = vi.fn(async (query: TemplateStringsArray, ..._values: unknown[]) => {
+      queries.push(query.join(" "));
+      return queries.length === 1 ? [{ id: "avatar-1" }] : [];
+    });
     const conversationCreate = vi.fn();
     const realtimeSessionCreate = vi.fn();
     const transaction = {
@@ -260,16 +403,22 @@ describe("@yuni/db repository contracts", () => {
       )
     ).resolves.toBeNull();
 
-    const queryTemplate = queryRaw.mock.calls[0]?.[0] as unknown as readonly string[];
-    const query = queryTemplate.join(" ");
-    expect(query).toContain("FOR UPDATE OF access_grant, avatar_agent");
-    expect(query).toContain(`avatar_agent."status" = 'active'`);
+    expect(queries[0]).toContain('FROM "AvatarAgent"');
+    expect(queries[0]).toContain(`"status" = 'active'`);
+    expect(queries[0]).toContain("FOR UPDATE");
+    expect(queries[1]).toContain('FROM "AccessGrant" AS access_grant');
+    expect(queries[1]).toContain(`access_grant."status" = 'active'`);
+    expect(queries[1]).toContain("FOR UPDATE");
     expect(conversationCreate).not.toHaveBeenCalled();
     expect(realtimeSessionCreate).not.toHaveBeenCalled();
   });
 
-  it("locks and revalidates the public link and avatar before reserving session records", async () => {
-    const queryRaw = vi.fn(async (_query: TemplateStringsArray, ..._values: unknown[]) => []);
+  it("locks the active avatar before revalidating a public share link", async () => {
+    const queries: string[] = [];
+    const queryRaw = vi.fn(async (query: TemplateStringsArray, ..._values: unknown[]) => {
+      queries.push(query.join(" "));
+      return queries.length === 1 ? [{ id: "avatar-1" }] : [];
+    });
     const publicSessionCreate = vi.fn();
     const conversationCreate = vi.fn();
     const realtimeSessionCreate = vi.fn();
@@ -301,14 +450,76 @@ describe("@yuni/db repository contracts", () => {
       )
     ).resolves.toBeNull();
 
-    const queryTemplate = queryRaw.mock.calls[0]?.[0] as unknown as readonly string[];
-    const query = queryTemplate.join(" ");
-    expect(query).toContain("FOR UPDATE OF share_link, avatar_agent");
-    expect(query).toContain(`share_link."isEnabled" = TRUE`);
-    expect(query).toContain(`avatar_agent."status" = 'active'`);
+    expect(queries[0]).toContain('FROM "AvatarAgent"');
+    expect(queries[0]).toContain(`"status" = 'active'`);
+    expect(queries[0]).toContain("FOR UPDATE");
+    expect(queries[1]).toContain('FROM "ShareLink" AS share_link');
+    expect(queries[1]).toContain(`share_link."isEnabled" = TRUE`);
+    expect(queries[1]).toContain("FOR UPDATE");
     expect(publicSessionCreate).not.toHaveBeenCalled();
     expect(conversationCreate).not.toHaveBeenCalled();
     expect(realtimeSessionCreate).not.toHaveBeenCalled();
+  });
+
+  it("reserves shared capacity with the grant email across individual and group channels", async () => {
+    let queryNumber = 0;
+    const queryRaw = vi.fn(async (_query: unknown) => {
+      queryNumber += 1;
+      if (queryNumber === 1) return [{ id: "avatar-1" }];
+      return queryNumber === 2
+        ? [
+            {
+              id: "grant-1",
+              participantEmail: "person@example.com",
+              maxSessionDurationSeconds: null,
+              maxSessionsPer24Hours: null,
+            },
+          ]
+        : [];
+    });
+    const decideExpiresAt = vi.fn(() => new Date("2026-08-20T12:01:00.000Z"));
+    const transaction = {
+      $queryRaw: queryRaw,
+      conversation: { create: vi.fn(async () => ({ id: "conversation-1" })) },
+      realtimeSession: {
+        findMany: vi.fn(async () => []),
+        count: vi.fn(async (input: { where: { avatarAgentId?: string } }) =>
+          input.where.avatarAgentId ? 4 : 2
+        ),
+        create: vi.fn(async () => ({ id: "realtime-1" })),
+      },
+      groupVoiceSession: { count: vi.fn(async () => 1) },
+      groupVoiceParticipant: { count: vi.fn(async () => 3) },
+    };
+    const repository = createExternalSessionPolicyRepository({
+      $transaction: vi.fn(async (operation: (tx: typeof transaction) => Promise<unknown>) =>
+        operation(transaction)
+      ),
+    } as never);
+
+    await expect(
+      repository.reserveSharedSession(
+        {
+          accessGrantId: "grant-1",
+          participantUserId: "participant-1",
+          avatarAgentId: "avatar-1",
+          since: new Date("2026-08-19T12:00:00.000Z"),
+        },
+        decideExpiresAt
+      )
+    ).resolves.toMatchObject({
+      conversation: { id: "conversation-1" },
+      realtimeSession: { id: "realtime-1" },
+    });
+
+    const advisoryLock = queryRaw.mock.calls[2]?.[0] as unknown as { values: unknown[] };
+    expect(advisoryLock.values).toEqual(["external-participant:person@example.com"]);
+    expect(decideExpiresAt).toHaveBeenCalledWith({
+      limits: { maxSessionDurationSeconds: null, maxSessionsPer24Hours: null },
+      usage: [],
+      participantActive: 3,
+      avatarActive: 7,
+    });
   });
 
   it("locks a grant before revoking it so its activation cohort remains durable", async () => {
@@ -423,11 +634,5 @@ describe("@yuni/db repository contracts", () => {
         providerSessionTokenCiphertext: true,
       },
     });
-  });
-});
-
-describe.skip("repository integration tests", () => {
-  it("requires a dedicated PostgreSQL test database before running ownership and slug scenarios", () => {
-    expect(true).toBe(true);
   });
 });
