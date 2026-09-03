@@ -519,6 +519,7 @@ integration("creator dashboard repository integration", () => {
         new Set([activated.conversation.id, activatedFailure.conversation.id])
       );
     } finally {
+      await db.groupVoiceSession.deleteMany({ where: { initiatorUserId: participant.id } });
       await db.user.deleteMany({ where: { id: { in: [participant.id, owner.id] } } });
     }
   });
