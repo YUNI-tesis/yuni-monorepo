@@ -228,6 +228,10 @@ export function updateAvatar(avatarId: string, input: UpdateAvatarRequest) {
   });
 }
 
+export function deleteAvatar(avatarId: string) {
+  return apiRequest<{ ok: true }>(`/avatars/${avatarId}`, { method: "DELETE" });
+}
+
 export function getAvatarContext(avatarId: string) {
   return apiRequest<{ context: ApiAvatarContext }>(`/avatars/${avatarId}/context`);
 }

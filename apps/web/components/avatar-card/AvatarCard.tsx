@@ -12,6 +12,7 @@ export type AvatarCardProps = {
   avatar: ApiAvatarSummary;
   variant: AvatarCardVariant;
   onNavigate: (href: string) => void;
+  onDelete?: () => void;
 };
 
 const availabilityContent: Record<
@@ -33,7 +34,7 @@ export function getAvatarCardRoutes(avatarId: string) {
   } as const;
 }
 
-export function AvatarCard({ avatar, variant, onNavigate }: AvatarCardProps) {
+export function AvatarCard({ avatar, variant, onNavigate, onDelete }: AvatarCardProps) {
   const isOwner = avatar.access.type === "owner";
   const availability = availabilityContent[avatar.interactionAvailability];
   const routes = getAvatarCardRoutes(avatar.id);
@@ -60,6 +61,16 @@ export function AvatarCard({ avatar, variant, onNavigate }: AvatarCardProps) {
                 label: "Compartir",
                 icon: <YuniIcon name="share" />,
                 onSelect: () => onNavigate(routes.share),
+              },
+            ]
+          : []),
+        ...(onDelete
+          ? [
+              {
+                label: "Eliminar",
+                icon: <YuniIcon name="close" />,
+                tone: "danger" as const,
+                onSelect: onDelete,
               },
             ]
           : []),
