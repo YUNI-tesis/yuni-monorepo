@@ -135,7 +135,7 @@ describe("group toast feedback", () => {
     for (const mock of Object.values(groupMocks)) mock.mockReset();
     groupMocks.listAvatarGroups.mockResolvedValue({ groups: [] });
     groupMocks.deleteAvatarGroup.mockResolvedValue({ ok: true });
-    vi.spyOn(dom.window, "confirm").mockReturnValue(true);
+    vi.spyOn(dom.window, "confirm").mockReturnValue(false);
   });
 
   afterEach(() => {
@@ -257,8 +257,18 @@ describe("group toast feedback", () => {
     fireEvent.click(screen.getByRole("button", { name: "Más acciones para Consejo" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "Eliminar" }));
 
+    const dialog = screen.getByRole("dialog", { name: "Eliminar grupo" });
+    expect(dialog.hasAttribute("open")).toBe(true);
+    expect(dialog.textContent).toContain("El grupo “Consejo” se eliminará.");
+    expect(dialog.textContent).toContain("El historial guardado se conservará.");
+    expect(groupMocks.deleteAvatarGroup).not.toHaveBeenCalled();
+    expect(dom.window.confirm).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Eliminar" }));
+
     await waitFor(() => expect(screen.getByRole("status").textContent).toContain("Grupo eliminado"));
     expect(groupMocks.deleteAvatarGroup).toHaveBeenCalledWith("group-1");
+    expect(dialog.hasAttribute("open")).toBe(false);
     expect(screen.queryByText("Consejo")).toBeNull();
   });
 });

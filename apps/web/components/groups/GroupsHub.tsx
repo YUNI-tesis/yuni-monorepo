@@ -35,6 +35,7 @@ export function GroupsHub() {
   const toast = useToast();
   const avatarList = useAvatarList();
   const groupDialog = useRef<HTMLDialogElement>(null);
+  const deletionDialog = useRef<HTMLDialogElement>(null);
   const [groups, setGroups] = useState<ApiAvatarGroup[]>([]);
   const [activeFilter, setActiveFilter] = useState<AvatarGroupListScope>("all");
   const [groupStatus, setGroupStatus] = useState<LoadStatus>("loading");
@@ -43,6 +44,8 @@ export function GroupsHub() {
   const [name, setName] = useState("");
   const [selected, setSelected] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
+  const [groupPendingDeletion, setGroupPendingDeletion] = useState<ApiAvatarGroup | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const groupsRequest = useRef(0);
 
@@ -138,13 +141,21 @@ export function GroupsHub() {
     }
   }
 
-  async function removeGroup(group: ApiAvatarGroup) {
-    if (!window.confirm(`¿Eliminar el grupo “${group.name}”? El historial guardado se conservará.`)) {
-      return;
-    }
+  function requestGroupDeletion(group: ApiAvatarGroup) {
+    setGroupPendingDeletion(group);
+    deletionDialog.current?.showModal();
+  }
+
+  async function confirmGroupDeletion() {
+    if (!groupPendingDeletion || deleting) return;
+    const group = groupPendingDeletion;
+    setDeleting(true);
+
     try {
       await deleteAvatarGroup(group.id);
       setGroups((current) => current.filter((item) => item.id !== group.id));
+      deletionDialog.current?.close();
+      setGroupPendingDeletion(null);
       toast.success(`${group.name} fue eliminado.`, {
         title: "Grupo eliminado",
         dedupeKey: `group:${group.id}:deleted`,
@@ -154,6 +165,8 @@ export function GroupsHub() {
         title: "No pudimos eliminar el grupo",
         dedupeKey: `group:${group.id}:delete:error`,
       });
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -212,7 +225,7 @@ export function GroupsHub() {
                 if (group.access.canEdit) openEdit(group);
               }}
               onDelete={() => {
-                if (group.access.canDelete) void removeGroup(group);
+                if (group.access.canDelete) requestGroupDeletion(group);
               }}
             />
           ))}
@@ -292,6 +305,23 @@ export function GroupsHub() {
           </fieldset>
         </div>
       </Dialog>
+
+      <Dialog
+        ref={deletionDialog}
+        title="Eliminar grupo"
+        description={
+          groupPendingDeletion
+            ? `El grupo “${groupPendingDeletion.name}” se eliminará. El historial guardado se conservará.`
+            : ""
+        }
+        closeLabel="Cancelar"
+        footer={
+          <Button variant="danger" loading={deleting} onClick={() => void confirmGroupDeletion()}>
+            Eliminar
+          </Button>
+        }
+        onClose={() => setGroupPendingDeletion(null)}
+      />
     </div>
   );
 }
