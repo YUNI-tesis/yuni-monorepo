@@ -12,6 +12,8 @@ let fireEvent: typeof import("@testing-library/react").fireEvent;
 let render: typeof import("@testing-library/react").render;
 let screen: typeof import("@testing-library/react").screen;
 let within: typeof import("@testing-library/react").within;
+const diagnosticLogs = vi.fn();
+let restoreConsoleInfo = () => {};
 
 const apiMocks = vi.hoisted(() => ({
   confirmGroupParticipantStarted: vi.fn(),
@@ -40,7 +42,10 @@ const liveAvatarMocks = vi.hoisted(() => ({
     attach: ReturnType<typeof vi.fn>;
     interrupt: ReturnType<typeof vi.fn>;
     keepAlive: ReturnType<typeof vi.fn>;
-    publishData: ReturnType<typeof vi.fn>;
+    commands: ReturnType<typeof vi.fn>;
+    sendContextualUpdate: ReturnType<typeof vi.fn>;
+    sendUserActivity: ReturnType<typeof vi.fn>;
+    sendUserMessage: ReturnType<typeof vi.fn>;
     stop: ReturnType<typeof vi.fn>;
     emit: (event: string, payload?: Record<string, unknown>) => void;
   }>,
@@ -63,14 +68,25 @@ vi.mock("./lib/api/avatar-group-api", () => apiMocks);
 vi.mock("./lib/api/auth-api", () => authMocks);
 
 vi.mock("@heygen/liveavatar-web-sdk", () => {
-  class MockLiveAvatarSession {
+  class MockElevenLabsAgentSession {
     readonly token: string;
     readonly attach = vi.fn();
     readonly interrupt = vi.fn();
     readonly keepAlive = vi.fn(async () => undefined);
-    readonly publishData = vi.fn(async () => undefined);
+    readonly commands = vi.fn();
+    readonly sendContextualUpdate = vi.fn((text: string) => {
+      this.commands({ elevenlabs_event_type: "contextual_update", data: { text } });
+      return "8d1808bc-9ed6-4e79-8e83-6b07242068ce";
+    });
+    readonly sendUserActivity = vi.fn(() => {
+      this.commands({ elevenlabs_event_type: "user_activity" });
+      return "e449bb24-4ed3-4085-9be5-8f24fcb08248";
+    });
+    readonly sendUserMessage = vi.fn((text: string) => {
+      this.commands({ elevenlabs_event_type: "user_message", data: { text } });
+      return "03a3af11-9008-49f6-8809-15045c99626f";
+    });
     readonly stop = vi.fn(async () => undefined);
-    readonly room = { localParticipant: { publishData: this.publishData } };
     private readonly handlers = new Map<string, Set<(payload: Record<string, unknown>) => void>>();
 
     constructor(token: string) {
@@ -111,7 +127,12 @@ vi.mock("@heygen/liveavatar-web-sdk", () => {
       ELEVENLABS_AGENT_EVENT: "elevenlabs_agent_event",
       SESSION_STOPPED: "session.stopped",
     },
-    LiveAvatarSession: MockLiveAvatarSession,
+    ElevenLabsAgentSession: MockElevenLabsAgentSession,
+    LiveAvatarSession: class {
+      constructor() {
+        throw new Error("Group calls must use the public ElevenLabsAgentSession API");
+      }
+    },
     SessionEvent: {
       SESSION_STREAM_READY: "session.stream_ready",
       SESSION_DISCONNECTED: "session.disconnected",
@@ -272,10 +293,8 @@ async function renderActiveCall() {
   return view;
 }
 
-function decodedCommands(instanceIndex: number) {
-  return liveAvatarMocks.instances[instanceIndex]!.publishData.mock.calls.map(([payload]) =>
-    JSON.parse(new TextDecoder().decode(payload as Uint8Array))
-  );
+function recordedCommands(instanceIndex: number) {
+  return liveAvatarMocks.instances[instanceIndex]!.commands.mock.calls.map(([command]) => command);
 }
 
 describe("GroupInteractCall lifecycle", () => {
@@ -311,6 +330,9 @@ describe("GroupInteractCall lifecycle", () => {
   });
 
   beforeEach(() => {
+    const consoleInfo = vi.spyOn(console, "info").mockImplementation(diagnosticLogs);
+    restoreConsoleInfo = () => consoleInfo.mockRestore();
+    diagnosticLogs.mockClear();
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-08-21T12:00:00.000Z"));
     liveAvatarMocks.instances.length = 0;
@@ -412,6 +434,7 @@ describe("GroupInteractCall lifecycle", () => {
 
   afterEach(() => {
     cleanup();
+    restoreConsoleInfo();
     vi.clearAllTimers();
     vi.useRealTimers();
   });
@@ -452,7 +475,7 @@ describe("GroupInteractCall lifecycle", () => {
     ]);
 
     for (const instance of liveAvatarMocks.instances) {
-      instance.publishData.mockClear();
+      instance.commands.mockClear();
       instance.keepAlive.mockClear();
     }
     apiMocks.heartbeatGroupVoiceSession.mockClear();
@@ -462,10 +485,8 @@ describe("GroupInteractCall lifecycle", () => {
     });
     expect(apiMocks.heartbeatGroupVoiceSession).toHaveBeenCalledTimes(1);
     for (let index = 0; index < 2; index += 1) {
-      expect(decodedCommands(index)).toContainEqual({
-        event_type: "elevenlabs_agent_command",
+      expect(recordedCommands(index)).toContainEqual({
         elevenlabs_event_type: "user_activity",
-        data: {},
       });
     }
 
@@ -518,14 +539,12 @@ describe("GroupInteractCall lifecycle", () => {
     const videos = [...container.querySelectorAll("video")];
     expect(videos[0]!.muted).toBe(false);
     expect(videos[1]!.muted).toBe(true);
-    expect(decodedCommands(0).map((command) => command.elevenlabs_event_type)).toEqual([
+    expect(recordedCommands(0).map((command) => command.elevenlabs_event_type)).toEqual([
       "contextual_update",
       "user_message",
     ]);
-    expect(decodedCommands(1).at(-1)).toEqual({
-      event_type: "elevenlabs_agent_command",
+    expect(recordedCommands(1).at(-1)).toEqual({
       elevenlabs_event_type: "user_activity",
-      data: {},
     });
 
     const providerEventCount = apiMocks.reportGroupProviderEvent.mock.calls.length;
@@ -570,22 +589,43 @@ describe("GroupInteractCall lifecycle", () => {
     unmount();
   });
 
-  it("expires a pending directive even while contextual_update is still publishing", async () => {
+  it("uses only public command methods and does not treat returned IDs as provider acknowledgements", async () => {
     const { container, unmount } = await renderActiveCall();
-    let resolveContext: () => void = () => undefined;
-    const contextPending = new Promise<void>((resolve) => {
-      resolveContext = resolve;
-    });
-    liveAvatarMocks.instances[0]!.publishData.mockImplementation(async (payload: Uint8Array) => {
-      const command = JSON.parse(new TextDecoder().decode(payload));
-      if (command.elevenlabs_event_type === "contextual_update") await contextPending;
-    });
+    const providerEventsBeforeDispatch = apiMocks.reportGroupProviderEvent.mock.calls.length;
 
     await act(async () => {
       scribeMocks.connection?.emit("committed_transcript", { text: "Una pregunta lenta" });
       await flushAsyncWork();
     });
-    expect([...container.querySelectorAll("video")].every((video) => video.muted)).toBe(true);
+    const owner = liveAvatarMocks.instances[0]!;
+    const directive = (await apiMocks.submitGroupTurn.mock.results[0]!.value).directive;
+    expect(owner).not.toHaveProperty("room");
+    expect(owner.sendContextualUpdate).toHaveBeenCalledExactlyOnceWith(directive.context);
+    expect(owner.sendUserMessage).toHaveBeenCalledExactlyOnceWith(directive.instruction);
+    expect(liveAvatarMocks.instances[1]!.sendUserActivity).toHaveBeenCalledExactlyOnceWith();
+    expect(recordedCommands(0).map((command) => command.elevenlabs_event_type)).toEqual([
+      "contextual_update",
+      "user_message",
+    ]);
+    expect(owner.sendContextualUpdate.mock.invocationCallOrder[0]).toBeLessThan(
+      owner.sendUserMessage.mock.invocationCallOrder[0]!
+    );
+    expect(apiMocks.reportGroupProviderEvent).toHaveBeenCalledTimes(providerEventsBeforeDispatch);
+    expect(diagnosticLogs).toHaveBeenCalledWith("[group-call] command_dispatched", {
+      callEpoch: expect.any(Number),
+      sessionId: "group-session-1",
+      turnId: "turn-1",
+      avatarId: "avatar-1",
+      participantAttemptId: "attempt-1",
+      contextCommandId: "8d1808bc-9ed6-4e79-8e83-6b07242068ce",
+      providerCommandId: "03a3af11-9008-49f6-8809-15045c99626f",
+      commandDispatchedAt: Date.now(),
+      providerAcknowledged: false,
+    });
+    const loggedMetadata = JSON.stringify(diagnosticLogs.mock.calls);
+    expect(loggedMetadata).not.toContain(directive.context);
+    expect(loggedMetadata).not.toContain(directive.instruction);
+    expect(container.querySelector('[data-turn-owner="true"]')?.getAttribute("data-speaking")).toBe("false");
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(75_251);
@@ -596,12 +636,33 @@ describe("GroupInteractCall lifecycle", () => {
       turnId: "turn-1",
     });
 
+    expect([...container.querySelectorAll("video")].every((video) => video.muted)).toBe(true);
+    expect(owner.sendUserMessage).toHaveBeenCalledTimes(1);
+    unmount();
+  });
+
+  it("keeps audio silent and reports a synchronous public SDK dispatch failure", async () => {
+    const { container, unmount } = await renderActiveCall();
+    const owner = liveAvatarMocks.instances[0]!;
+    owner.sendContextualUpdate.mockImplementationOnce(() => {
+      throw new Error("Session must be connected before sending ElevenLabs agent commands");
+    });
     await act(async () => {
-      resolveContext();
+      scribeMocks.connection?.emit("committed_transcript", { text: "Una pregunta" });
+      await flushAsyncWork();
+      await vi.advanceTimersByTimeAsync(0);
       await flushAsyncWork();
     });
-    expect(decodedCommands(0).some((command) => command.elevenlabs_event_type === "user_message")).toBe(
-      false
+    expect(owner.sendUserMessage).not.toHaveBeenCalled();
+    expect([...container.querySelectorAll("video")].every((video) => video.muted)).toBe(true);
+    expect(apiMocks.reportGroupParticipantFailure).toHaveBeenCalledWith(
+      "group-session-1",
+      "avatar-1",
+      expect.objectContaining({
+        sourceEventId: "dispatch-failed:turn-1:avatar-1",
+        expectedTurnId: "turn-1",
+      }),
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
     );
     unmount();
   });
@@ -795,7 +856,7 @@ describe("GroupInteractCall lifecycle", () => {
 
   it("keeps deliberating and dispatches nobody when the busy router returns no directive", async () => {
     const { container, unmount } = await renderActiveCall();
-    for (const instance of liveAvatarMocks.instances) instance.publishData.mockClear();
+    for (const instance of liveAvatarMocks.instances) instance.commands.mockClear();
     apiMocks.submitGroupTurn.mockResolvedValueOnce({
       round: null,
       phase: "deliberating",
@@ -810,7 +871,7 @@ describe("GroupInteractCall lifecycle", () => {
     });
 
     expect(apiMocks.submitGroupTurn).toHaveBeenCalledTimes(1);
-    expect(liveAvatarMocks.instances.every((instance) => instance.publishData.mock.calls.length === 0)).toBe(
+    expect(liveAvatarMocks.instances.every((instance) => instance.commands.mock.calls.length === 0)).toBe(
       true
     );
     expect([...container.querySelectorAll("video")].every((video) => video.muted)).toBe(true);
@@ -838,14 +899,14 @@ describe("GroupInteractCall lifecycle", () => {
       },
     });
     const { container, unmount } = await renderActiveCall();
-    for (const instance of liveAvatarMocks.instances) instance.publishData.mockClear();
+    for (const instance of liveAvatarMocks.instances) instance.commands.mockClear();
 
     await act(async () => {
       scribeMocks.connection?.emit("committed_transcript", { text: "Consulta con floor cruzado" });
       await flushAsyncWork();
     });
 
-    expect(liveAvatarMocks.instances.every((instance) => instance.publishData.mock.calls.length === 0)).toBe(
+    expect(liveAvatarMocks.instances.every((instance) => instance.commands.mock.calls.length === 0)).toBe(
       true
     );
     expect([...container.querySelectorAll("video")].every((video) => video.muted)).toBe(true);
@@ -863,7 +924,7 @@ describe("GroupInteractCall lifecycle", () => {
       scribeMocks.connection?.emit("committed_transcript", { text: "Respondé Ada" });
       await flushAsyncWork();
     });
-    const commandsBeforeAck = liveAvatarMocks.instances[0]!.publishData.mock.calls.length;
+    const commandsBeforeAck = liveAvatarMocks.instances[0]!.commands.mock.calls.length;
     apiMocks.reportGroupProviderEvent.mockResolvedValueOnce({
       phase: "queued",
       floor: null,
@@ -883,7 +944,7 @@ describe("GroupInteractCall lifecycle", () => {
       await flushAsyncWork();
     });
 
-    expect(liveAvatarMocks.instances[0]!.publishData).toHaveBeenCalledTimes(commandsBeforeAck);
+    expect(liveAvatarMocks.instances[0]!.commands).toHaveBeenCalledTimes(commandsBeforeAck);
     expect([...container.querySelectorAll("video")].every((video) => video.muted)).toBe(true);
     expect(container.querySelectorAll("article")[0]!.getAttribute("data-turn-owner")).toBe("false");
     unmount();
@@ -905,14 +966,14 @@ describe("GroupInteractCall lifecycle", () => {
       participant: { avatarId: "avatar-1", status: "errored", error: "Sin conexión" },
     });
     const { container, unmount } = await renderActiveCall();
-    for (const instance of liveAvatarMocks.instances) instance.publishData.mockClear();
+    for (const instance of liveAvatarMocks.instances) instance.commands.mockClear();
     liveAvatarMocks.instances[0]!.emit("session.disconnected", { reason: "network" });
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
       await flushAsyncWork();
     });
 
-    expect(liveAvatarMocks.instances[1]!.publishData).not.toHaveBeenCalled();
+    expect(liveAvatarMocks.instances[1]!.commands).not.toHaveBeenCalled();
     expect([...container.querySelectorAll("video")].every((video) => video.muted)).toBe(true);
     expect(container.querySelectorAll("article")[1]!.getAttribute("data-turn-owner")).toBe("false");
     unmount();

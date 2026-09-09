@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AgentEventsEnum, LiveAvatarSession, SessionEvent } from "@heygen/liveavatar-web-sdk";
+import { AgentEventsEnum, ElevenLabsAgentSession, SessionEvent } from "@heygen/liveavatar-web-sdk";
 import { CommitStrategy, RealtimeEvents, Scribe, type RealtimeConnection } from "@elevenlabs/client";
 import { Badge, Button, ErrorState, LoadingState, YuniIcon, useToast } from "@yuni/ui";
 import {
@@ -30,7 +30,6 @@ import {
 } from "./CallExperience";
 import {
   applyGroupAudioGate,
-  encodeElevenLabsAgentCommand,
   isAuthorizedSpeechEnd,
   isAuthorizedSpeechStart,
   isConsentVersionStale,
@@ -46,7 +45,6 @@ import {
   speakDirectiveMatchesFloor,
   withAbortableDeadline,
   withTimeout,
-  type ElevenLabsCommandType,
   type LocalFloorAuthorization,
   type LocalTurnLedgerEntry,
 } from "./group-call-runtime";
@@ -77,7 +75,7 @@ type LocalParticipant = ApiGroupVoiceParticipant & {
 };
 
 type LiveParticipantInstance = {
-  session: LiveAvatarSession;
+  session: ElevenLabsAgentSession;
   participantAttemptId: string;
   generation: number;
   callEpoch: number;
@@ -399,7 +397,7 @@ export function GroupInteractCall({
           const shouldSend = options.force
             ? floorOwnerAvatarId !== avatarId
             : shouldSendGroupUserActivity({ phase, floorOwnerAvatarId, avatarId });
-          if (shouldSend) await sendElevenLabsCommand(instance.session, "user_activity", {});
+          if (shouldSend) instance.session.sendUserActivity();
         })
       );
     },
@@ -663,15 +661,23 @@ export function GroupInteractCall({
 
       try {
         await sendUserActivity({ floorOwnerAvatarId: directive.avatarId, force: true });
-        await sendElevenLabsCommand(instance.session, "contextual_update", { text: directive.context });
+        const contextCommandId = instance.session.sendContextualUpdate(directive.context);
         if (
           callEpochRef.current !== callEpoch ||
           endingRef.current ||
           sessionRef.current === null ||
           pendingDirectiveRef.current?.turnId !== directive.turnId ||
           pendingDirectiveRef.current.callEpoch !== callEpoch
-        )
+        ) {
+          console.info("[group-call] command_discarded", {
+            callEpoch,
+            turnId: directive.turnId,
+            avatarId: directive.avatarId,
+            contextCommandId,
+            reason: "directive_no_longer_current",
+          });
           return;
+        }
         pendingDirectiveRef.current = null;
         floorAuthorizationRef.current = {
           turnId: directive.turnId,
@@ -680,8 +686,35 @@ export function GroupInteractCall({
           state: "queued",
         };
         applyAudioGate(directive.avatarId);
-        await sendElevenLabsCommand(instance.session, "user_message", { text: directive.instruction });
+        // The public SDK constructs the command and its UUID. Its return value is
+        // a local command ID, not a provider acknowledgement; only inbound events
+        // advance the turn, and the existing floor lease remains the timeout guard.
+        const providerCommandId = instance.session.sendUserMessage(directive.instruction);
+        const commandDispatchedAt = Date.now();
+        const ledger = turnLedgerRef.current.get(directive.turnId);
+        if (ledger) {
+          ledger.providerCommandId = providerCommandId;
+          ledger.commandDispatchedAt = commandDispatchedAt;
+        }
+        // Metadata only: neither command text nor tokens belong in diagnostics.
+        console.info("[group-call] command_dispatched", {
+          callEpoch,
+          sessionId: sessionRef.current.id,
+          turnId: directive.turnId,
+          avatarId: directive.avatarId,
+          participantAttemptId: instance.participantAttemptId,
+          contextCommandId,
+          providerCommandId,
+          commandDispatchedAt,
+          providerAcknowledged: false,
+        });
       } catch (error) {
+        console.info("[group-call] command_failed", {
+          callEpoch,
+          turnId: directive.turnId,
+          avatarId: directive.avatarId,
+          reason: "sdk_dispatch_rejected",
+        });
         applyAudioGate(null);
         enqueueParticipantFailure({
           avatarId: directive.avatarId,
@@ -924,7 +957,7 @@ export function GroupInteractCall({
         await stopLiveSessionBestEffort(existing.session);
       }
 
-      const live = new LiveAvatarSession(participant.sessionToken, {
+      const live = new ElevenLabsAgentSession(participant.sessionToken, {
         voiceChat: { defaultMuted: true },
       });
       let resolveStartupCue: () => void = () => undefined;
@@ -2061,31 +2094,7 @@ export function GroupInteractCall({
   );
 }
 
-async function sendElevenLabsCommand(
-  session: LiveAvatarSession,
-  elevenlabsEventType: ElevenLabsCommandType,
-  data: Record<string, string> = {}
-) {
-  const room = (
-    session as unknown as {
-      room?: {
-        localParticipant?: {
-          publishData?: (
-            data: Uint8Array,
-            options: { reliable: boolean; topic: string }
-          ) => Promise<void> | void;
-        };
-      };
-    }
-  ).room;
-  if (!room?.localParticipant?.publishData) throw new Error("El canal del avatar todavía no está listo.");
-  await room.localParticipant.publishData(encodeElevenLabsAgentCommand(elevenlabsEventType, data), {
-    reliable: true,
-    topic: "agent-control",
-  });
-}
-
-function safelyInterruptLiveSession(session: LiveAvatarSession | undefined) {
+function safelyInterruptLiveSession(session: ElevenLabsAgentSession | undefined) {
   try {
     session?.interrupt();
   } catch {
@@ -2094,7 +2103,7 @@ function safelyInterruptLiveSession(session: LiveAvatarSession | undefined) {
   }
 }
 
-async function stopLiveSessionBestEffort(session: LiveAvatarSession) {
+async function stopLiveSessionBestEffort(session: ElevenLabsAgentSession) {
   let stopPromise: Promise<unknown>;
   try {
     stopPromise = Promise.resolve(session.stop());

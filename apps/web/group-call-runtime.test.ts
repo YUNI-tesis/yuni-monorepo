@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   applyGroupAudioGate,
-  encodeElevenLabsAgentCommand,
   isAuthorizedSpeechEnd,
   isAuthorizedSpeechStart,
   isTerminalHeartbeatError,
@@ -79,15 +78,6 @@ describe("strict group call runtime", () => {
     expect(
       shouldSendGroupUserActivity({ phase: "deliberating", floorOwnerAvatarId: null, avatarId: "avatar-2" })
     ).toBe(false);
-  });
-
-  it("encodes the exact LiveAvatar wrapper, including an empty user_activity data object", () => {
-    const decoded = new TextDecoder().decode(encodeElevenLabsAgentCommand("user_activity"));
-    expect(JSON.parse(decoded)).toEqual({
-      event_type: "elevenlabs_agent_command",
-      elevenlabs_event_type: "user_activity",
-      data: {},
-    });
   });
 
   it("derives stable provider event ids from provider delivery ids", () => {

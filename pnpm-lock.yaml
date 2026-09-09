@@ -96,8 +96,8 @@ importers:
         specifier: ^5.3.0
         version: 5.3.0
       '@heygen/liveavatar-web-sdk':
-        specifier: 0.0.17
-        version: 0.0.17(@types/dom-mediacapture-record@1.0.22)
+        specifier: 0.0.18
+        version: 0.0.18(@types/dom-mediacapture-record@1.0.22)
       '@yuni/config':
         specifier: workspace:*
         version: link:../../packages/config
@@ -831,8 +831,8 @@ packages:
   '@fontsource/audiowide@5.3.0':
     resolution: {integrity: sha512-ECBdWgQPaCSuwlFyeXzV0i2DAGq0SKID7jxD1oHhYTObx3wz26YKs3F9Ic/EO369Anzld9IqxflRukJm6nVxpw==}
 
-  '@heygen/liveavatar-web-sdk@0.0.17':
-    resolution: {integrity: sha512-F9TswapfD57WC8i/5eZkXKxMR3n/NGGLlCTuDYylMPTn+4wQMa1NJ5/sSpvz3k5pq6hft6Y+HhUZgh/0zgrfDg==}
+  '@heygen/liveavatar-web-sdk@0.0.18':
+    resolution: {integrity: sha512-5acXQbqYLc7GXymutTXSrp4KSrk2/NRCf8UIU7JVuO76O8InVOM3YpwhdZBmTWuB+6Mght/vg07ljKZM2D1FcQ==}
 
   '@hono/node-server@1.19.14':
     resolution: {integrity: sha512-GwtvgtXxnWsucXvbQXkRgqksiH2Qed37H9xHZocE5sA3N8O8O8/8FA3uclQXxXVzc9XBZuEOMK7+r02FmSpHtw==}
@@ -2957,7 +2957,7 @@ snapshots:
 
   '@fontsource/audiowide@5.3.0': {}
 
-  '@heygen/liveavatar-web-sdk@0.0.17(@types/dom-mediacapture-record@1.0.22)':
+  '@heygen/liveavatar-web-sdk@0.0.18(@types/dom-mediacapture-record@1.0.22)':
     dependencies:
       events: 3.3.0
       livekit-client: 2.15.7(@types/dom-mediacapture-record@1.0.22)

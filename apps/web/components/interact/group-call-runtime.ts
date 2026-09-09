@@ -14,8 +14,6 @@ export type LocalFloorAuthorization = {
 
 export type GroupMediaElement = Pick<HTMLMediaElement, "muted">;
 
-export type ElevenLabsCommandType = "contextual_update" | "user_activity" | "user_message";
-
 export type LocalTurnLedgerEntry = {
   turnId: string;
   avatarId: string;
@@ -25,6 +23,8 @@ export type LocalTurnLedgerEntry = {
   latestResponse: string | null;
   responseReceived: boolean;
   responseKeys: Set<string>;
+  providerCommandId?: string;
+  commandDispatchedAt?: number;
 };
 
 export type ParsedElevenLabsResponse = {
@@ -77,19 +77,6 @@ export function shouldSendGroupUserActivity(input: {
     return false;
   }
   return input.floorOwnerAvatarId === null || input.floorOwnerAvatarId !== input.avatarId;
-}
-
-export function encodeElevenLabsAgentCommand(
-  elevenlabsEventType: ElevenLabsCommandType,
-  data: Record<string, string> = {}
-) {
-  return new TextEncoder().encode(
-    JSON.stringify({
-      event_type: "elevenlabs_agent_command",
-      elevenlabs_event_type: elevenlabsEventType,
-      data,
-    })
-  );
 }
 
 export function providerEventSourceId(input: {
