@@ -67,6 +67,7 @@ import {
   rememberPrivacyChoiceForAvatar,
 } from "./SharedCallPrivacyDialog";
 import { useGroupCallHistory } from "./use-group-call-history";
+import { createGroupSpeechCompletionBarrier } from "./group-speech-completion";
 import styles from "./Interact.module.css";
 
 type LocalParticipant = ApiGroupVoiceParticipant & {
@@ -79,6 +80,7 @@ type LiveParticipantInstance = {
   participantAttemptId: string;
   generation: number;
   callEpoch: number;
+  cancelSpeechCompletion: () => void;
 };
 
 type ParticipantFailureDelivery = {
@@ -307,6 +309,8 @@ export function GroupInteractCall({
 
   const releaseDisplayedFloor = useCallback(() => {
     clearTurnTimeout();
+    const owner = floorAuthorizationRef.current?.avatarId;
+    if (owner) liveSessionsRef.current.get(owner)?.cancelSpeechCompletion();
     floorAuthorizationRef.current = null;
     pendingDirectiveRef.current = null;
     applyAudioGate(null);
@@ -332,6 +336,7 @@ export function GroupInteractCall({
         const ownsPendingTurn =
           pendingDirective?.turnId === input.turnId && pendingDirective.callEpoch === input.callEpoch;
         if (!ownsAuthorizedTurn && !ownsPendingTurn) return;
+        liveSessionsRef.current.get(input.avatarId)?.cancelSpeechCompletion();
         pendingDirectiveRef.current = null;
         if (ownsAuthorizedTurn) floorAuthorizationRef.current = null;
         speakingAvatarIdsRef.current.delete(input.avatarId);
@@ -445,6 +450,7 @@ export function GroupInteractCall({
 
       const authorization = floorAuthorizationRef.current;
       if (authorization?.avatarId === input.avatarId) {
+        liveSessionsRef.current.get(input.avatarId)?.cancelSpeechCompletion();
         floorAuthorizationRef.current = null;
         speakingAvatarIdsRef.current.delete(input.avatarId);
         setActiveSpeakerId((current) => (current === input.avatarId ? null : current));
@@ -834,7 +840,10 @@ export function GroupInteractCall({
   );
 
   const reportProviderEvent = useCallback(
-    (input: GroupCallProviderEventInput, options: { affectsFloor?: boolean } = { affectsFloor: true }) => {
+    (
+      input: GroupCallProviderEventInput,
+      options: { affectsFloor?: boolean; beforeSend?: () => boolean } = { affectsFloor: true }
+    ) => {
       const sessionId = sessionRef.current?.id;
       if (!sessionId || endingRef.current) return;
       const callEpoch = callEpochRef.current;
@@ -847,10 +856,13 @@ export function GroupInteractCall({
         : null;
       orchestrationQueueRef.current = orchestrationQueueRef.current
         .then(async () => {
+          if (callEpochRef.current !== callEpoch || endingRef.current) return;
+          if (options.beforeSend && !options.beforeSend()) return;
           let result;
           try {
             result = await transport.reportProviderEvent(sessionId, input);
           } catch {
+            if (callEpochRef.current !== callEpoch || endingRef.current) return;
             result = await transport.reportProviderEvent(sessionId, input);
           }
           if (callEpochRef.current !== callEpoch || endingRef.current) return;
@@ -962,6 +974,28 @@ export function GroupInteractCall({
       });
       let resolveStartupCue: () => void = () => undefined;
       let startupCueFinished = false;
+      const startupCompletion = createGroupSpeechCompletionBarrier();
+      let speechCompletion = createGroupSpeechCompletionBarrier();
+      let completionTurnId: string | null = null;
+      const completedSpeechSources = new Set<string>();
+      const currentSpeechSources = new Set<string>();
+      const rememberCompletedSources = () => {
+        for (const source of currentSpeechSources) completedSpeechSources.add(source);
+        currentSpeechSources.clear();
+        while (completedSpeechSources.size > 128) {
+          const oldest = completedSpeechSources.values().next().value;
+          if (oldest) completedSpeechSources.delete(oldest);
+        }
+      };
+      const completionForTurn = (turnId: string) => {
+        if (completionTurnId !== turnId) {
+          speechCompletion.dispose();
+          speechCompletion = createGroupSpeechCompletionBarrier();
+          completionTurnId = turnId;
+          currentSpeechSources.clear();
+        }
+        return speechCompletion;
+      };
       const startupKey = `${callEpoch}:${generation}:${participantAttemptId}`;
       const startupCuePromise = new Promise<void>((resolve) => {
         resolveStartupCue = resolve;
@@ -969,6 +1003,8 @@ export function GroupInteractCall({
       const finishStartupCue = () => {
         if (startupCueFinished) return;
         startupCueFinished = true;
+        startupCompletion.dispose();
+        rememberCompletedSources();
         const ownsStartup = startupPendingAvatarIdsRef.current.get(avatarId) === startupKey;
         if (ownsStartup) startupPendingAvatarIdsRef.current.delete(avatarId);
         const timeout = startupTimeoutsRef.current.get(avatarId);
@@ -990,6 +1026,7 @@ export function GroupInteractCall({
         participantAttemptId,
         generation,
         callEpoch,
+        cancelSpeechCompletion: () => speechCompletion.cancel(),
       };
       const isCurrentCall = () => {
         const current = liveSessionsRef.current.get(avatarId);
@@ -1036,9 +1073,12 @@ export function GroupInteractCall({
           applyAudioGate(authorization?.state === "committing" ? null : (authorization?.avatarId ?? null));
         }
       };
-      const onSpeakStarted = (event: { event_id: string }) => {
+      const onSpeakStarted = (event: { event_id: string; source_event_id?: string | null }) => {
         if (!isCurrentCall()) return;
+        if (event.source_event_id && completedSpeechSources.has(event.source_event_id)) return;
         if (startupPendingAvatarIdsRef.current.get(avatarId) === startupKey) {
+          startupCompletion.start(event.event_id);
+          if (event.source_event_id) currentSpeechSources.add(event.source_event_id);
           const authorization = floorAuthorizationRef.current;
           applyAudioGate(authorization?.state === "committing" ? null : (authorization?.avatarId ?? null));
           return;
@@ -1056,6 +1096,12 @@ export function GroupInteractCall({
           providerEventId: logicalTurnId ? `turn:${logicalTurnId}` : event.event_id,
         });
         const deliveryState = providerEventDeliveryStateRef.current.get(sourceEventId);
+        if (logicalTurnId) {
+          completionForTurn(logicalTurnId).start(event.event_id);
+          if (event.source_event_id) currentSpeechSources.add(event.source_event_id);
+        }
+        // A provider response can contain several start/end segments. Invalidate
+        // its pending finish before logical-event dedupe, including a queued finish.
         if (deliveryState === "inflight" || deliveryState === "acked") return;
         const isFailedAuthorizedRedelivery =
           deliveryState === "failed" &&
@@ -1093,10 +1139,19 @@ export function GroupInteractCall({
           type: "speak_started",
         });
       };
-      const onSpeakEnded = (event: { event_id: string }) => {
+      const onSpeakEnded = (event: { event_id: string; source_event_id?: string | null }) => {
         if (!isCurrentCall()) return;
+        if (
+          event.source_event_id &&
+          completedSpeechSources.has(event.source_event_id) &&
+          floorAuthorizationRef.current?.state !== "committing"
+        )
+          return;
         if (startupPendingAvatarIdsRef.current.get(avatarId) === startupKey) {
-          finishStartupCue();
+          if (event.source_event_id) currentSpeechSources.add(event.source_event_id);
+          startupCompletion.end(event.event_id, (candidate) => {
+            if (isCurrentCall() && candidate.consume()) finishStartupCue();
+          });
           return;
         }
         const authorization = floorAuthorizationRef.current;
@@ -1123,34 +1178,56 @@ export function GroupInteractCall({
           (!isAuthorizedSpeechEnd(authorization, avatarId, callEpoch) && !isFailedAuthorizedRedelivery)
         )
           return;
-        if (!beginProviderEventDelivery(sourceEventId)) return;
-        applyAudioGate(null);
-        if (!isFailedAuthorizedRedelivery) authorization.state = "committing";
-        const ledgerEntry = turnLedgerRef.current.get(authorization.turnId);
-        if (ledgerEntry) ledgerEntry.state = "completed";
-        speakingAvatarIdsRef.current.delete(avatarId);
-        setActiveSpeakerId((current) => (current === avatarId ? null : current));
-        setServerPhase("committing");
-        const content = ledgerEntry?.latestResponse ?? latestAvatarTextRef.current.get(avatarId);
-        if (content && !committedTranscriptTurnIdsRef.current.has(authorization.turnId)) {
-          committedTranscriptTurnIdsRef.current.add(authorization.turnId);
-          setTranscript((current) => [
-            ...current,
-            {
-              id: `assistant:${authorization.turnId}`,
-              role: "assistant",
-              speakerName: participant.avatar.name,
-              content,
-            },
-          ]);
-        }
-        reportProviderEvent({
-          sourceEventId,
-          turnId: authorization.turnId,
-          avatarId,
-          type: "speak_ended",
-          ...(content ? { content } : {}),
-        });
+        const completion = completionForTurn(authorization.turnId);
+        if (event.source_event_id) currentSpeechSources.add(event.source_event_id);
+        completion.end(
+          isFailedAuthorizedRedelivery ? `retry:${crypto.randomUUID()}` : event.event_id,
+          (candidate) => {
+            const input: GroupCallProviderEventInput = {
+              sourceEventId,
+              turnId: authorization.turnId,
+              avatarId,
+              type: "speak_ended",
+            };
+            reportProviderEvent(input, {
+              // Run the complete transition on the existing orchestration queue.
+              // A continuation while an earlier HTTP ACK is pending invalidates it.
+              beforeSend: () => {
+                if (
+                  !isCurrentCall() ||
+                  floorAuthorizationRef.current !== authorization ||
+                  (authorization.state !== "speaking" && !isFailedAuthorizedRedelivery) ||
+                  !candidate.consume()
+                )
+                  return false;
+                if (!beginProviderEventDelivery(sourceEventId)) return false;
+                rememberCompletedSources();
+                applyAudioGate(null);
+                authorization.state = "committing";
+                const ledgerEntry = turnLedgerRef.current.get(authorization.turnId);
+                if (ledgerEntry) ledgerEntry.state = "completed";
+                speakingAvatarIdsRef.current.delete(avatarId);
+                setActiveSpeakerId((current) => (current === avatarId ? null : current));
+                setServerPhase("committing");
+                const content = ledgerEntry?.latestResponse ?? latestAvatarTextRef.current.get(avatarId);
+                if (content) input.content = content;
+                if (content && !committedTranscriptTurnIdsRef.current.has(authorization.turnId)) {
+                  committedTranscriptTurnIdsRef.current.add(authorization.turnId);
+                  setTranscript((current) => [
+                    ...current,
+                    {
+                      id: `assistant:${authorization.turnId}`,
+                      role: "assistant",
+                      speakerName: participant.avatar.name,
+                      content,
+                    },
+                  ]);
+                }
+                return true;
+              },
+            });
+          }
+        );
       };
       const onAvatarTranscription = (event: { event_id: string; text: string }) => {
         if (!isCurrentCall()) return;
@@ -1250,6 +1327,7 @@ export function GroupInteractCall({
           deliveryState === "failed" && authorization.state === "committing";
         if (authorization.state !== "speaking" && !isFailedAuthorizedRedelivery) return;
         if (!beginProviderEventDelivery(sourceEventId)) return;
+        speechCompletion.cancel();
         applyAudioGate(null);
         if (!isFailedAuthorizedRedelivery) authorization.state = "committing";
         const ledgerEntry = turnLedgerRef.current.get(authorization.turnId);
@@ -1274,6 +1352,8 @@ export function GroupInteractCall({
       liveSessionCleanupRef.current.set(avatarId, {
         generation,
         cleanup: () => {
+          startupCompletion.dispose();
+          speechCompletion.dispose();
           live.off(SessionEvent.SESSION_STREAM_READY, onStreamReady);
           live.off(SessionEvent.SESSION_DISCONNECTED, onSessionDisconnected);
           live.off(AgentEventsEnum.AVATAR_SPEAK_STARTED, onSpeakStarted);
@@ -1801,6 +1881,10 @@ export function GroupInteractCall({
     if (existing) return existing;
     const callback = (element: HTMLVideoElement | null) => {
       if (!element) {
+        // React detaches refs before effect cleanup; silence the retained element
+        // while it is still reachable, even if the SDK stops asynchronously.
+        const previousElement = mediaElementsRef.current.get(avatarId);
+        if (previousElement) previousElement.muted = true;
         mediaElementsRef.current.delete(avatarId);
         return;
       }

@@ -3,6 +3,7 @@ import React from "react";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { ToastProvider } from "@yuni/ui";
 import { GroupInteractCall } from "./components/interact/GroupInteractCall";
+import { GROUP_SPEECH_END_SETTLE_MS } from "./components/interact/group-speech-completion";
 import { ApiClientError } from "./lib/api/http-client";
 
 let dom: JSDOM;
@@ -124,6 +125,7 @@ vi.mock("@heygen/liveavatar-web-sdk", () => {
       AVATAR_SPEAK_STARTED: "avatar.speak_started",
       AVATAR_SPEAK_ENDED: "avatar.speak_ended",
       AVATAR_TRANSCRIPTION: "avatar.transcription",
+      AVATAR_TRANSCRIPTION_CHUNK: "avatar.transcription.chunk",
       ELEVENLABS_AGENT_EVENT: "elevenlabs_agent_event",
       SESSION_STOPPED: "session.stopped",
     },
@@ -282,11 +284,18 @@ async function flushAsyncWork() {
   for (let index = 0; index < 12; index += 1) await Promise.resolve();
 }
 
+async function settleSpeechCompletion() {
+  await vi.advanceTimersByTimeAsync(GROUP_SPEECH_END_SETTLE_MS);
+  await flushAsyncWork();
+}
+
 async function renderActiveCall() {
   const view = render(<TestGroupInteractCall groupId="group-1" />);
   await act(flushAsyncWork);
   await act(async () => {
     fireEvent.click(screen.getByRole("button", { name: "Iniciar llamada" }));
+    await flushAsyncWork();
+    await vi.advanceTimersByTimeAsync(GROUP_SPEECH_END_SETTLE_MS);
     await flushAsyncWork();
   });
   expect(screen.getByText("En vivo")).toBeTruthy();
@@ -576,15 +585,19 @@ describe("GroupInteractCall lifecycle", () => {
     expect(videos[0]!.closest("article")?.getAttribute("data-turn-owner")).toBe("true");
     expect(videos[1]!.closest("article")?.getAttribute("data-speaking")).toBe("false");
 
-    let mutedAfterStreamReadyDuringCommit = false;
+    let mutedAfterStreamReadyDuringSettle = true;
     await act(async () => {
       liveAvatarMocks.instances[0]!.emit("avatar.speak_started", { event_id: "owner-start-1" });
       await flushAsyncWork();
       liveAvatarMocks.instances[0]!.emit("avatar.speak_ended", { event_id: "owner-end-1" });
       liveAvatarMocks.instances[0]!.emit("session.stream_ready");
-      mutedAfterStreamReadyDuringCommit = videos[0]!.muted;
+      mutedAfterStreamReadyDuringSettle = videos[0]!.muted;
     });
-    expect(mutedAfterStreamReadyDuringCommit).toBe(true);
+    expect(mutedAfterStreamReadyDuringSettle).toBe(false);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(GROUP_SPEECH_END_SETTLE_MS);
+      await flushAsyncWork();
+    });
     expect(videos.every((video) => video.muted)).toBe(true);
     unmount();
   });
@@ -698,6 +711,60 @@ describe("GroupInteractCall lifecycle", () => {
     unmount();
   });
 
+  it("retries the same settled end after both POST attempts fail without reopening audio", async () => {
+    const { container, unmount } = await renderActiveCall();
+    const owner = liveAvatarMocks.instances[0]!;
+    const endEvent = { event_id: "retry-end", source_event_id: "retry-speech-source" };
+    await act(async () => {
+      scribeMocks.connection?.emit("committed_transcript", { text: "Respondé Ada" });
+      await flushAsyncWork();
+      owner.emit("avatar.speak_started", { event_id: "retry-start", source_event_id: "retry-speech-source" });
+      await flushAsyncWork();
+    });
+    apiMocks.reportGroupProviderEvent
+      .mockRejectedValueOnce(new Error("end-network-1"))
+      .mockRejectedValueOnce(new Error("end-network-2"));
+    await act(async () => {
+      owner.emit("avatar.speak_ended", endEvent);
+      await settleSpeechCompletion();
+    });
+    const endCalls = () =>
+      apiMocks.reportGroupProviderEvent.mock.calls.filter(([, input]) => input.type === "speak_ended");
+    expect(endCalls()).toHaveLength(2);
+    expect([...container.querySelectorAll("video")].every((video) => video.muted)).toBe(true);
+
+    await act(async () => {
+      owner.emit("avatar.speak_ended", endEvent);
+      await vi.advanceTimersByTimeAsync(GROUP_SPEECH_END_SETTLE_MS - 1);
+      await flushAsyncWork();
+    });
+    expect(endCalls()).toHaveLength(2);
+    expect([...container.querySelectorAll("video")].every((video) => video.muted)).toBe(true);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+      await flushAsyncWork();
+    });
+    expect(endCalls()).toHaveLength(3);
+    expect(new Set(endCalls().map(([, input]) => input.sourceEventId))).toEqual(
+      new Set(["speak_ended:avatar-1:turn:turn-1"])
+    );
+    expect(endCalls().every(([, input]) => input.turnId === "turn-1" && input.avatarId === "avatar-1")).toBe(
+      true
+    );
+    expect((screen.getByRole("button", { name: "Silenciar micrófono" }) as HTMLButtonElement).disabled).toBe(
+      false
+    );
+    await act(async () => {
+      owner.emit("avatar.speak_ended", endEvent);
+      await settleSpeechCompletion();
+    });
+    expect(endCalls()).toHaveLength(3);
+    expect(owner.sendUserMessage).toHaveBeenCalledTimes(1);
+    expect(owner.interrupt).not.toHaveBeenCalled();
+    expect([...container.querySelectorAll("video")].every((video) => video.muted)).toBe(true);
+    unmount();
+  });
+
   it("deduplicates authorized speech by logical turn when provider event ids change", async () => {
     const { container, unmount } = await renderActiveCall();
     await act(async () => {
@@ -723,6 +790,8 @@ describe("GroupInteractCall lifecycle", () => {
       liveAvatarMocks.instances[0]!.emit("avatar.speak_ended", { event_id: "end-delivery-a" });
       liveAvatarMocks.instances[0]!.emit("avatar.speak_ended", { event_id: "end-delivery-b" });
       await flushAsyncWork();
+      await vi.advanceTimersByTimeAsync(GROUP_SPEECH_END_SETTLE_MS);
+      await flushAsyncWork();
     });
     const endCalls = apiMocks.reportGroupProviderEvent.mock.calls.filter(
       ([, input]) => input.type === "speak_ended"
@@ -735,6 +804,311 @@ describe("GroupInteractCall lifecycle", () => {
     expect([...container.querySelectorAll("video")].every((video) => video.muted)).toBe(true);
     unmount();
   });
+
+  it("settles startup continuations before enabling Scribe without interrupting the cue", async () => {
+    liveAvatarMocks.startBehaviors.set("token-1", async () => {
+      const owner = liveAvatarMocks.instances.find((instance) => instance.token === "token-1")!;
+      owner.emit("session.stream_ready");
+      owner.emit("avatar.speak_started", { event_id: "cue-start-1", source_event_id: "cue-source-1" });
+      owner.emit("avatar.speak_ended", { event_id: "cue-end-1", source_event_id: "cue-source-1" });
+    });
+    const view = render(<TestGroupInteractCall groupId="group-1" />);
+    await act(flushAsyncWork);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Iniciar llamada" }));
+      await flushAsyncWork();
+    });
+    expect(scribeMocks.connection).toBeNull();
+    expect(screen.queryByText("En vivo")).toBeNull();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(646);
+      liveAvatarMocks.instances[0]!.emit("avatar.speak_started", {
+        event_id: "cue-start-2",
+        source_event_id: "cue-source-1",
+      });
+      await vi.advanceTimersByTimeAsync(GROUP_SPEECH_END_SETTLE_MS - 646);
+      await flushAsyncWork();
+    });
+    expect(scribeMocks.connection).toBeNull();
+    expect(liveAvatarMocks.instances[0]!.interrupt).not.toHaveBeenCalled();
+
+    await act(async () => {
+      liveAvatarMocks.instances[0]!.emit("avatar.speak_ended", {
+        event_id: "cue-end-2",
+        source_event_id: "cue-source-1",
+      });
+      await vi.advanceTimersByTimeAsync(GROUP_SPEECH_END_SETTLE_MS);
+      await flushAsyncWork();
+    });
+    expect(screen.getByText("En vivo")).toBeTruthy();
+    expect(scribeMocks.connection).not.toBeNull();
+    expect(apiMocks.reportGroupProviderEvent).not.toHaveBeenCalled();
+    expect([...view.container.querySelectorAll("video")].every((video) => video.muted)).toBe(true);
+    view.unmount();
+  });
+
+  it("keeps the real 408 ms end and 646 ms continuation audible and dispatches B only after final settle", async () => {
+    const { container, unmount } = await renderActiveCall();
+    const defaultReport = apiMocks.reportGroupProviderEvent.getMockImplementation()!;
+    apiMocks.reportGroupProviderEvent.mockImplementation((sessionId, input) => {
+      if (input.type !== "speak_ended") return defaultReport(sessionId, input);
+      return Promise.resolve({
+        phase: "queued",
+        floor: {
+          turnId: "turn-2",
+          avatarId: "avatar-2",
+          leaseExpiresAt: "2026-08-21T12:01:15.000Z",
+        },
+        directive: {
+          action: "speak",
+          turnId: "turn-2",
+          avatarId: "avatar-2",
+          avatarName: "Grace",
+          context: "Ada terminó la respuesta completa.",
+          instruction: "Respondé después de Ada.",
+          leaseExpiresAt: "2026-08-21T12:01:15.000Z",
+        },
+      });
+    });
+    const [owner, next] = liveAvatarMocks.instances;
+    const videos = [...container.querySelectorAll("video")];
+    await act(async () => {
+      scribeMocks.connection?.emit("committed_transcript", { text: "Respondan en una palabra" });
+      await flushAsyncWork();
+      owner!.emit("avatar.speak_started", { event_id: "natural-start-1", source_event_id: "natural-source" });
+      await flushAsyncWork();
+      await vi.advanceTimersByTimeAsync(408);
+      owner!.emit("avatar.speak_ended", { event_id: "natural-end-1", source_event_id: "natural-source" });
+      await vi.advanceTimersByTimeAsync(300);
+      owner!.emit("avatar.transcription", { event_id: "natural-transcript", text: "Completa." });
+      await flushAsyncWork();
+    });
+    expect(videos[0]!.muted).toBe(false);
+    expect(videos[1]!.muted).toBe(true);
+    expect(next!.sendUserMessage).not.toHaveBeenCalled();
+    expect(
+      apiMocks.reportGroupProviderEvent.mock.calls.filter(([, input]) => input.type === "speak_ended")
+    ).toHaveLength(0);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(346);
+      owner!.emit("avatar.speak_started", { event_id: "natural-start-2", source_event_id: "natural-source" });
+      await vi.advanceTimersByTimeAsync(GROUP_SPEECH_END_SETTLE_MS);
+      await flushAsyncWork();
+    });
+    expect(videos[0]!.muted).toBe(false);
+    expect(next!.sendUserMessage).not.toHaveBeenCalled();
+    expect(owner!.interrupt).not.toHaveBeenCalled();
+    expect(
+      apiMocks.reportGroupProviderEvent.mock.calls.filter(([, input]) => input.type === "speak_started")
+    ).toHaveLength(1);
+
+    await act(async () => {
+      owner!.emit("avatar.speak_ended", { event_id: "natural-end-2", source_event_id: "natural-source" });
+      await vi.advanceTimersByTimeAsync(GROUP_SPEECH_END_SETTLE_MS - 1);
+    });
+    expect(videos[0]!.muted).toBe(false);
+    expect(next!.sendUserMessage).not.toHaveBeenCalled();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+      await flushAsyncWork();
+    });
+    expect(
+      apiMocks.reportGroupProviderEvent.mock.calls.filter(([, input]) => input.type === "speak_ended")
+    ).toHaveLength(1);
+    expect(apiMocks.reportGroupProviderEvent).toHaveBeenCalledWith(
+      "group-session-1",
+      expect.objectContaining({
+        type: "speak_ended",
+        turnId: "turn-1",
+        content: "Completa.",
+      })
+    );
+    expect(next!.sendUserMessage).toHaveBeenCalledExactlyOnceWith("Respondé después de Ada.");
+    expect(videos.map((video) => video.muted)).toEqual([true, false]);
+    await act(async () => {
+      owner!.emit("avatar.speak_started", {
+        event_id: "natural-late-start",
+        source_event_id: "natural-source",
+      });
+      owner!.emit("avatar.speak_ended", { event_id: "natural-late-end", source_event_id: "natural-source" });
+      await settleSpeechCompletion();
+    });
+    expect(videos.map((video) => video.muted)).toEqual([true, false]);
+    expect(
+      apiMocks.reportGroupProviderEvent.mock.calls.filter(([, input]) => input.type === "speak_ended")
+    ).toHaveLength(1);
+    expect(owner!.interrupt).not.toHaveBeenCalled();
+    expect(next!.interrupt).not.toHaveBeenCalled();
+    unmount();
+  });
+
+  it("invalidates a settled end queued behind a pending start ACK when its owner continues", async () => {
+    const { container, unmount } = await renderActiveCall();
+    let resolveStart: (value: unknown) => void = () => undefined;
+    const defaultReport = apiMocks.reportGroupProviderEvent.getMockImplementation()!;
+    apiMocks.reportGroupProviderEvent.mockImplementation((sessionId, input) => {
+      if (input.type === "speak_started" && input.turnId === "turn-1") {
+        return new Promise((resolve) => {
+          resolveStart = resolve;
+        });
+      }
+      return defaultReport(sessionId, input);
+    });
+    const owner = liveAvatarMocks.instances[0]!;
+    await act(async () => {
+      scribeMocks.connection?.emit("committed_transcript", { text: "Respondé Ada" });
+      await flushAsyncWork();
+      owner.emit("avatar.speak_started", { event_id: "pending-start-1", source_event_id: "pending-source" });
+      await flushAsyncWork();
+      owner.emit("avatar.speak_ended", { event_id: "pending-end-1", source_event_id: "pending-source" });
+      await vi.advanceTimersByTimeAsync(GROUP_SPEECH_END_SETTLE_MS);
+      await flushAsyncWork();
+      owner.emit("avatar.speak_started", { event_id: "pending-start-2", source_event_id: "pending-source" });
+      resolveStart({
+        phase: "speaking",
+        directive: null,
+        floor: { turnId: "turn-1", avatarId: "avatar-1", leaseExpiresAt: "2026-08-21T12:01:15.000Z" },
+      });
+      await flushAsyncWork();
+    });
+    expect(
+      apiMocks.reportGroupProviderEvent.mock.calls.filter(([, input]) => input.type === "speak_ended")
+    ).toHaveLength(0);
+    expect(container.querySelectorAll("video")[0]!.muted).toBe(false);
+    expect(owner.interrupt).not.toHaveBeenCalled();
+    await act(async () => {
+      owner.emit("avatar.speak_ended", { event_id: "pending-end-2", source_event_id: "pending-source" });
+      await vi.advanceTimersByTimeAsync(GROUP_SPEECH_END_SETTLE_MS);
+      await flushAsyncWork();
+    });
+    expect(
+      apiMocks.reportGroupProviderEvent.mock.calls.filter(([, input]) => input.type === "speak_ended")
+    ).toHaveLength(1);
+    expect([...container.querySelectorAll("video")].every((video) => video.muted)).toBe(true);
+    unmount();
+  });
+
+  it("does not extend natural settle for duplicate end deliveries or visibility changes", async () => {
+    const { container, unmount } = await renderActiveCall();
+    const owner = liveAvatarMocks.instances[0]!;
+    await act(async () => {
+      scribeMocks.connection?.emit("committed_transcript", { text: "Respondé Ada" });
+      await flushAsyncWork();
+      owner.emit("avatar.speak_started", { event_id: "dedupe-start" });
+      await flushAsyncWork();
+      owner.emit("avatar.speak_ended", { event_id: "dedupe-end" });
+      await vi.advanceTimersByTimeAsync(GROUP_SPEECH_END_SETTLE_MS / 2);
+      owner.emit("avatar.speak_ended", { event_id: "dedupe-end" });
+      owner.emit("avatar.speak_started", { event_id: "dedupe-start" });
+      Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
+      document.dispatchEvent(new Event("visibilitychange"));
+      Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+      document.dispatchEvent(new Event("visibilitychange"));
+      await flushAsyncWork();
+    });
+    expect(container.querySelectorAll("video")[0]!.muted).toBe(false);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(GROUP_SPEECH_END_SETTLE_MS / 2);
+      await flushAsyncWork();
+    });
+    expect(
+      apiMocks.reportGroupProviderEvent.mock.calls.filter(([, input]) => input.type === "speak_ended")
+    ).toHaveLength(1);
+    expect([...container.querySelectorAll("video")].every((video) => video.muted)).toBe(true);
+    unmount();
+  });
+
+  it("ignores retired provider sources instead of closing a later turn of the same avatar", async () => {
+    const { container, unmount } = await renderActiveCall();
+    const owner = liveAvatarMocks.instances[0]!;
+    await act(async () => {
+      scribeMocks.connection?.emit("committed_transcript", { text: "Primera pregunta" });
+      await flushAsyncWork();
+      owner.emit("avatar.speak_started", { event_id: "retired-start-1", source_event_id: "retired-source" });
+      await flushAsyncWork();
+      owner.emit("avatar.speak_ended", { event_id: "retired-end-1", source_event_id: "retired-source" });
+      await settleSpeechCompletion();
+    });
+    apiMocks.submitGroupTurn.mockResolvedValueOnce({
+      round: { id: "round-2", intent: "normal", status: "queued", contextVersion: 2 },
+      phase: "queued",
+      floor: { turnId: "turn-2", avatarId: "avatar-1", leaseExpiresAt: "2026-08-21T12:02:00.000Z" },
+      directive: {
+        action: "speak",
+        turnId: "turn-2",
+        avatarId: "avatar-1",
+        avatarName: "Ada",
+        context: "Turno anterior completo",
+        instruction: "Segunda respuesta",
+        leaseExpiresAt: "2026-08-21T12:02:00.000Z",
+      },
+    });
+    await act(async () => {
+      scribeMocks.connection?.emit("committed_transcript", { text: "Segunda pregunta" });
+      await flushAsyncWork();
+      owner.emit("avatar.speak_started", { event_id: "current-start", source_event_id: "current-source" });
+      await flushAsyncWork();
+      owner.emit("avatar.speak_started", {
+        event_id: "retired-start-late",
+        source_event_id: "retired-source",
+      });
+      owner.emit("avatar.speak_ended", { event_id: "retired-end-late", source_event_id: "retired-source" });
+      await settleSpeechCompletion();
+    });
+    expect(owner.sendUserMessage).toHaveBeenCalledTimes(2);
+    expect(owner.interrupt).not.toHaveBeenCalled();
+    expect(container.querySelectorAll("video")[0]!.muted).toBe(false);
+    expect(
+      apiMocks.reportGroupProviderEvent.mock.calls.filter(([, input]) => input.type === "speak_ended")
+    ).toHaveLength(1);
+    await act(async () => {
+      owner.emit("avatar.speak_ended", { event_id: "current-end", source_event_id: "current-source" });
+      await settleSpeechCompletion();
+    });
+    expect(
+      apiMocks.reportGroupProviderEvent.mock.calls.filter(([, input]) => input.type === "speak_ended")
+    ).toHaveLength(2);
+    expect([...container.querySelectorAll("video")].every((video) => video.muted)).toBe(true);
+    unmount();
+  });
+
+  it.each(["failure", "end", "unmount"] as const)(
+    "cancels pending natural completion on %s",
+    async (termination) => {
+      mockThreeParticipantStart();
+      const { container, unmount } = await renderActiveCall();
+      const owner = liveAvatarMocks.instances[0]!;
+      const videos = [...container.querySelectorAll("video")];
+      await act(async () => {
+        scribeMocks.connection?.emit("committed_transcript", { text: "Respondé Ada" });
+        await flushAsyncWork();
+        owner.emit("avatar.speak_started", { event_id: `cancel-start-${termination}` });
+        await flushAsyncWork();
+        owner.emit("avatar.speak_ended", { event_id: `cancel-end-${termination}` });
+        await vi.advanceTimersByTimeAsync(GROUP_SPEECH_END_SETTLE_MS / 2);
+        if (termination === "failure") owner.emit("session.disconnected", { reason: "network" });
+        else if (termination === "end")
+          fireEvent.click(screen.getByRole("button", { name: "Finalizar llamada" }));
+        else unmount();
+        await vi.advanceTimersByTimeAsync(0);
+        await flushAsyncWork();
+      });
+      expect(videos.every((video) => video.muted)).toBe(true);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(GROUP_SPEECH_END_SETTLE_MS * 2);
+        owner.emit("avatar.speak_started", { event_id: `stale-start-${termination}` });
+        owner.emit("avatar.speak_ended", { event_id: `stale-end-${termination}` });
+        await flushAsyncWork();
+      });
+      expect(
+        apiMocks.reportGroupProviderEvent.mock.calls.filter(([, input]) => input.type === "speak_ended")
+      ).toHaveLength(0);
+      expect(videos.every((video) => video.muted)).toBe(true);
+      if (termination !== "unmount") unmount();
+    }
+  );
 
   it("ignores a stale suppress acknowledgement after that avatar receives a new turn", async () => {
     const { container, unmount } = await renderActiveCall();
@@ -982,11 +1356,11 @@ describe("GroupInteractCall lifecycle", () => {
   it("shows the server expiry countdown while the call is active", async () => {
     const { unmount } = await renderActiveCall();
 
-    expect(screen.getByText("Tiempo · 10:00")).toBeTruthy();
+    expect(screen.getByText("Tiempo · 9:59")).toBeTruthy();
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1_000);
     });
-    expect(screen.getByText("Tiempo · 9:59")).toBeTruthy();
+    expect(screen.getByText("Tiempo · 9:58")).toBeTruthy();
     unmount();
   });
 
@@ -1048,6 +1422,7 @@ describe("GroupInteractCall lifecycle", () => {
       })
     );
     await act(flushAsyncWork);
+    await act(settleSpeechCompletion);
 
     expect(apiMocks.endGroupVoiceSession).toHaveBeenCalledWith("group-session-1", "no_participants");
     expect(apiMocks.reportGroupParticipantFailure).not.toHaveBeenCalled();
@@ -1251,6 +1626,7 @@ describe("GroupInteractCall lifecycle", () => {
     await act(flushAsyncWork);
     fireEvent.click(screen.getByRole("button", { name: "Iniciar llamada" }));
     await act(flushAsyncWork);
+    await act(settleSpeechCompletion);
     expect(screen.getByText("En vivo · parcial")).toBeTruthy();
     expect(liveAvatarMocks.instances).toHaveLength(2);
     expect(apiMocks.reportGroupParticipantFailure).not.toHaveBeenCalled();
@@ -1416,6 +1792,8 @@ describe("GroupInteractCall lifecycle", () => {
       });
       await flushAsyncWork();
     });
+    expect((microphone as HTMLButtonElement).disabled).toBe(true);
+    await act(settleSpeechCompletion);
     expect((microphone as HTMLButtonElement).disabled).toBe(false);
     scribeMocks.connection?.emit("committed_transcript", { text: "Ahora sí respondan" });
     await act(flushAsyncWork);
@@ -1462,6 +1840,7 @@ describe("GroupInteractCall lifecycle", () => {
     await act(flushAsyncWork);
     fireEvent.click(screen.getByRole("button", { name: "Iniciar llamada" }));
     await act(flushAsyncWork);
+    await act(settleSpeechCompletion);
 
     expect(apiMocks.endGroupVoiceSession).toHaveBeenCalledWith("group-session-1", "no_participants");
     expect(screen.queryByText("En vivo · parcial")).toBeNull();
@@ -1495,6 +1874,7 @@ describe("GroupInteractCall lifecycle", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "Iniciar llamada" }));
     await act(flushAsyncWork);
+    await act(settleSpeechCompletion);
 
     expect(apiMocks.endGroupVoiceSession).toHaveBeenCalledWith("public-group-session-1", "no_participants");
     expect(apiMocks.reportGroupParticipantFailure).not.toHaveBeenCalled();
@@ -1547,6 +1927,7 @@ describe("GroupInteractCall lifecycle", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Iniciar llamada" }));
     await act(flushAsyncWork);
+    await act(settleSpeechCompletion);
     expect(screen.getByText("En vivo")).toBeTruthy();
     apiMocks.reportGroupParticipantFailure.mockClear();
 
@@ -1625,6 +2006,8 @@ describe("GroupInteractCall lifecycle", () => {
       });
       liveAvatarMocks.instances[0]!.emit("avatar.speak_ended", { event_id: "end-turn-1" });
       await flushAsyncWork();
+      await vi.advanceTimersByTimeAsync(GROUP_SPEECH_END_SETTLE_MS);
+      await flushAsyncWork();
     });
     apiMocks.submitGroupTurn.mockResolvedValueOnce({
       round: { id: "round-2", intent: "normal", status: "queued", contextVersion: 2 },
@@ -1682,6 +2065,8 @@ describe("GroupInteractCall lifecycle", () => {
         data: { agent_response: "Respuesta conocida" },
       });
       liveAvatarMocks.instances[0]!.emit("avatar.speak_ended", { event_id: "end-unmatched-1" });
+      await flushAsyncWork();
+      await vi.advanceTimersByTimeAsync(GROUP_SPEECH_END_SETTLE_MS);
       await flushAsyncWork();
     });
     apiMocks.submitGroupTurn.mockResolvedValueOnce({
@@ -1759,6 +2144,8 @@ describe("GroupInteractCall lifecycle", () => {
         liveAvatarMocks.instances[0]!.emit("avatar.speak_ended", {
           event_id: `end-ambiguous-${turnNumber}`,
         });
+        await flushAsyncWork();
+        await vi.advanceTimersByTimeAsync(GROUP_SPEECH_END_SETTLE_MS);
         await flushAsyncWork();
       });
     };
@@ -1854,6 +2241,7 @@ describe("GroupInteractCall lifecycle", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Iniciar llamada" }));
     await act(flushAsyncWork);
+    await act(settleSpeechCompletion);
     expect(liveAvatarMocks.instances).toHaveLength(6);
 
     liveAvatarMocks.instances[3]!.emit("session.disconnected", { reason: "new-network" });
@@ -1900,6 +2288,7 @@ describe("GroupInteractCall lifecycle", () => {
       });
       await flushAsyncWork();
     });
+    await act(settleSpeechCompletion);
     expect((screen.getByRole("button", { name: "Silenciar micrófono" }) as HTMLButtonElement).disabled).toBe(
       false
     );

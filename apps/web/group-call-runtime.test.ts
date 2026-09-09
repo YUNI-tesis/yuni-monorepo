@@ -56,6 +56,42 @@ describe("strict group call runtime", () => {
     expect(second.muted).toBe(true);
   });
 
+  it("mutes the old owner before unmuting the new owner regardless of map order", () => {
+    const muted = new Map([
+      ["avatar-A", false],
+      ["avatar-B", true],
+    ]);
+    const changes: Array<{ avatarId: string; value: boolean; audibleCount: number }> = [];
+    const element = (avatarId: string): GroupMediaElement => ({
+      get muted() {
+        return muted.get(avatarId)!;
+      },
+      set muted(value) {
+        muted.set(avatarId, value);
+        changes.push({ avatarId, value, audibleCount: [...muted.values()].filter((value) => !value).length });
+      },
+    });
+    // B comes first, so a single-pass implementation briefly exposes both outputs.
+    const media = new Map([
+      ["avatar-B", element("avatar-B")],
+      ["avatar-A", element("avatar-A")],
+    ]);
+
+    applyGroupAudioGate(media, "avatar-B");
+    expect(changes).toEqual([
+      { avatarId: "avatar-A", value: true, audibleCount: 0 },
+      { avatarId: "avatar-B", value: false, audibleCount: 1 },
+    ]);
+    expect(changes.every((change) => change.audibleCount <= 1)).toBe(true);
+
+    changes.length = 0;
+    applyGroupAudioGate(media, "avatar-B");
+    expect(changes.every((change) => change.audibleCount === 1)).toBe(true);
+    expect(changes.filter((change) => change.avatarId === "avatar-B").every((change) => !change.value)).toBe(
+      true
+    );
+  });
+
   it("accepts starts and ends only in their exact local state and epoch", () => {
     expect(isAuthorizedSpeechStart(authorization, "avatar-1", 3)).toBe(true);
     expect(isAuthorizedSpeechStart(authorization, "avatar-2", 3)).toBe(false);

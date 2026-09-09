@@ -40,8 +40,11 @@ export function applyGroupAudioGate(
   ownerAvatarId: string | null
 ) {
   for (const [avatarId, mediaElement] of mediaElements) {
-    mediaElement.muted = avatarId !== ownerAvatarId;
+    if (avatarId !== ownerAvatarId) mediaElement.muted = true;
   }
+  // Close every other output before opening the owner, without pulsing its mute.
+  const owner = ownerAvatarId ? mediaElements.get(ownerAvatarId) : undefined;
+  if (owner) owner.muted = false;
 }
 
 export function isAuthorizedSpeechStart(
