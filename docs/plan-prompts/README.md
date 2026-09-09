@@ -18,6 +18,7 @@ Decisiones de producto vigentes:
 - [0020-configurable-external-session-limits.md](../thesis/decision-records/0020-configurable-external-session-limits.md)
 - [0021-retire-unused-realtime-service.md](../thesis/decision-records/0021-retire-unused-realtime-service.md)
 - [0024-objective-dashboard-activity-methodology.md](../thesis/decision-records/0024-objective-dashboard-activity-methodology.md)
+- [0026-user-preemptible-group-call-floor.md](../thesis/decision-records/0026-user-preemptible-group-call-floor.md)
 
 ## Direccion Actual
 
@@ -27,6 +28,7 @@ Decisiones de producto vigentes:
 - Sesiones publicas se atribuyen a `participantEmail` y opcionalmente `participantUserId`.
 - Sync de Agent/Knowledge Base corre en background con reintentos automaticos; no es CTA principal de usuario.
 - `Grupos` usa sesiones LiveAvatar LITE independientes, Agents atómicos, posiciones fijas y un floor estricto; LiveKit compartido queda como evaluación futura.
+- La interrupción humana grupal se reconstruye desde la base funcional de `main`; primero se valida el transporte público del SDK y después el corte, reenrutado y contexto interrumpido. El plan 39 todavía no está completado.
 - El navegador conecta la voz directamente con ElevenLabs/LiveAvatar mediante tokens efímeros; YUNI no despliega un WebSocket propio.
 
 ## Estado
@@ -76,6 +78,7 @@ Decisiones de producto vigentes:
 - `37-group-call-floor-hardening.md`: implementado; router semántico, audio gate, attempts por conexión, `user_activity`, eventos idempotentes y cleanup durable grupal.
 - `38-ci-cd-devsecops.md`: implementado en repositorio; workflows, seguridad y runbook listos. La
   activación administrativa de rulesets y Railway Wait for CI se verifica durante el rollout.
+- [39-user-preemptible-group-call-floor.md](39-user-preemptible-group-call-floor.md): **EN VALIDACIÓN, fase 1 de reconstrucción desde `main` (2026-09-08)**. Contrato de comandos validado; respuestas completas no aceptadas por cierre del gate. Interrupciones y contexto siguen pendientes. Evidencia histórica y nueva en el [estudio de caso](../thesis/group-call-audio-stability-case-study.md).
 
 ## Uso
 

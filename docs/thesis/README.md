@@ -7,10 +7,13 @@ No reemplaza a [docs/plan-prompts/](../plan-prompts/). Los planes describen que 
 ## Estructura
 
 - [decision-records/](decision-records/): registros numerados de decisiones de arquitectura, UX, costos, seguridad, integracion e implementacion.
+- [Estudio de estabilidad de audio e interrupciones grupales](group-call-audio-stability-case-study.md): explicación narrativa de los síntomas, intentos fallidos, revisión del contrato del SDK y evidencia de la reconstrucción.
 
 ## Arquitectura grupal vigente
 
 Las llamadas grupales usan sesiones LiveAvatar LITE independientes, ElevenLabs Agents atómicos y un floor persistente de YUNI. La decisión y sus límites están en [ADR 0019](decision-records/0019-strict-floor-independent-liveavatar-group-sessions.md); la guía operativa está en [llamadas grupales con ElevenLabs y LiveAvatar](../integrations/group-calls-elevenlabs-liveavatar.md).
+
+[ADR 0026](decision-records/0026-user-preemptible-group-call-floor.md) conserva la decisión de hacer ese floor preemptivo para la voz humana y mantener separados el borrador generado, el fragmento informado por el provider y lo pendiente o desconocido. Al 2026-09-08 su reconstrucción desde `main` está **EN VALIDACIÓN, fase 1**: el contrato de comandos pasó con proveedores reales, pero la aceptación de respuestas completas falló por cierre prematuro del gate. La interrupción todavía no se habilita. El [estudio de caso](group-call-audio-stability-case-study.md) conserva el análisis y enlaza las trazas sanitizadas, distinguiendo los tests aprobados de la aceptación acústica pendiente.
 
 ## Workflow Del Equipo
 

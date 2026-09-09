@@ -1,0 +1,135 @@
+# Estudio de caso: estabilidad de audio e interrupciones grupales
+
+## Estado y trazabilidad
+
+Incidente y análisis inicial: 2026-08-28. Revisión de la decisión: 2026-09-08. **Reconstrucción desde `main`: fase 1 EN VALIDACIÓN, todavía no aceptada.** La implementación anterior falló el QA con proveedores reales; sus tests aprobados no constituyen aceptación de producto. El ensayo aislado valida el contrato de comandos; la aplicación real avanza la ronda, pero aún silencia parte del stream. Las interrupciones siguen sin habilitarse.
+
+Este estudio conserva la explicación narrativa del incidente. [ADR 0026](decision-records/0026-user-preemptible-group-call-floor.md) contiene la decisión canónica y [el plan 39](../plan-prompts/39-user-preemptible-group-call-floor.md) ordena su implementación. La versión histórica de estos documentos permanece en el commit `afa73e88e4944572e449f358314490775419d753`.
+
+## Contexto y problema observado
+
+Una llamada grupal utiliza tres sesiones LiveAvatar LITE independientes, un ElevenLabs Agent por avatar y un Scribe para escuchar a la persona. YUNI decide el orden, guarda la conversación y autoriza un único avatar audible. El usuario confirmó que la base de `main` funciona tanto localmente como desplegada.
+
+El objetivo de producto es permitir que una persona vuelva a hablar para detener una respuesta, corregir una premisa o cambiar de prioridad. La ronda anterior debe cancelarse y el orquestador debe decidir quién responde ahora, con conocimiento de la intervención interrumpida. Obligar a esperar una respuesta larga o toda la ronda hace que los participantes continúen sobre una intención obsoleta.
+
+Al agregar esa capacidad aparecieron varios síntomas, en distintos momentos de las pruebas:
+
+- avatares simultáneos y avatares animados sin voz;
+- respuestas de una palabra inaudibles;
+- palabras distorsionadas o audio entrecortado;
+- turnos detenidos en “Preparando respuesta”.
+
+No hay una causa única demostrada para todos ellos. El último video muestra una falla de inicio de respuesta incluso sin una interrupción humana registrada. El límite de duración de las sesiones sandbox no explica los fallos anteriores al vencimiento.
+
+## Evidencia histórica y límites del análisis
+
+El análisis de agosto correlacionó eventos del frontend, receipts, transcripciones y grabaciones de ElevenLabs:
+
+- Una respuesta corta registró un `speak_ended` 408 ms después de `speak_started`, seguido por otro `speak_started` 646 ms después del end. El transcript fuente contenía la palabra completa. La traza cuestionó el uso de un primer end como única señal para cerrar el gate; no estableció una duración universal de drain.
+- `Okey.` produjo una receipt 604 ms antes del commit. Las variantes `ok` y `okay` se ignoraban, pero `okey` no: se confirmó un falso positivo de clasificación.
+- Una respuesta larga con sonido extraño tuvo un lifecycle normal y ningún error del provider. Eso no permite decidir entre un artefacto de generación, transporte o reproducción.
+- El PCM de 24 kHz coincidía con el formato requerido por el connector. No se halló un desajuste de sample rate en esa evidencia.
+- El preset grupal Flash con `optimize_streaming_latency=3` y `stability=0.45` era una hipótesis sobre calidad de generación. No se demostró que causara el silencio de todos los turnos.
+- El SDK `0.0.17` crea y publica un track local al configurar `voiceChat.defaultMuted`. Estar muteado no equivale a no crear el micrófono; Scribe ya aportaba la captura humana necesaria.
+
+El intento de agosto agregó un reducer acústico con estados `silent`, `armed`, `playing`, `draining` y `cutting`, drain de 750 ms, barge-in inmediato o a 300 ms, heurística de eco, watchdog de 20 segundos y métricas de medio. También simplificó la persistencia hasta descartar el fragmento interrumpido. Son decisiones históricas ensayadas, no requisitos heredados automáticamente por la reconstrucción.
+
+Las pruebas automatizadas reportadas el 2026-08-29 fueron 320 tests web, 243 API, 25 de dominio, 38 de voz y 42 de repositorio/integración PostgreSQL; algunos casos se omitieron según el runner. Los resultados quedaron registrados en la versión histórica del estudio. La revisión posterior comprobó que los dobles de prueba podían aceptar contratos de transporte que no funcionaban con el provider. Esos números no prueban entrega real de `user_message`, audio completo ni ausencia de falsos cortes.
+
+## Reapertura del incidente el 2026-09-08
+
+En la sesión `cmttg99ce002ap6n985npx8tc`, la consulta de la base local registró inicio a las `2026-09-09T01:58:42.830Z`, activación a las `01:58:47.082Z` y creación de ronda a las `01:58:54.595Z` (todavía 2026-09-08 en Argentina). Vera falló a las `01:59:14.731Z`, 20,136 segundos después de crear la ronda; Bruno falló a las `01:59:34.843Z`, otros 20,112 segundos después. La sesión terminó a las `01:59:34.891Z`.
+
+Los registros consultados tenían cero eventos provider persistidos y cero interrupciones humanas. La conversación consultada en ElevenLabs contenía el saludo `Conectado.` y actualizaciones de contexto, pero no el `user_message` dirigido. La secuencia es compatible con vencimientos consecutivos del watchdog de 20 segundos sin inicio de respuesta; no hay evidencia de un barge-in que explique el silencio. La ausencia de eventos persistidos no prueba que el SDK no recibiera ningún frame: esos frames no pueden reconstruirse a partir del video.
+
+La rama enviaba al provider un `event_id` construido como `group-turn:<epoch>:<turnId>`. Las actualizaciones de contexto sin ese ID alcanzaban ElevenLabs. El tipo oficial de comando describe `event_id` como UUID v4. Esa diferencia motivó la hipótesis de pérdida de la orden antes de la generación; el ensayo controlado posterior reprodujo la regresión del ID custom, como se detalla abajo. No alcanza con ver `publishData` exitoso para concluir que ElevenLabs procesó la orden.
+
+Se incorpora así un cuarto plano causal anterior al audio: **envío y aceptación del comando**. Un watchdog puede detectar falta de progreso, pero no corrige un mensaje rechazado o perdido; cambiar TTS o aumentar un drain tampoco lo hace.
+
+### Corrección de la evaluación del SDK
+
+La conclusión previa de que `0.0.18` no aportaba una API pública útil fue incorrecta. La ausencia de una API nueva de métricas no justificaba descartar todas sus capacidades.
+
+La consulta al [registro npm del SDK](https://registry.npmjs.org/@heygen%2Fliveavatar-web-sdk) y la inspección del [tarball publicado 0.0.18](https://registry.npmjs.org/@heygen/liveavatar-web-sdk/-/liveavatar-web-sdk-0.0.18.tgz) confirmaron publicación el `2026-05-07T18:39:59.184Z`, asociada al commit `5faad721ef991bd7ddba9dcbc9827d5426f7b9ca`. Su bundle ejecutable exporta `ElevenLabsAgentSession` y métodos públicos para enviar mensajes, contexto, actividad y resultados de herramientas. No era sólo una declaración de tipos ni código posterior de `master`.
+
+La [clase publicada](https://github.com/heygen-com/liveavatar-web-sdk/blob/5faad721ef991bd7ddba9dcbc9827d5426f7b9ca/packages/js-sdk/src/LiveAvatarSession/ElevenLabsAgentSession.ts) genera un UUID, incluye `session_id` y devuelve el ID enviado. Verifica conexión e ID de sesión antes del envío. La publicación confiable en LiveKit no espera un ACK de aceptación por ElevenLabs; el ID retornado no demuestra reproducción. `interrupt()` sigue devolviendo `void`, sin ID ni confirmación remota. La reconstrucción debe validar esas fronteras en vez de simular garantías inexistentes.
+
+### Comparación real del contrato de envío
+
+El 2026-09-08 se ejecutó un harness aislado con los mismos Agents y configuración de generación: SDK `0.0.18` con API pública y UUID pasó con los tres avatares; la base `0.0.17` omitiendo `event_id` también pasó con los tres. ElevenLabs confirmó el mensaje exacto y una respuesta posterior, y el navegador midió audio no silencioso en los seis turnos. Los primeros starts llegaron entre 1213 y 1518 ms después del envío.
+
+Al enviar manualmente `group-turn:...` con SDK `0.0.18`, Vera no inició habla ni produjo audio significativo durante 20.052 ms. ElevenLabs terminó con audio del saludo, pero sin el pedido ni respuesta posterior. Con un UUID v4 manual, el mismo Agent recibió el pedido y respondió: start a 1368 ms y aproximadamente 300 ms de muestras no silenciosas. Esta comparación confirma la regresión del comando custom bajo las condiciones ensayadas; no permite afirmar cuál es el validador interno del worker.
+
+La [evidencia sanitizada](evidence/2026-09-08-group-provider-command-contract.md) conserva los ocho IDs de conversación, versiones, métricas, diferencias observadas de tracks y hashes de reports. Las consultas iniciales `processing` se reemplazan en los resultados por las reconsultas finales `done`; `hasAudio=true` por sí solo no distingue el saludo de una respuesta al pedido. El ensayo no ejercita el orquestador/floor de YUNI ni demuestra completitud acústica o ausencia de ecos.
+
+### Aplicación real: el transporte se recupera, el audio corto todavía no
+
+La sesión posterior `cmtthpf2l0039ilxwj7jyzd7r` ejercitó UI, API, orquestador, SDK y providers reales con entrada committed de Scribe simulada. Los tres turnos finalizaron, el backend volvió a `listening`, se observó como máximo un elemento desmuteado y hubo audio en los tres participantes. Eso confirma avance de ronda, no respuestas completas.
+
+La medición cada 50 ms encontró 3, 5 y 7 muestras no silenciosas muteadas en Vera, Bruno y Benjita: aproximadamente 150, 250 y 350 ms de energía del stream impedida por el gate. Los tres tuvieron un nuevo start después del primer end HTTP —621, 528 y 457 ms, respectivamente— que recibió `suppress` como audio no autorizado. Se reproduce así el problema de cola/continuación con el gate heredado de `main`, independientemente de la regresión custom ya aislada. No se afirma qué palabra exacta se perdió ni cuánto de esa energía era habla inteligible.
+
+La aceptación de respuestas cortas completas **falló**. Que la base funcionara en las pruebas habituales del usuario no garantizaba este caso límite. No se habilitará barge-in sobre esta frontera de reproducción todavía incorrecta; primero deberá resolverse y repetirse el checkpoint sin heredar automáticamente los timers del intento anterior.
+
+También se registró la configuración efectiva: el harness aislado utilizó los Agents con latencia 0 y estabilidad 0,65; al iniciar YUNI, el sync de `main` restableció latencia 3 y estabilidad 0,45. Ambos conservaron Flash/PCM 24 kHz. Esa diferencia impide confundir los dos ensayos como una comparación de calidad TTS. La presencia de muestras con el gate cerrado sí demuestra un problema de reproducción sin atribuirlo a la generación.
+
+### Contrato de interrupción y evidencia textual
+
+Un ensayo sandbox separado muteó el elemento y llamó `interrupt()` después de 1200 ms acumulados de PCM no silencioso. Llegó un único `speak_ended` a los 489 ms —registrado por SDK y raw— y siguió habiendo PCM remoto hasta los 680 ms, siempre muteado. No se recibieron `interruption` ni `agent_response_correction` en los siguientes 12 segundos. El `source_event_id` terminal no coincidió con el UUID del `user_message`.
+
+La consulta final de ElevenLabs quedó `done`, con el pedido recibido y una respuesta de 283 caracteres marcada como interrumpida, frente a un borrador vivo de 1157 caracteres. Esto no acredita qué oyó la persona: demuestra que el historial final puede estar truncado sin una corrección en vivo observada. No se ensayó reutilización del connector ni se emitió otra orden después del corte.
+
+La evidencia refuerza la decisión de no esperar correcciones para detener/cancelar y de conservar por separado borrador, fragmento provider e incertidumbre. También impide tratar `interrupt(): void`, el terminal de control o una correlación supuesta como confirmación de silencio/reutilización. Es análisis de contrato para las fases siguientes, no implementación o aceptación de barge-in.
+
+## Alternativas reconsideradas y solución elegida
+
+Se consideró seguir reparando la rama acumulada, desactivar las interrupciones, aumentar timeouts, modificar únicamente la voz, agregar otro VAD o migrar toda la conversación a otra infraestructura. Se eligió una rama limpia desde `main`, conservando la rama anterior y su evidencia para recuperar piezas de forma selectiva.
+
+La primera fase migra sólo el transporte grupal al SDK publicado `0.0.18` y sus métodos públicos. Debe demostrar que el contexto y el mensaje llegan al Agent elegido, que éste genera una respuesta audible y que el siguiente participante recibe el contexto correcto. Mantiene la configuración TTS de la base durante esa comparación. No habilita las interrupciones hasta superar esta aceptación.
+
+Después se incorporará una transacción de cancelación humana sobre el floor de YUNI. El corte perceptible y la cancelación no esperarán una corrección textual. El nuevo turno sí deberá respetar la cancelación autoritativa, el commit de Scribe y la disponibilidad segura del connector.
+
+El contexto distinguirá tres cosas: el borrador generado por el Agent, el fragmento informado por el provider y la parte pendiente o de exposición desconocida. `agent_response` contiene texto completo desde el comienzo del audio; no significa que el usuario haya oído todo. `agent_response_correction` es la mejor corrección textual disponible cuando se puede atribuir al turno, pero tampoco acredita por sí sola el instante exacto de reproducción en el navegador. Si no hay evidencia suficiente, se conservará esa incertidumbre. El detalle normativo se mantiene en ADR 0026.
+
+## Novedades de ElevenLabs evaluadas
+
+- **V3 Conversational:** disponible para Agents desde el [2026-02-09](https://elevenlabs.io/docs/changelog/2026/2/9). Es `eleven_v3_conversational`, distinto de `eleven_v3`, y aporta expresividad. Se evaluará por separado después de estabilizar turnos, con las voces del producto; no se lo presenta como arreglo del mensaje ausente.
+- **Turn-taking con prosodia:** [Expressive Mode](https://elevenlabs.io/docs/eleven-agents/customization/voice/expressive-mode) utiliza señales de Scribe para interpretar cuándo hablar o esperar. En YUNI los Agents reciben texto y el micrófono lo tiene un Scribe externo; cambiar `turn_eagerness` en cada Agent no incorpora automáticamente esas señales al orquestador grupal.
+- **`agent_response_complete`:** anunciado el [2026-04-27](https://elevenlabs.io/docs/changelog/2026/4/27), puede distinguir un final de respuesta completo. No aparece en la tabla de eventos reenviados del connector LiveAvatar; debe comprobarse su disponibilidad y relación con el audio real antes de depender de él.
+- **Filtrado de fondo:** [Scribe Realtime](https://elevenlabs.io/docs/api-reference/speech-to-text/v-1-speech-to-text-realtime) ofrece `filter_background_audio`. Requiere QA comparativo; no es identificación biométrica y no puede combinarse con timestamps. Se mantiene apagado durante la prueba base.
+- **Speech Engine:** [disponible desde mayo](https://elevenlabs.io/docs/changelog/2026/5/25), delega voz y turn-taking conservando un LLM propio. Implicaría rediseñar la conexión con LiveAvatar y el manejo de los Agents/Knowledge Bases. Las sesiones de orquestador self-hosted anunciadas en [agosto](https://elevenlabs.io/docs/changelog/2026/8/17) están marcadas como experimentales. Ninguna es dependencia de esta reparación.
+
+## Síntoma, evidencia, mitigación y resultado
+
+| Síntoma                                     | Evidencia                                                                                       | Causa o hipótesis                                            | Mitigación evaluada                                              | Resultado                                                                     |
+| ------------------------------------------- | ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------ | ---------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| Avatares simultáneos o sin voz              | QA real de agosto                                                                               | Coordinación de estados y eventos; causa completa no aislada | Cancelación mínima, luego reducer acústico                       | El intento anterior no superó QA real                                         |
+| Una palabra inaudible                       | Traza de agosto y nueva aplicación con 150/250/350 ms aproximados de energía muteada            | Cierre prematuro del gate y starts posteriores suprimidos    | Revisar continuidad acústica antes de habilitar barge-in         | Checkpoint de respuestas completas NO ACEPTADO; duración de drain por validar |
+| Palabra distorsionada                       | Lifecycle normal; PCM correcto                                                                  | TTS, transporte o reproducción                               | Preset y métricas del intento anterior                           | Causa pendiente de comparación fuente/navegador                               |
+| `Okey.` corta al avatar                     | Receipt 604 ms antes del commit                                                                 | Backchannel mal clasificado                                  | Normalización y clasificación híbrida                            | Regresión aislada cubierta entonces; QA global falló                          |
+| “Preparando respuesta” hasta watchdog       | Ensayo custom falla; sin ID/UUID se recibe el pedido y la nueva aplicación finaliza tres turnos | Regresión reproducida del contrato del comando custom        | SDK `0.0.18` y envío público con UUID                            | Entrega y avance verificados; completitud de audio no aceptada                |
+| Orquestador desconoce el turno interrumpido | El intento reducido descartaba el fragmento                                                     | Pérdida de contexto conversacional                           | Separar generado, informado por provider y pendiente/desconocido | Diseñado; todavía no implementado en esta fase                                |
+
+## Validación y resultados de la reconstrucción
+
+| Fase                                  | Evidencia requerida                                                                                        | Estado al abrir la reconstrucción                                |
+| ------------------------------------- | ---------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| 1. Contrato de envío y llamada normal | Versiones y commit; recepción en ElevenLabs; audio; secuencia A→B→C; IDs observados                        | Contrato y avance verificados; respuestas completas NO ACEPTADAS |
+| 2. Corte y nuevo ruteo                | Un corte por frase humana, ronda cancelada, committed conservado y próximo turno válido                    | PENDIENTE; no habilitar antes de aceptar fase 1                  |
+| 3. Contexto interrumpido              | Generado e informado por provider separados; incertidumbre explícita; correcciones tardías correlacionadas | PENDIENTE                                                        |
+| 4. QA acústico y expresividad         | Fuente/navegador, parlantes/auriculares, desktop/mobile, cortas/largas, eco y carga                        | PENDIENTE                                                        |
+
+Cada registro posterior debe incluir fecha, commit, SDK, parámetros efectivos, IDs no secretos, acciones realizadas, resultado y limitaciones. Los tests con mocks verifican nuestra lógica; las llamadas con proveedores verifican el contrato externo. Una falla de QA no se reemplaza por un conteo de tests aprobados.
+
+La validación automatizada de la fase 1 reportó 308 tests web, 25 de dominio, 16 de avatars, 36 de voice y 270 de API aprobados, con 6 casos API omitidos; typecheck aprobó los 12 paquetes y lint web aprobó. Es evidencia del cambio de transporte, no aceptación acústica de la llamada. El lockfile conserva las dependencias transitivas de `main` y cambia únicamente el SDK `0.0.17` por `0.0.18`. No hubo cambios de schema ni migraciones. El harness real confirmó el contrato externo y la aplicación real completó la ronda, pero no superó el control de cola de audio. El QA físico y la entrada de voz humana real siguen pendientes.
+
+## Fuentes y trazabilidad
+
+- [ADR 0005: ElevenLabs Expressive Conversation UX](decision-records/0005-elevenlabs-expressive-conversation-ux.md)
+- [ADR 0019: base de floor estricto](decision-records/0019-strict-floor-independent-liveavatar-group-sessions.md)
+- [ADR 0026: decisión de interrupción y reconstrucción](decision-records/0026-user-preemptible-group-call-floor.md)
+- [Plan 39](../plan-prompts/39-user-preemptible-group-call-floor.md) y [guía operativa](../integrations/group-calls-elevenlabs-liveavatar.md)
+- [LiveAvatar: contrato del connector ElevenLabs](https://docs.liveavatar.com/docs/lite-mode/connectors/elevenlabs-agent)
+- [ElevenLabs: eventos del cliente](https://elevenlabs.io/docs/eleven-agents/customization/events/client-events)
+- [ElevenLabs: comandos y contexto](https://elevenlabs.io/docs/eleven-agents/customization/events/client-to-server-events)
+- [LiveKit: publicación confiable de datos](https://docs.livekit.io/transport/data/packets/)
+- [Tests de lifecycle grupal](../../apps/web/group-interact-call.lifecycle.test.tsx)

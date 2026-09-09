@@ -2,6 +2,8 @@
 
 Esta guía describe la arquitectura vigente de llamadas privadas con dos o tres avatares. Complementa la configuración de proveedores de [ElevenLabs + LiveAvatar MVP](elevenlabs-liveavatar-mvp.md).
 
+Al 2026-09-08, la reconstrucción de interrupciones está **EN VALIDACIÓN, fase 1**. La base funcional de `main` sigue siendo la referencia: `ElevenLabsAgentSession` del SDK `0.0.18` ya pasó el ensayo de comandos con providers, pero la aplicación aún silencia muestras del stream después del primer end. La aceptación de respuestas completas no está superada. El barge-in humano y el contexto interrumpido descritos como objetivo más abajo todavía no se habilitan. [ADR 0026](../thesis/decision-records/0026-user-preemptible-group-call-floor.md) contiene la decisión y el [estudio de caso](../thesis/group-call-audio-stability-case-study.md) distingue evidencia histórica y resultados nuevos.
+
 ## Cómo funciona, en simple
 
 Pensá la llamada como una videollamada con varios expertos y un director invisible. Cada avatar está en su propia cabina: tiene su propio Agent de ElevenLabs, sus propios documentos, su propia voz y una sesión de LiveAvatar independiente. Los avatares no conversan libremente ni comparten un cerebro. YUNI dirige la conversación y les entrega la información necesaria cuando llega su turno.
@@ -94,53 +96,61 @@ Si el grupo contiene avatares compartidos, la sesión no se crea hasta que el us
 
 ## Comandos del connector
 
-Los comandos se publican como datos confiables en topic `agent-control`:
+La reconstrucción utiliza los métodos públicos de `ElevenLabsAgentSession` en `@heygen/liveavatar-web-sdk@0.0.18`:
 
-```json
-{
-  "event_type": "elevenlabs_agent_command",
-  "elevenlabs_event_type": "contextual_update",
-  "data": { "text": "<contexto compartido>" }
-}
+```ts
+const contextCommandId = session.sendContextualUpdate(context);
+const userCommandId = session.sendUserMessage(instruction);
+session.sendUserActivity();
 ```
 
-```json
-{
-  "event_type": "elevenlabs_agent_command",
-  "elevenlabs_event_type": "user_message",
-  "data": { "text": "<instrucción privada>" }
-}
-```
+El SDK arma el wrapper `elevenlabs_agent_command`, genera `event_id` UUID v4, incluye `session_id` y publica datos confiables en topic `agent-control`. No se escribe `type` dentro de `data` ni se impone un ID interno como `group-turn:...`. La correlación entre el UUID retornado y el turno de YUNI se guarda localmente. `source_event_id` es opcional; no se asume que cada callback lo incluya.
 
-El heartbeat del Agent debe usar `data: {}`; no se agrega `type` dentro de `data`:
+Estos métodos retornan un string; no esperan aceptación del Agent ni playback. Requieren conexión e ID de sesión disponibles. La publicación `reliable:true` no prueba que el worker o ElevenLabs hayan aceptado la orden. `interrupt()` heredado devuelve `void`, sin ACK remoto. La inspección del [paquete publicado](https://www.npmjs.com/package/@heygen/liveavatar-web-sdk) y su [código exacto](https://github.com/heygen-com/liveavatar-web-sdk/blob/5faad721ef991bd7ddba9dcbc9827d5426f7b9ca/packages/js-sdk/src/LiveAvatarSession/ElevenLabsAgentSession.ts) sustenta este contrato.
 
-```json
-{
-  "event_type": "elevenlabs_agent_command",
-  "elevenlabs_event_type": "user_activity",
-  "data": {}
-}
-```
+En el ensayo acotado de interrupción hubo terminal a los 489 ms, PCM remoto hasta los 680 ms y ninguna corrección viva en 12 segundos, aunque ElevenLabs terminó guardando una respuesta truncada. Su `source_event_id` terminal tampoco coincidió con el UUID del pedido. No esperar corrección textual para cortar y no inferir reutilización segura por esos valores: sólo se probó cortar una sesión, no enviar otra orden sobre ella. Los IDs y límites están en la [evidencia sanitizada](../thesis/evidence/2026-09-08-group-provider-command-contract.md).
 
 YUNI envía `user_activity` cada 20 segundos a los Agents sin floor, mantiene el heartbeat HTTP de la sesión grupal cada 20 segundos y llama `LiveAvatarSession.keepAlive()` cada 120 segundos. Los tres ciclos tienen cleanup independiente.
 
 ## Configuración de Agents
 
-| Configuración             | Llamada individual    | Llamada grupal                    |
-| ------------------------- | --------------------- | --------------------------------- |
-| Agent persistido          | `providerAgentId`     | `groupProviderAgentId`            |
-| Knowledge Base, voz y TTS | Nativos de ElevenLabs | Los mismos recursos nativos       |
-| `turn_timeout`            | 10 segundos           | 30 segundos                       |
-| `soft_timeout`            | filler natural        | deshabilitado (`-1`)              |
-| Micrófono del connector   | activo                | muteado; Scribe es el único input |
-| Interrupción humana       | habilitada            | deshabilitada durante la ronda    |
+| Configuración             | Llamada individual    | Llamada grupal                                                    |
+| ------------------------- | --------------------- | ----------------------------------------------------------------- |
+| Agent persistido          | `providerAgentId`     | `groupProviderAgentId`                                            |
+| Knowledge Base, voz y TTS | Nativos de ElevenLabs | Los mismos recursos nativos                                       |
+| `turn_timeout`            | 10 segundos           | 30 segundos                                                       |
+| `soft_timeout`            | filler natural        | deshabilitado (`-1`)                                              |
+| Micrófono del connector   | activo                | muteado; Scribe es el único input                                 |
+| Interrupción humana       | habilitada            | pendiente de fase 2; no habilitada en la validación de transporte |
+
+## Flujo Scribe-authoritative objetivo
+
+Después de aceptar la fase 1, una frase significativa capturada por Scribe durante la voz de un avatar cortará el audio y pedirá al backend cancelar la ronda esperada. Los otros avatares no tomarán la palabra por su cuenta. El committed humano se conservará aunque llegue antes del ACK y se reenrutará una sola vez después de cancelar la ronda anterior.
+
+El corte y la cancelación no esperarán una corrección textual. Para el siguiente pedido, YUNI distinguirá el borrador generado del fragmento informado por el provider y de lo pendiente o desconocido. `agent_response` no demuestra audio oído; `agent_response_correction` puede mejorar el fragmento del turno original sin reabrirlo. La ausencia de evidencia se expresa como incertidumbre, no como un texto completo supuestamente pronunciado.
+
+Este flujo es una decisión por implementar. La fase actual conserva el TTS, la política de reproducción y el micrófono muteado de los connectors de la base para poder atribuir los resultados al cambio de transporte.
 
 ## Diagnóstico
+
+Si queda “Preparando respuesta” o no hay voz:
+
+1. Registrar commit, versión de SDK, sesión, attempt, turno, avatar y UUID provider, sin transcripciones ni tokens en los logs ordinarios.
+2. Confirmar conexión, `sessionId` y stream adjunto antes de enviar comandos. Distinguir un medio preparado de un Agent listo para procesar la orden.
+3. Consultar la conversación de ElevenLabs con acceso autorizado y comprobar recepción de contexto **y** `user_message`; un contexto recibido no demuestra que haya llegado el pedido.
+4. Si el pedido no aparece, comparar el wrapper con la API pública del SDK, especialmente UUID y sesión. No concluir que falló TTS ni reenviar automáticamente una orden cuyo resultado es incierto.
+5. Si el pedido aparece, comparar respuesta generada y audio fuente con `speak_started`, `speak_ended`, gate y reproducción del navegador. El final del control no acredita por sí solo el último sample audible.
+6. Atribuir los callbacks usando la evidencia de correlación realmente disponible. No descartar todo evento sin `source_event_id` suponiendo una garantía que el provider no documenta.
+7. Separar una cancelación humana, un watchdog y un cierre de sesión; verificar receipts y eventos persistidos. En la sesión investigada `cmttg99ce002ap6n985npx8tc` hubo vencimientos de aproximadamente 20 segundos y cero interrupciones humanas registradas.
+
+La [comparación real del contrato](../thesis/evidence/2026-09-08-group-provider-command-contract.md) reprodujo el fallo de `group-turn:...` y obtuvo entrega más audio con UUID/API pública. Por eso no deben volver a usarse IDs internos como IDs del protocolo provider. El GET inicial de una conversación en `processing` puede contener resultados incompletos: reconsultar hasta su estado final antes de concluir que el mensaje falta. `hasAudio=true` también puede corresponder sólo al saludo.
+
+La aplicación real con STT simulado completó tres turnos y mantuvo un máximo de un elemento desmuteado, pero todavía silenció muestras del stream después del primer end. Un resultado de ronda completada no acepta respuestas completas: correlacionar RMS y estado muteado, incluyendo los starts posteriores que la base trata como `suppress`. La fase 1 sigue sin aceptación acústica; `agent_response_complete` de ElevenLabs tampoco se usa como requisito hasta comprobar que el connector lo reenvía. Registrar el perfil TTS efectivo antes y después del sync: la prueba real restableció el preset de `main`, distinto del preset presente durante el harness aislado.
 
 Si aparece “¿seguís ahí?”:
 
 1. verificar eventos `user_activity` en `agent-control` cada 20 segundos;
-2. confirmar que el payload tenga `data: {}`;
+2. confirmar que se utilice `sendUserActivity()` y que el heartbeat alcance el connector;
 3. comprobar que el Agent grupal tenga `turn_timeout=30` y `soft_timeout=-1`;
 4. verificar que un timer anterior no haya sobrevivido a end/retry;
 5. recordar que el audio gate debe mantener inaudible cualquier respuesta autónoma aun si el timer del navegador fue ralentizado.
@@ -155,6 +165,8 @@ Si dos avatares parecen hablar:
 
 ## Checklist manual
 
+La primera aceptación se ejecuta sin habilitar interrupciones ni cambiar TTS:
+
 1. Crear un grupo de tres avatares con documentos distintos.
 2. Iniciar la llamada y permanecer más de 35 segundos en silencio.
 3. Decir “¿Podrían introducirse una vez cada uno?”.
@@ -162,7 +174,13 @@ Si dos avatares parecen hablar:
 5. Probar una pregunta normal, una mención y un debate.
 6. Detener una sesión individual y comprobar continuidad degradada y retry.
 7. Revisar el historial y una llamada individual de regresión.
+8. Verificar recepción del `user_message` de cada turno en ElevenLabs y registrar IDs y tiempos de inicio/final, además del resultado audible.
+9. Repetir respuestas de una palabra y respuestas largas; comparar audio fuente con navegador en parlantes/auriculares y desktop/mobile.
+
+Sólo después de aceptar esa base se prueba barge-in: frase significativa, backchannels, eco, committed antes/después del ACK, cancelación A→B, reutilización del mismo connector y contexto interrumpido. Cada resultado se registra en el estudio de caso con fecha y commit; una prueba pendiente no se marca como aprobada por tener cobertura automatizada.
 
 ## Decisión asociada
 
 - [ADR 0019: Floor estricto con sesiones LiveAvatar grupales independientes](../thesis/decision-records/0019-strict-floor-independent-liveavatar-group-sessions.md)
+- [ADR 0026: interrupción humana y reconstrucción por fases](../thesis/decision-records/0026-user-preemptible-group-call-floor.md)
+- [Plan 39 y estado de aceptación](../plan-prompts/39-user-preemptible-group-call-floor.md)
