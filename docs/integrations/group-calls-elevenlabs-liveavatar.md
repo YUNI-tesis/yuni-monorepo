@@ -2,7 +2,7 @@
 
 Esta guía describe la arquitectura vigente de llamadas privadas con dos o tres avatares. Complementa la configuración de proveedores de [ElevenLabs + LiveAvatar MVP](elevenlabs-liveavatar-mvp.md).
 
-Al 2026-09-08, la reconstrucción de interrupciones está **EN VALIDACIÓN, fase 1**. La base funcional de `main` sigue siendo la referencia: `ElevenLabsAgentSession` del SDK `0.0.18` ya pasó el ensayo de comandos con providers, pero la aplicación aún silencia muestras del stream después del primer end. La aceptación de respuestas completas no está superada. El barge-in humano y el contexto interrumpido descritos como objetivo más abajo todavía no se habilitan. [ADR 0026](../thesis/decision-records/0026-user-preemptible-group-call-floor.md) contiene la decisión y el [estudio de caso](../thesis/group-call-audio-stability-case-study.md) distingue evidencia histórica y resultados nuevos.
+Al 2026-09-09, la reconstrucción de interrupciones está **EN VALIDACIÓN, fase 1**. La base funcional de `main` sigue siendo la referencia: `ElevenLabsAgentSession` del SDK `0.0.18` pasó el ensayo de comandos; el cierre acotado pasó tres rondas deterministas con providers, nueve respuestas sin PCM bloqueado observado. El ensayo previo que silenció tails y el ensayo largo que agotó el tiempo del harness se conservan como evidencia, no como aprobaciones. La aceptación física sigue pendiente. El barge-in humano y el contexto interrumpido descritos como objetivo más abajo todavía no se habilitan. [ADR 0026](../thesis/decision-records/0026-user-preemptible-group-call-floor.md) contiene la decisión y el [estudio de caso](../thesis/group-call-audio-stability-case-study.md) distingue evidencia histórica y resultados nuevos.
 
 ## Cómo funciona, en simple
 
@@ -58,7 +58,7 @@ OPENAI_GROUP_ROUTER_TIMEOUT_MS=3000
 4. El navegador mantiene todos los streams muteados, envía `contextual_update` al seleccionado y luego abre sólo su gate de audio.
 5. El navegador envía `user_message` únicamente al Agent seleccionado.
 6. El Agent usa sus instrucciones y Knowledge Base nativas, genera la respuesta y la pronuncia con su propia voz.
-7. `speak_ended` se confirma después de volver a mutearlo. El servidor habilita el siguiente turno o devuelve el piso al usuario.
+7. `speak_ended` inicia una espera de estabilización de 1.000 ms, todavía con el mismo owner audible y su floor retenido. Una continuación invalida ese cierre. Al finalizar un candidato vigente dentro de la cola, el navegador mutea al owner y confirma el end; recién entonces el servidor habilita el siguiente turno o devuelve el piso al usuario.
 
 El contexto se reconstruye justo antes de cada turno. Por eso el segundo participante recibe el texto exacto que produjo el primero, además del roster completo, aunque ambas instrucciones privadas se hayan planificado al comienzo de la ronda. El paquete conserva los ocho mensajes públicos más recientes, acota cada entrada y no supera 9.000 bytes para mantenerse dentro de un margen seguro del canal de datos.
 
@@ -71,6 +71,8 @@ LiveAvatar adjunta audio y video remotos al mismo elemento multimedia. `voiceCha
 - `applyAudioGate(null)` mantiene todos los elementos remotos muteados;
 - `applyAudioGate(avatarId)` desmutea exclusivamente al owner autorizado.
 
+Para transferir A→B, el gate mutea primero todos los no-owners y abre B al final, sin depender del orden del mapa de elementos. Reaplicar el mismo owner no hace `mute all → unmute owner` ni genera un corte transitorio de su audio.
+
 Un `speak_started` no autorizado se reporta con `turnId: null`. El servidor responde `suppress`; el cliente mantiene al infractor muteado y llama `interrupt()` únicamente sobre esa sesión. El floor válido no cambia y el evento no entra al transcript.
 
 Los fallos de participante guardan una receipt durable por `sourceEventId` y `participantAttemptId`. El primero hace idempotente la entrega; el segundo impide que un evento de la conexión anterior degrade un retry vigente. `session.stopped` y `session.disconnected` convergen en el mismo reporte y el navegador lo reintenta con el ID original hasta recibir ACK.
@@ -81,6 +83,16 @@ Una directiva `speak` sólo es ejecutable cuando coincide exactamente con `turnI
 
 Con sesiones independientes el backend no controla directamente los tracks de LiveKit. El gate del navegador impide audibilidad en YUNI; no enviar `user_message` evita generación dirigida; `user_activity` reduce las respuestas autónomas causadas por inactividad.
 
+### Cierre natural y continuaciones
+
+El ajuste usa una barrera de 1.000 ms por identidad de startup o turno, no otro floor. Durante la espera después de un end, la autorización local continúa en `speaking`; el owner y la lease del backend no se liberan. Un nuevo start del owner cancela el candidato antes del dedupe lógico, por lo que una continuación no provoca `interrupt()` ni una segunda confirmación del inicio. Los duplicados del mismo evento no extienden el plazo.
+
+El timer sólo propone un cierre. Su finalización se valida y consume una sola vez dentro de la cola de operaciones, inmediatamente antes de mutear y confirmar el end. Si la cola estaba esperando un ACK anterior y llega otra continuación, el candidato encolado ya no puede cerrar el turno. El contenido de la respuesta se toma al finalizar, no al recibir el primer end.
+
+El saludo de startup permanece muteado hasta completar su propia barrera o el límite de preparación existente. La instancia recuerda de manera acotada fuentes ya finalizadas y descarta sus starts/ends tardíos antes de tratarlos como habla intrusa, sin bloquear la reentrega idempotente del end vigente cuando falló su confirmación. La ausencia de `source_event_id` no se considera por sí sola un error y ese ID no tiene que coincidir con el UUID de `user_message`.
+
+Los 1.000 ms contemplan continuaciones observadas aproximadamente 638–642 ms después de un end. Son una heurística de eventos, **no un ACK acústico**: pueden agregar una pausa y no garantizan absorber cualquier continuación futura. No se agrega WebAudio ni medición de reproducción al producto, no se cambia TTS y no se habilita barge-in. La lease existente sigue siendo el límite de seguridad. Ver la [evidencia del cierre natural](../thesis/evidence/2026-09-09-group-speech-completion.md); esta guía no anticipa su aceptación de QA.
+
 ## Lifecycle y cleanup
 
 - `live.start()` está acotado por participante; una conexión que resuelve tarde se detiene y nunca se adjunta.
@@ -89,6 +101,7 @@ Con sesiones independientes el backend no controla directamente los tracks de Li
 - El worker reintenta stops transitorios y trata una sesión ya inexistente como cleanup exitoso.
 - Eliminar un avatar termina las llamadas afectadas, preserva historiales grupales con otros participantes y elimina grupos que queden por debajo de dos miembros.
 - Si la composición editable de un grupo cambió durante una llamada, el cleanup usa el snapshot de la conversación y termina todas las sesiones del grupo antes de eliminarlo, incluso entre propietarios distintos.
+- Release del floor, timeout y falla del owner invalidan candidatos de cierre. Reemplazo de instancia, end y unmount descartan las barreras y limpian sus timers/listeners; un callback viejo no confirma un end sobre el turno nuevo. La falla de otro participante no debe mutear al owner válido mientras espera el cierre natural.
 
 ## Privacidad de grupos compartidos
 
@@ -129,7 +142,7 @@ Después de aceptar la fase 1, una frase significativa capturada por Scribe dura
 
 El corte y la cancelación no esperarán una corrección textual. Para el siguiente pedido, YUNI distinguirá el borrador generado del fragmento informado por el provider y de lo pendiente o desconocido. `agent_response` no demuestra audio oído; `agent_response_correction` puede mejorar el fragmento del turno original sin reabrirlo. La ausencia de evidencia se expresa como incertidumbre, no como un texto completo supuestamente pronunciado.
 
-Este flujo es una decisión por implementar. La fase actual conserva el TTS, la política de reproducción y el micrófono muteado de los connectors de la base para poder atribuir los resultados al cambio de transporte.
+Este flujo es una decisión por implementar. La fase actual conserva el TTS y el micrófono muteado de los connectors de la base. Después de aislar el contrato de transporte, modifica únicamente el cierre natural y el orden seguro del gate descritos arriba, con su aceptación de reproducción todavía pendiente.
 
 ## Diagnóstico
 
@@ -145,7 +158,9 @@ Si queda “Preparando respuesta” o no hay voz:
 
 La [comparación real del contrato](../thesis/evidence/2026-09-08-group-provider-command-contract.md) reprodujo el fallo de `group-turn:...` y obtuvo entrega más audio con UUID/API pública. Por eso no deben volver a usarse IDs internos como IDs del protocolo provider. El GET inicial de una conversación en `processing` puede contener resultados incompletos: reconsultar hasta su estado final antes de concluir que el mensaje falta. `hasAudio=true` también puede corresponder sólo al saludo.
 
-La aplicación real con STT simulado completó tres turnos y mantuvo un máximo de un elemento desmuteado, pero todavía silenció muestras del stream después del primer end. Un resultado de ronda completada no acepta respuestas completas: correlacionar RMS y estado muteado, incluyendo los starts posteriores que la base trata como `suppress`. La fase 1 sigue sin aceptación acústica; `agent_response_complete` de ElevenLabs tampoco se usa como requisito hasta comprobar que el connector lo reenvía. Registrar el perfil TTS efectivo antes y después del sync: la prueba real restableció el preset de `main`, distinto del preset presente durante el harness aislado.
+En el ensayo previo, la aplicación real con STT simulado completó tres turnos y mantuvo un máximo de un elemento desmuteado, pero silenció muestras del stream después del primer end. Un resultado de ronda completada no acepta respuestas completas: correlacionar RMS y estado muteado mediante el harness de QA, incluyendo starts posteriores y cierres propuestos/confirmados. La barrera nueva no incorpora esas métricas al producto. La fase 1 sigue sin aceptación acústica; `agent_response_complete` de ElevenLabs tampoco se usa como requisito hasta comprobar que el connector lo reenvía. Registrar el perfil TTS efectivo antes y después del sync: la prueba real restableció el preset de `main`, distinto del preset presente durante el harness aislado.
+
+Para diagnosticar el cierre natural, comprobar que una continuación invalide el candidato antes de que se confirme dentro de la cola; distinguir un end recibido de un end confirmado. Revisar que reentregas del mismo evento no prolonguen el timer, que sources ya finalizadas no interrumpan al owner siguiente y que una reentrega tras fallo HTTP conserve la misma clave idempotente del end. Las fuentes conocidas se usan para descartar episodios finalizados, no para exigir una correlación que falta en los eventos restantes.
 
 Si aparece “¿seguís ahí?”:
 
@@ -160,7 +175,7 @@ Si dos avatares parecen hablar:
 1. inspeccionar `floorOwnerAvatarId` y `floorTurnId` en la respuesta del servidor;
 2. confirmar que exactamente un elemento `<video>` esté desmuteado;
 3. verificar que `speak_started` rogue produzca `suppress`, no `interrupt` global;
-4. confirmar que `speak_ended` mutee antes del request de confirmación;
+4. confirmar que sólo el candidato de cierre natural vigente mutee antes del request de confirmación, y que ningún comando del avatar siguiente salga durante la espera;
 5. revisar eventos tardíos y leases vencidos en logs sin avanzar la ronda.
 
 ## Checklist manual

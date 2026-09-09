@@ -1,9 +1,10 @@
-/* global AbortSignal, AudioContext, Buffer, MediaStream, URL, console, document, fetch, performance, process, setInterval, setTimeout, window */
+/* global AbortSignal, AudioContext, Buffer, MediaStream, TextDecoder, URL, console, document, fetch, performance, process, setInterval, setTimeout, window */
 // Only Scribe's websocket is replaced. The actual application and provider remain intact.
 import fs from "node:fs/promises";
 import path from "node:path";
 import { createHash, createHmac } from "node:crypto";
 import { execFileSync } from "node:child_process";
+import { assessFullAppEvidence } from "./acoustic-evidence.mjs";
 import {
   arg,
   assertLocalUrl,
@@ -12,6 +13,7 @@ import {
   checkConversation,
   deadline,
   loadBrowser,
+  inspectSandboxSessionToken,
   outputDirectory,
   repo,
   run,
@@ -24,11 +26,17 @@ const baseUrl = assertLocalUrl(arg("app-url", "http://localhost:3000"));
 if (process.env.API_INTERNAL_URL) assertLocalUrl(process.env.API_INTERNAL_URL);
 const temp = await outputDirectory();
 let text = arg("text");
+const responseLength = arg("response", "short");
+const layout = arg("layout", "desktop");
+if (!["short", "long"].includes(responseLength)) throw new Error("--response must be short or long");
+if (!["desktop", "mobile"].includes(layout)) throw new Error("--layout must be desktop or mobile");
 const report = {
   createdAt: new Date().toISOString(),
   kind: "full-app-real-provider-fake-scribe",
   run,
   groupId,
+  responseLength,
+  layout,
   api: [],
   errors: [],
   providerChecks: [],
@@ -41,7 +49,9 @@ const sql = (query) =>
   ).trim();
 let browser, page, context, sessionId, token;
 let running = true;
+let startupFailure = null;
 const responseTasks = [];
+const requestObservations = new WeakMap();
 const scribeSockets = [];
 const snapshotTts = async (roster) =>
   Promise.all(
@@ -111,7 +121,9 @@ try {
     throw new Error("Every participant needs a synchronized group Agent");
   text ??=
     roster.map((item) => item.name).join(", ") +
-    ", respondan todos por turno. Cada uno diga únicamente la palabra azul.";
+    (responseLength === "short"
+      ? ", respondan todos por turno. Cada uno diga únicamente la palabra azul."
+      : ", respondan todos por turno. Cada uno explique una recomendación concreta de su especialidad en dos oraciones breves de unas veinte palabras en total.");
   report.roster = roster;
   report.ttsBefore = await snapshotTts(roster);
   const now = Math.floor(Date.now() / 1000);
@@ -137,7 +149,9 @@ try {
   browser = await chromium.launch(browserOptions());
   context = await browser.newContext({
     permissions: ["microphone"],
-    viewport: { width: 1440, height: 1000 },
+    ...(layout === "mobile"
+      ? { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3 }
+      : { viewport: { width: 1440, height: 1000 } }),
   });
   await context.addCookies([
     {
@@ -152,8 +166,9 @@ try {
   ]);
   page = await context.newPage();
   page.on("pageerror", (error) => report.errors.push({ type: "pageerror", name: error.name }));
-  // Inspect the actual provider session metadata before the app can call SDK.start().
-  // The local shell flag alone cannot prove that the running API server is sandboxed.
+  // Pre-start GET cannot see an unstarted provider session. Inspect allowlisted
+  // claims from our authenticated loopback API, then confirm via GET after start.
+  // This intentionally does not claim cryptographic JWT signature verification.
   await page.route(baseUrl + "/api/avatar-groups/" + groupId + "/voice-sessions", async (route) => {
     if (route.request().method() !== "POST") return route.continue();
     const response = await route.fetch();
@@ -161,30 +176,50 @@ try {
     if (!body?.voiceSession) return route.fulfill({ response });
     sessionId = body.voiceSession.id;
     report.sessionId = sessionId;
+    report.providerSessions = body.voiceSession.participants.map((participant) => ({
+      avatarId: participant.avatar.id,
+      name: participant.avatar.name,
+      providerSessionId: participant.sessionId,
+      participantAttemptId: participant.participantAttemptId,
+    }));
+    const guardParticipants = [];
+    console.log(
+      JSON.stringify({
+        stage: "sandbox_guard_start",
+        sessionId,
+        participantCount: body.voiceSession.participants.length,
+      })
+    );
     let allSandbox = true;
     for (const participant of body.voiceSession.participants) {
-      if (!participant.sessionToken) continue;
+      const observation = {
+        avatarId: participant.avatar.id,
+        sessionId: participant.sessionId ?? null,
+        observedAt: new Date().toISOString(),
+        status: null,
+        isSandbox: null,
+        errorName: null,
+      };
+      guardParticipants.push(observation);
+      if (!participant.sessionToken) {
+        observation.errorName = "NoSessionToken";
+        continue;
+      }
       if (!participant.sessionId) {
+        observation.errorName = "MissingSessionId";
         allSandbox = false;
-        break;
+        continue;
       }
-      try {
-        const metadataResponse = await fetch(
-          "https://api.liveavatar.com/v1/sessions/" + encodeURIComponent(participant.sessionId),
-          {
-            headers: { "X-API-KEY": process.env.LIVEAVATAR_API_KEY },
-            signal: AbortSignal.timeout(10000),
-          }
-        );
-        const metadataBody = await metadataResponse.json();
-        const metadata = metadataBody.data ?? metadataBody;
-        if (!metadataResponse.ok || metadata.is_sandbox !== true) allSandbox = false;
-      } catch {
-        allSandbox = false;
-      }
+      const claims = inspectSandboxSessionToken(participant.sessionToken, participant.sessionId);
+      observation.claims = claims;
+      observation.isSandbox = claims.isSandbox;
+      if (!claims.passed) allSandbox = false;
+      console.log(JSON.stringify({ stage: "sandbox_guard_participant", ...observation }));
     }
-    report.sandboxGuard = { passed: allSandbox };
+    report.sandboxGuard = { passed: allSandbox, participants: guardParticipants };
+    console.log(JSON.stringify({ stage: "sandbox_guard_result", sessionId, passed: allSandbox }));
     if (!allSandbox) {
+      startupFailure = "SandboxMetadataUnconfirmed";
       report.errors.push({ type: "sandbox_guard_denied" });
       return route.fulfill({
         status: 503,
@@ -219,8 +254,96 @@ try {
       participants: {},
       mediaEvents: [],
       samples: [],
+      commands: [],
+      providerEvents: [],
+      commandObserverAvailable: false,
+      sampleIntervalMs: 20,
     };
     window.__yuniQAMedia = observations;
+    // LiveKit wraps JSON in a protobuf DataPacket. Inspect just the bounded JSON
+    // object; never persist the packet or its text. All native calls are untouched.
+    const decodeControl = (packet) => {
+      try {
+        const text =
+          typeof packet === "string"
+            ? packet
+            : packet instanceof ArrayBuffer || ArrayBuffer.isView(packet)
+              ? new TextDecoder().decode(packet)
+              : "";
+        if (!text || text.length > 262144) return null;
+        for (let start = text.indexOf("{"); start >= 0; start = text.indexOf("{", start + 1)) {
+          let depth = 0,
+            quoted = false,
+            escaped = false;
+          for (let index = start; index < text.length; index++) {
+            const char = text[index];
+            if (quoted) {
+              if (escaped) escaped = false;
+              else if (char === "\\") escaped = true;
+              else if (char === '"') quoted = false;
+            } else if (char === '"') quoted = true;
+            else if (char === "{") depth++;
+            else if (char === "}" && --depth === 0) {
+              const value = JSON.parse(text.slice(start, index + 1));
+              if (typeof value.event_type === "string") return value;
+              break;
+            }
+          }
+        }
+      } catch {
+        /* Unrecognized packet formats make evidence inconclusive, never break WebRTC. */
+      }
+      return null;
+    };
+    const sessionByChannel = new WeakMap();
+    const seenChannels = new WeakSet();
+    const record = (packet, channel, direction) => {
+      const event = decodeControl(packet);
+      if (!event) return;
+      if (event.session_id) sessionByChannel.set(channel, event.session_id);
+      const entry = {
+        atMs: Math.round(performance.now() - observations.startedAt),
+        eventType: event.event_type,
+        eventId: event.event_id ?? null,
+        sourceEventId: event.source_event_id ?? null,
+        sessionId: event.session_id ?? sessionByChannel.get(channel) ?? null,
+        commandType: event.elevenlabs_event_type ?? null,
+        providerType: event.elevenlabs_event_type ?? event.data?.type ?? null,
+      };
+      (direction === "out" ? observations.commands : observations.providerEvents).push(entry);
+    };
+    const watch = (channel) => {
+      if (seenChannels.has(channel)) return;
+      seenChannels.add(channel);
+      channel.addEventListener("message", (event) => record(event.data, channel, "in"));
+    };
+    if (window.RTCDataChannel && window.RTCPeerConnection) {
+      const send = window.RTCDataChannel.prototype.send;
+      window.RTCDataChannel.prototype.send = function (packet) {
+        try {
+          record(packet, this, "out");
+        } catch {
+          /* Observation only. */
+        }
+        return send.call(this, packet);
+      };
+      const createDataChannel = window.RTCPeerConnection.prototype.createDataChannel;
+      window.RTCPeerConnection.prototype.createDataChannel = function (...options) {
+        const channel = createDataChannel.apply(this, options);
+        watch(channel);
+        return channel;
+      };
+      const observedPeers = new WeakSet();
+      const setRemoteDescription = window.RTCPeerConnection.prototype.setRemoteDescription;
+      window.RTCPeerConnection.prototype.setRemoteDescription = function (...options) {
+        if (!observedPeers.has(this)) {
+          observedPeers.add(this);
+          this.addEventListener("datachannel", (event) => watch(event.channel));
+        }
+        return setRemoteDescription.apply(this, options);
+      };
+      observations.commandObserverAvailable = true;
+    }
     setInterval(() => {
       const videos = [...document.querySelectorAll("video")];
       observations.maxUnmutedElements = Math.max(
@@ -268,14 +391,15 @@ try {
           name,
           rms,
           muted: video.muted,
+          volume: video.volume,
           paused: video.paused,
           readyState: video.readyState,
           speaking: tile?.dataset.speaking,
           turnOwner: tile?.dataset.turnOwner,
           status: tile?.dataset.status,
         });
-        if (observations.samples.length > 6000)
-          observations.samples.splice(0, observations.samples.length - 6000);
+        if (observations.samples.length > 18000)
+          observations.samples.splice(0, observations.samples.length - 18000);
         const stats = (observations.participants[name] ??= {
           samples: 0,
           nonSilentUnmutedSamples: 0,
@@ -294,8 +418,9 @@ try {
           stats.lastAudioAtMs = atMs;
         }
       }
-    }, 50);
+    }, 20);
   });
+  page.on("request", (request) => requestObservations.set(request, new Date().toISOString()));
   page.on("response", (response) => {
     const pathname = new URL(response.url()).pathname;
     if (!pathname.startsWith("/api/")) return;
@@ -303,6 +428,9 @@ try {
       const request = response.request();
       const event = {
         at: new Date().toISOString(),
+        requestObservedAt: requestObservations.get(request),
+        responseObservedAt: new Date().toISOString(),
+        timestampMeaning: "Playwright network observation, not provider event time",
         path: pathname,
         status: response.status(),
         method: request.method(),
@@ -355,6 +483,7 @@ try {
   });
   await page.goto(baseUrl + "/groups/" + groupId, { waitUntil: "domcontentloaded" });
   await page.getByRole("button", { name: "Iniciar llamada", exact: true }).waitFor({ timeout: 20000 });
+  console.log(JSON.stringify({ stage: "ui_start", groupId, layout, responseLength }));
   await page.getByRole("button", { name: "Iniciar llamada", exact: true }).click();
   // Owner groups normally need no disclosure; if present follow the actual UI confirmation.
   const modal = page.getByRole("dialog");
@@ -362,17 +491,63 @@ try {
     await modal.getByRole("button", { name: "Iniciar llamada", exact: true }).click();
   await deadline(
     (async () => {
-      while (running && !scribeSockets.length) await new Promise((resolve) => setTimeout(resolve, 100));
+      while (running && !scribeSockets.length) {
+        if (startupFailure) {
+          const error = new Error("Startup verification failed");
+          error.name = startupFailure;
+          throw error;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
       await page.getByText("Tu turno", { exact: true }).waitFor({ timeout: 15000 });
     })(),
     45000,
     "Full roster startup"
   );
+  const postStartParticipants = await Promise.all(
+    report.providerSessions.map(async (participant) => {
+      const observation = {
+        avatarId: participant.avatarId,
+        sessionId: participant.providerSessionId,
+        observedAt: new Date().toISOString(),
+        status: null,
+        isSandbox: null,
+        errorName: null,
+      };
+      try {
+        const response = await fetch(
+          "https://api.liveavatar.com/v1/sessions/" + encodeURIComponent(participant.providerSessionId),
+          {
+            headers: { "X-API-KEY": process.env.LIVEAVATAR_API_KEY },
+            signal: AbortSignal.timeout(6000),
+          }
+        );
+        observation.status = response.status;
+        const body = await response.json();
+        const metadata = body.data ?? body;
+        observation.isSandbox = typeof metadata.is_sandbox === "boolean" ? metadata.is_sandbox : null;
+      } catch (error) {
+        observation.errorName = error.name;
+      }
+      console.log(JSON.stringify({ stage: "sandbox_post_start_participant", ...observation }));
+      return observation;
+    })
+  );
+  report.postStartSandboxGuard = {
+    passed: postStartParticipants.every((item) => item.status === 200 && item.isSandbox === true),
+    participants: postStartParticipants,
+  };
+  if (!report.postStartSandboxGuard.passed) {
+    const error = new Error("Started session sandbox could not be confirmed");
+    error.name = "PostStartSandboxUnconfirmed";
+    throw error; // finally ends only this run's session; no Scribe input is injected.
+  }
   // No direct API turn injection: the real Scribe SDK dispatches this to the real component listener.
   report.injection = {
     at: new Date().toISOString(),
     kind: "scribe_committed_transcript",
     contentLength: text.length,
+    browserAtMs: await page.evaluate(() => Math.round(performance.now() - window.__yuniQAMedia.startedAt)),
   };
   scribeSockets.at(-1).send(JSON.stringify({ message_type: "committed_transcript", text }));
   console.log(JSON.stringify({ stage: "injected", sessionId, contentLength: text.length }));
@@ -403,21 +578,8 @@ try {
   await page.waitForTimeout(1000);
   report.media = await page.evaluate(() => window.__yuniQAMedia);
   report.roundPassed = true;
-  report.audioDetectedForEveryParticipant =
-    Object.values(report.media.participants).length >= roster.length &&
-    Object.values(report.media.participants).every((stats) => stats.nonSilentUnmutedSamples > 0);
-  const injectionAtMs = Date.parse(report.injection.at) - Date.parse(report.media.wallStartedAt);
-  report.mutedNonSilentSamplesAfterInput = report.media.samples.filter(
-    (sample) => sample.atMs >= injectionAtMs && sample.muted && sample.rms > 0.001
-  ).length;
-  report.acousticCheck =
-    Object.values(report.media.participants).length < roster.length
-      ? "inconclusive"
-      : report.audioDetectedForEveryParticipant &&
-          report.media.maxUnmutedElements <= 1 &&
-          report.mutedNonSilentSamplesAfterInput === 0
-        ? "passed"
-        : "failed";
+  report.acousticEvidence = assessFullAppEvidence(report);
+  report.acousticCheck = report.acousticEvidence.outcome;
   await page.getByRole("button", { name: "Finalizar llamada", exact: true }).click();
   await page.waitForTimeout(1000);
   console.log(
@@ -426,8 +588,7 @@ try {
       sessionId,
       backendRoundPassed: true,
       acousticCheck: report.acousticCheck,
-      mutedNonSilentSamplesAfterInput: report.mutedNonSilentSamplesAfterInput,
-      audioDetectedForEveryParticipant: report.audioDetectedForEveryParticipant,
+      acousticEvidence: report.acousticEvidence,
       maxUnmutedElements: report.media.maxUnmutedElements,
       mediaParticipants: report.media.participants,
     })
@@ -462,7 +623,7 @@ try {
   await Promise.allSettled(responseTasks);
   if (report.roster) {
     report.ttsAfter = await snapshotTts(report.roster);
-    if (sessionId)
+    if (sessionId && report.sandboxGuard?.passed === true)
       report.providerChecks = await Promise.all(
         report.roster.map((participant) =>
           checkConversation({ participant, createdAt: report.createdAt, expectedUserText: null })

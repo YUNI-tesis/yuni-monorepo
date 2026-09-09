@@ -1,7 +1,58 @@
-/* global Response, process */
+/* global Buffer, Response, process */
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { assertLocalUrl, assertSandbox, checkConversation, readAgents } from "./runtime.mjs";
+import {
+  assertLocalUrl,
+  assertSandbox,
+  checkConversation,
+  deadline,
+  inspectSandboxSessionToken,
+  readAgents,
+  safeError,
+} from "./runtime.mjs";
+
+test("QA deadlines are distinguishable from provider or application errors without logging text", async () => {
+  const error = await deadline(new Promise(() => {}), 1, "private label").catch((failure) => failure);
+  assert.deepEqual(safeError(error, "full-app"), {
+    name: "QaDeadlineExceeded",
+    stage: "full-app",
+    timeoutMs: 1,
+  });
+});
+
+test("pre-start sandbox inspection is conservative and explicitly does not verify signatures", () => {
+  const token = (claims) =>
+    Buffer.from(JSON.stringify({ alg: "HS256" })).toString("base64url") +
+    "." +
+    Buffer.from(JSON.stringify(claims)).toString("base64url") +
+    ".signature-not-verified";
+  const valid = { exp: 2000, sid: "session-qa", start_session_data: { is_sandbox: true } };
+  const result = inspectSandboxSessionToken(token(valid), "session-qa", 1000);
+  assert.equal(result.passed, true);
+  assert.equal(result.signatureVerified, false);
+  assert.equal(result.sidMatches, true);
+  assert.equal(result.expiresInSeconds, 1000);
+  for (const claims of [
+    { ...valid, exp: 999 },
+    { ...valid, exp: "2000" },
+    { ...valid, exp: undefined },
+    { ...valid, sid: "another-session" },
+    { ...valid, start_session_data: { is_sandbox: false } },
+    { ...valid, start_session_data: { is_sandbox: "true" } },
+    { ...valid, start_session_data: JSON.stringify({ is_sandbox: true }) },
+    { ...valid, is_sandbox: false },
+  ])
+    assert.equal(inspectSandboxSessionToken(token(claims), "session-qa", 1000).passed, false);
+  assert.equal(
+    inspectSandboxSessionToken(
+      token({ ...valid, is_sandbox: true, start_session_data: undefined }),
+      "session-qa",
+      1000
+    ).passed,
+    true
+  );
+  assert.ok(!JSON.stringify(result).includes("signature-not-verified"));
+});
 
 test("full-app URL guard rejects non-local targets and embedded credentials", () => {
   assert.equal(assertLocalUrl("http://localhost:3000"), "http://localhost:3000");

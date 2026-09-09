@@ -4,11 +4,11 @@
 
 accepted
 
-Decisión de producto y reconstrucción aceptada; **implementación fase 1 EN VALIDACIÓN al 2026-09-08**. Este estado no afirma que las interrupciones estén habilitadas ni validadas. La base operativa conserva [ADR 0018](0018-atomic-elevenlabs-group-agents.md) y [ADR 0019](0019-strict-floor-independent-liveavatar-group-sessions.md); no se los marca como sustituidos por una implementación que aún debe superar QA.
+Decisión de producto y reconstrucción aceptada; **implementación fase 1 EN VALIDACIÓN al 2026-09-09**. Este estado no afirma que las interrupciones estén habilitadas ni validadas. La base operativa conserva [ADR 0018](0018-atomic-elevenlabs-group-agents.md) y [ADR 0019](0019-strict-floor-independent-liveavatar-group-sessions.md); no se los marca como sustituidos por una implementación que aún debe superar QA.
 
 ## Fecha y plan relacionado
 
-Decisión original: 2026-08-24. Enmiendas históricas: 2026-08-25, 2026-08-27 y 2026-08-28. Reconstrucción: 2026-09-08.
+Decisión original: 2026-08-24. Enmiendas históricas: 2026-08-25, 2026-08-27 y 2026-08-28. Reconstrucción: 2026-09-08. Ajuste acotado del cierre natural: 2026-09-09.
 
 [Plan 39](../../plan-prompts/39-user-preemptible-group-call-floor.md). El relato, la evidencia y los resultados pendientes están en el [estudio de estabilidad grupal](../group-call-audio-stability-case-study.md).
 
@@ -42,6 +42,19 @@ La primera fase fija `@heygen/liveavatar-web-sdk@0.0.18` y utiliza `ElevenLabsAg
 La [comparación con providers del 2026-09-08](../evidence/2026-09-08-group-provider-command-contract.md) reprodujo el fallo de envío con `group-turn:...` y obtuvo recepción más audio con la API pública `0.0.18`, la base `0.0.17` sin ID y un UUID manual. No se infiere de la comparación la semántica interna del validador del worker. La aplicación real con STT simulado completó los tres turnos, pero la medición detectó energía del stream con el gate muteado y continuaciones suprimidas. Queda validado el contrato de comandos; **no se acepta todavía la reproducción completa ni se habilitan interrupciones**. Se mantiene el checkpoint de fase 1 hasta resolver ese límite.
 
 No se habilita barge-in, no se cambia TTS y no se incorpora el antiguo reducer acústico antes de aceptar esa base. El documento operativo distingue este estado del flujo objetivo que sigue.
+
+### Cierre natural de voz en fase 1
+
+Se incorpora una barrera de cierre de **1.000 ms** sobre el floor existente, sin introducir otro floor ni un reducer acústico. El valor responde a continuaciones observadas aproximadamente **638–642 ms** después de un `speak_ended`; es una heurística de estabilización del canal de control, no un ACK de reproducción ni una garantía sobre el último sample audible. La [evidencia del ajuste de cierre](../evidence/2026-09-09-group-speech-completion.md) conserva el detalle de la observación y el estado de su validación.
+
+- Un `speak_ended` crea un candidato, pero todavía no confirma el fin al backend. Mientras espera, la autorización local sigue en `speaking`, el owner permanece audible y el backend conserva su turno y lease.
+- Un nuevo start del owner invalida ese candidato **antes** del dedupe lógico del turno. La continuación no genera otra confirmación de inicio ni un `interrupt()`; los duplicados del mismo evento de control no reinician el plazo.
+- Al vencer el plazo, la finalización se encola. Dentro de la cola se vuelven a comprobar la instancia, la autorización y la vigencia del candidato; sólo entonces se consume una vez, se cierra el audio, se pasa a `committing` y se confirma el end. Un start recibido mientras la cola espera un ACK anterior invalida incluso ese candidato ya encolado.
+- El saludo de startup permanece muteado y usa su propia barrera. Se conserva el límite de preparación existente como mecanismo de seguridad.
+- Las fuentes de habla ya finalizadas se recuerdan de forma acotada en cada instancia y sus eventos tardíos se ignoran, sin impedir la reentrega idempotente del end vigente si falló su confirmación. Esto no exige que `source_event_id` sea el UUID del comando ni descarta por defecto los eventos que no lo traigan.
+- El gate mutea primero todos los no-owners y abre al owner al final; reaplicar el mismo owner no lo mutea transitoriamente. Release, timeout, falla del owner, reemplazo de instancia y cierre invalidan candidatos; el cleanup elimina timers y listeners.
+
+La barrera no renueva indefinidamente la lease ni demuestra que un connector interrumpido pueda reutilizarse. Puede agregar una pausa al cambio de interlocutor y no garantiza absorber toda continuación tardía. Este ajuste no incorpora WebAudio, métricas de reproducción en producto, nuevos presets TTS ni barge-in. El checkpoint del 2026-09-09 pasó tres rondas deterministas con providers (nueve respuestas, cero PCM bloqueado observado); otro ensayo largo agotó el tiempo del harness y se conserva como no aprobado. La fase 1 sigue **EN VALIDACIÓN** para QA físico, Scribe real y condiciones degradadas; estos resultados no habilitan interrupciones.
 
 ### Interrupción humana objetivo
 
@@ -108,6 +121,7 @@ No existe identificación biométrica ni garantía de fade-out exacto. La correc
 ## Fuentes
 
 - [Guía operativa grupal](../../integrations/group-calls-elevenlabs-liveavatar.md)
+- [Evidencia del cierre natural de voz](../evidence/2026-09-09-group-speech-completion.md)
 - [SDK npm](https://www.npmjs.com/package/@heygen/liveavatar-web-sdk) y [tarball 0.0.18](https://registry.npmjs.org/@heygen/liveavatar-web-sdk/-/liveavatar-web-sdk-0.0.18.tgz)
 - [ElevenLabsAgentSession del commit publicado](https://github.com/heygen-com/liveavatar-web-sdk/blob/5faad721ef991bd7ddba9dcbc9827d5426f7b9ca/packages/js-sdk/src/LiveAvatarSession/ElevenLabsAgentSession.ts)
 - [Tipos del protocolo publicado](https://github.com/heygen-com/liveavatar-web-sdk/blob/5faad721ef991bd7ddba9dcbc9827d5426f7b9ca/packages/js-sdk/src/LiveAvatarSession/events.ts)

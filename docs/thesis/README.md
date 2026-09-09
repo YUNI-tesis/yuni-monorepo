@@ -15,6 +15,8 @@ Las llamadas grupales usan sesiones LiveAvatar LITE independientes, ElevenLabs A
 
 [ADR 0026](decision-records/0026-user-preemptible-group-call-floor.md) conserva la decisión de hacer ese floor preemptivo para la voz humana y mantener separados el borrador generado, el fragmento informado por el provider y lo pendiente o desconocido. Al 2026-09-08 su reconstrucción desde `main` está **EN VALIDACIÓN, fase 1**: el contrato de comandos pasó con proveedores reales, pero la aceptación de respuestas completas falló por cierre prematuro del gate. La interrupción todavía no se habilita. El [estudio de caso](group-call-audio-stability-case-study.md) conserva el análisis y enlaza las trazas sanitizadas, distinguiendo los tests aprobados de la aceptación acústica pendiente.
 
+El [checkpoint del 2026-09-09](evidence/2026-09-09-group-speech-completion.md) registra la corrección acotada del cierre: conserva el turno ante continuaciones tardías y valida la finalización dentro de la misma cola. Pasaron tres rondas con providers —nueve respuestas, sin PCM bloqueado observado— y permanece pendiente el QA físico. Se conservan también los intentos no aprobados. La espera temporal no se presenta como garantía acústica ni como implementación de barge-in.
+
 ## Workflow Del Equipo
 
 Cada vez que se termina una feature o plan:

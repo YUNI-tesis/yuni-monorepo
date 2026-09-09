@@ -1,4 +1,4 @@
-/* global AbortSignal, URL, fetch, process, setTimeout, clearTimeout */
+/* global AbortSignal, Buffer, URL, fetch, process, setTimeout, clearTimeout */
 import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
@@ -68,7 +68,12 @@ export async function outputDirectory() {
 export function deadline(operation, ms, label) {
   let timer;
   const timeout = new Promise((_, reject) => {
-    timer = setTimeout(() => reject(new Error(`${label} timed out`)), ms);
+    timer = setTimeout(() => {
+      const error = new Error(`${label} timed out`);
+      error.name = "QaDeadlineExceeded";
+      error.timeoutMs = ms;
+      reject(error);
+    }, ms);
   });
   return Promise.race([operation, timeout]).finally(() => clearTimeout(timer));
 }
@@ -110,7 +115,90 @@ export function readAgents() {
 
 // Do not record SDK errors verbatim: messages can include tokens or transcript text.
 export function safeError(error, stage) {
-  return { name: error?.name ?? "Error", stage };
+  return {
+    name: error?.name ?? "Error",
+    stage,
+    ...(error?.name === "QaDeadlineExceeded" && Number.isFinite(error.timeoutMs)
+      ? { timeoutMs: error.timeoutMs }
+      : {}),
+  };
+}
+
+// This is a shape/expiry/sandbox check, NOT signature verification. It is only
+// valid for a provider token just returned by our authenticated loopback API.
+export function inspectSandboxSessionToken(token, expectedSessionId, nowSeconds = Date.now() / 1000) {
+  const result = {
+    passed: false,
+    isSandbox: null,
+    knownClaimPaths: [],
+    expiresInSeconds: null,
+    sidMatches: null,
+    sessionIdMatches: null,
+    signatureVerified: false,
+    trust: "authenticated_loopback_api",
+    reason: "invalid_jwt",
+  };
+  try {
+    if (
+      typeof token !== "string" ||
+      token.length > 65536 ||
+      typeof expectedSessionId !== "string" ||
+      !expectedSessionId
+    )
+      return result;
+    const parts = token.split(".");
+    if (parts.length !== 3 || parts.some((part) => !part)) return result;
+    const header = JSON.parse(Buffer.from(parts[0], "base64url").toString("utf8"));
+    const claims = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8"));
+    if (
+      !claims ||
+      typeof claims !== "object" ||
+      Array.isArray(claims) ||
+      !header?.alg ||
+      header.alg === "none"
+    )
+      return result;
+    const start = claims.start_session_data;
+    const startData = start && typeof start === "object" && !Array.isArray(start) ? start : null;
+    const sandboxClaims = [];
+    if (Object.hasOwn(claims, "is_sandbox")) {
+      result.knownClaimPaths.push("is_sandbox");
+      sandboxClaims.push(claims.is_sandbox);
+    }
+    if (startData && Object.hasOwn(startData, "is_sandbox")) {
+      result.knownClaimPaths.push("start_session_data.is_sandbox");
+      sandboxClaims.push(startData.is_sandbox);
+    }
+    result.isSandbox =
+      sandboxClaims.length && sandboxClaims.every((value) => value === true)
+        ? true
+        : sandboxClaims.some((value) => value === false)
+          ? false
+          : null;
+    if (Object.hasOwn(claims, "exp")) result.knownClaimPaths.push("exp");
+    if (typeof claims.exp === "number" && Number.isFinite(claims.exp))
+      result.expiresInSeconds = Math.floor(claims.exp - nowSeconds);
+    const sids = [claims.sid, startData?.sid].filter((value) => value !== undefined);
+    if (claims.sid !== undefined) result.knownClaimPaths.push("sid");
+    if (startData?.sid !== undefined) result.knownClaimPaths.push("start_session_data.sid");
+    if (sids.length) result.sidMatches = sids.every((value) => value === expectedSessionId);
+    const sessionIds = [claims.session_id, startData?.session_id].filter((value) => value !== undefined);
+    if (claims.session_id !== undefined) result.knownClaimPaths.push("session_id");
+    if (startData?.session_id !== undefined) result.knownClaimPaths.push("start_session_data.session_id");
+    if (sessionIds.length) result.sessionIdMatches = sessionIds.every((value) => value === expectedSessionId);
+    result.reason =
+      result.isSandbox !== true
+        ? "sandbox_claim_missing_false_or_unknown"
+        : result.expiresInSeconds === null || result.expiresInSeconds <= 0
+          ? "expiry_missing_invalid_or_expired"
+          : result.sidMatches === false || result.sessionIdMatches === false
+            ? "session_id_mismatch"
+            : "verified_claim_shape";
+    result.passed = result.reason === "verified_claim_shape";
+    return result;
+  } catch {
+    return result;
+  }
 }
 
 export async function checkConversation({
