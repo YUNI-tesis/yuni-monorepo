@@ -452,6 +452,8 @@ model GroupVoiceSession {
   rounds                   GroupVoiceRound[]
   providerEvents           GroupVoiceProviderEvent[]
   participantFailureEvents GroupVoiceParticipantFailureEvent[]
+  interruptionEvents       GroupVoiceInterruptionEvent[]
+  legacyInterruptionEvents LegacyGroupVoiceInterruptionEvent[] @ignore
 
   @@index([avatarGroupId])
   @@index([ownerId, status])
@@ -477,9 +479,10 @@ model GroupVoiceRound {
   updatedAt           DateTime              @updatedAt
   completedAt         DateTime?
 
-  groupVoiceSession GroupVoiceSession  @relation(fields: [groupVoiceSessionId], references: [id], onDelete: Cascade)
-  userMessage       Message            @relation(fields: [userMessageId], references: [id], onDelete: Cascade)
-  plannedTurns      GroupPlannedTurn[]
+  groupVoiceSession        GroupVoiceSession                   @relation(fields: [groupVoiceSessionId], references: [id], onDelete: Cascade)
+  userMessage              Message                             @relation(fields: [userMessageId], references: [id], onDelete: Cascade)
+  plannedTurns             GroupPlannedTurn[]
+  legacyInterruptionEvents LegacyGroupVoiceInterruptionEvent[] @ignore
 
   @@unique([groupVoiceSessionId, sourceEventId])
   @@index([groupVoiceSessionId, createdAt])
@@ -501,6 +504,8 @@ model GroupPlannedTurn {
 
   round       GroupVoiceRound @relation(fields: [roundId], references: [id], onDelete: Cascade)
   avatarAgent AvatarAgent     @relation(fields: [avatarAgentId], references: [id], onDelete: Cascade)
+
+  legacyInterruptionEvents LegacyGroupVoiceInterruptionEvent[] @ignore
 
   @@unique([roundId, position])
   @@unique([roundId, avatarAgentId])
@@ -541,6 +546,70 @@ model GroupVoiceParticipantFailureEvent {
   @@index([groupVoiceSessionId, createdAt])
   @@index([avatarAgentId])
   @@index([participantAttemptId], map: "GroupVoiceParticipantFailureEvent_attempt_idx")
+}
+
+// Historical receipts from the first implementation remain managed by Migrate,
+// but are deliberately excluded from Prisma Client and the v2 interruption flow.
+// Removing this model would propose dropping data on the next migrate dev.
+model LegacyGroupVoiceInterruptionEvent {
+  id                   String                        @id @default(cuid())
+  groupVoiceSessionId  String
+  sourceEventId        String
+  roundId              String
+  turnId               String
+  trigger              String
+  reason               String
+  outcome              GroupVoiceInterruptionOutcome
+  interruptedAvatarId  String?
+  spokenFragmentLength Int                           @default(0)
+  createdAt            DateTime                      @default(now())
+
+  groupVoiceSession GroupVoiceSession @relation(fields: [groupVoiceSessionId], references: [id], onDelete: Cascade)
+  round             GroupVoiceRound   @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  turn              GroupPlannedTurn  @relation(fields: [turnId], references: [id], onDelete: Cascade)
+
+  @@unique([groupVoiceSessionId, sourceEventId], map: "GroupVoiceInterruptionEvent_groupVoiceSessionId_sourceEvent_key")
+  @@index([groupVoiceSessionId, createdAt], map: "GroupVoiceInterruptionEvent_groupVoiceSessionId_createdAt_idx")
+  @@index([roundId], map: "GroupVoiceInterruptionEvent_roundId_idx")
+  @@index([turnId], map: "GroupVoiceInterruptionEvent_turnId_idx")
+  @@map("GroupVoiceInterruptionEvent")
+  @@ignore
+}
+
+// A human command receipt, not a provider event. No draft is claimed to be audible.
+model GroupVoiceInterruptionEvent {
+  id                   String   @id @default(cuid())
+  groupVoiceSessionId  String
+  sourceEventId        String
+  roundId              String?
+  turnId               String
+  avatarAgentId        String
+  status               String
+  affectedParticipants Json
+  createdAt            DateTime @default(now())
+
+  groupVoiceSession GroupVoiceSession           @relation(fields: [groupVoiceSessionId], references: [id], onDelete: Cascade)
+  interruptedTurns  GroupVoiceInterruptedTurn[]
+
+  @@unique([groupVoiceSessionId, sourceEventId], map: "GroupVoiceHumanInterruptionReceipt_session_source_key")
+  @@index([groupVoiceSessionId, createdAt], map: "GroupVoiceHumanInterruptionReceipt_session_created_idx")
+  @@map("GroupVoiceHumanInterruptionReceipt")
+}
+
+model GroupVoiceInterruptedTurn {
+  id                  String   @id @default(cuid())
+  interruptionEventId String
+  turnId              String   @unique
+  avatarAgentId       String
+  generatedText       String?
+  reportedFragment    String?
+  fragmentSource      String?
+  heardCertainty      String   @default("unknown")
+  messageId           String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  interruptionEvent GroupVoiceInterruptionEvent @relation(fields: [interruptionEventId], references: [id], onDelete: Cascade)
 }
 
 model GroupVoiceParticipant {
@@ -863,6 +932,11 @@ enum GroupVoiceParticipantStatus {
   active
   ended
   errored
+}
+
+enum GroupVoiceInterruptionOutcome {
+  interrupted
+  stale
 }
 
 enum DocumentStatus {

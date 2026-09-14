@@ -36,11 +36,23 @@ export function getAvatarCardRoutes(avatarId: string) {
 
 export function AvatarCard({ avatar, variant, onNavigate, onDelete }: AvatarCardProps) {
   const isOwner = avatar.access.type === "owner";
-  const availability = availabilityContent[avatar.interactionAvailability];
+  const hasContextIssues = isOwner && Boolean(avatar.contextIssueCount);
+  const availability = hasContextIssues
+    ? { label: "Contexto con errores", tone: "warning" as const }
+    : availabilityContent[avatar.interactionAvailability];
   const routes = getAvatarCardRoutes(avatar.id);
   const primaryAction = getPrimaryAction(avatar, routes);
   const ownerMenuItems = isOwner
     ? [
+        ...(hasContextIssues
+          ? [
+              {
+                label: "Revisar contexto",
+                icon: <YuniIcon name="warning" />,
+                onSelect: () => onNavigate(`${routes.profile}?tab=contexto`),
+              },
+            ]
+          : []),
         {
           label: "Ver perfil",
           icon: <YuniIcon name="view" />,

@@ -8,7 +8,7 @@ export type CallParticipantView = {
   id: string;
   name: string;
   status: "ready" | "connecting" | "active" | "errored";
-  statusLabel: string;
+  statusLabel?: string;
   mediaMuted?: boolean;
   isSpeaking?: boolean;
   ownsTurn?: boolean;
@@ -34,6 +34,7 @@ export type CallHistoryMessage = {
   role: "user" | "assistant" | "system";
   content: string;
   speakerName?: string | null;
+  interrupted?: boolean;
 };
 
 export type CallHistoryDetail = {
@@ -133,7 +134,7 @@ export function CallParticipantStage({
 
             <div className={styles.participantIdentity}>
               <strong>{participant.name}</strong>
-              <span>{participant.statusLabel}</span>
+              {participant.statusLabel ? <span>{participant.statusLabel}</span> : null}
             </div>
 
             {participant.status !== "active" ? (
@@ -366,7 +367,10 @@ function ConversationDetail({
               key={message.id}
               className={`${styles.message} ${message.role === "user" ? styles.messageUser : styles.messageAvatar}`}
             >
-              <small>{formatMessageRole(message, avatarName)}</small>
+              <small>
+                {formatMessageRole(message, avatarName)}
+                {message.interrupted ? " · Interrumpido" : ""}
+              </small>
               <span>{message.content}</span>
             </div>
           ))

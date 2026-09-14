@@ -68,6 +68,12 @@ import {
 } from "./SharedCallPrivacyDialog";
 import { useGroupCallHistory } from "./use-group-call-history";
 import { createGroupSpeechCompletionBarrier } from "./group-speech-completion";
+import { createGroupInterruptionReuse } from "./group-interruption-reuse";
+import {
+  classifyGroupHumanIntervention,
+  createGroupAvatarEchoBuffer,
+  GROUP_BARGE_IN_CONFIRM_MS,
+} from "./group-barge-in";
 import styles from "./Interact.module.css";
 
 type LocalParticipant = ApiGroupVoiceParticipant & {
@@ -81,6 +87,37 @@ type LiveParticipantInstance = {
   generation: number;
   callEpoch: number;
   cancelSpeechCompletion: () => void;
+  interruptedTurnId?: string;
+  reuse: ReturnType<typeof createGroupInterruptionReuse>;
+  retiringForInterruption?: boolean;
+};
+
+type HumanCapture = {
+  sourceEventId: string;
+  anchor: LocalFloorAuthorization | null;
+  startedSpeaking: boolean;
+  text: string;
+  timer: number | null;
+};
+
+type HumanInterruption = {
+  sourceEventId: string;
+  sessionId: string;
+  callEpoch: number;
+  avatarId: string;
+  avatarName: string;
+  turnId: string;
+  generatedText: string | undefined;
+  committed: Array<{ sourceEventId: string; content: string }>;
+  captureComplete: boolean;
+  captureFailed: boolean;
+  requiresRecovery: boolean;
+  result: ApiGroupOrchestrationResult | null;
+  replacements: Map<string, ApiGroupVoiceParticipant>;
+  failedAttempts: Map<string, string>;
+  resolvedAvatars: Set<string>;
+  running: boolean;
+  ready: boolean;
 };
 
 type ParticipantFailureDelivery = {
@@ -90,6 +127,7 @@ type ParticipantFailureDelivery = {
   participantAttemptId: string;
   generation: number;
   callEpoch: number;
+  controlGeneration: number;
   reason: "session_stopped" | "stream_error";
   expectedTurnId?: string;
   attempt: number;
@@ -162,6 +200,18 @@ export function GroupInteractCall({
   const [privacySubjectKind, setPrivacySubjectKind] = useState<"avatar" | "group">("avatar");
   const [pendingFailureCount, setPendingFailureCount] = useState(0);
   const [pendingRetryCount, setPendingRetryCount] = useState(0);
+  const [interruptionStatus, setInterruptionStatus] = useState<"capturing" | "failed" | null>(null);
+  const [humanTurnFailed, setHumanTurnFailed] = useState(false);
+  const failedHumanTurnRef = useRef<{ sourceEventId: string; content: string } | null>(null);
+  const controlGenerationRef = useRef(0);
+  const humanCaptureRef = useRef<HumanCapture | null>(null);
+  const humanInterruptionRef = useRef<HumanInterruption | null>(null);
+  const pendingHumanTurnsRef = useRef<Array<{ sourceEventId: string; content: string }>>([]);
+  const lastHumanCommitRef = useRef<{ text: string; at: number } | null>(null);
+  const avatarEchoRef = useRef(new Map<string, ReturnType<typeof createGroupAvatarEchoBuffer>>());
+  const beginHumanInterruptionRef = useRef<(capture: HumanCapture) => void>(() => undefined);
+  const resumeHumanInterruptionRef = useRef<() => void>(() => undefined);
+  const flushPendingHumanRef = useRef<() => void>(() => undefined);
   const sessionRef = useRef<ApiGroupVoiceSession | null>(null);
   const liveSessionsRef = useRef(new Map<string, LiveParticipantInstance>());
   const mediaElementsRef = useRef(new Map<string, HTMLVideoElement>());
@@ -213,6 +263,12 @@ export function GroupInteractCall({
     return () => {
       mountedRef.current = false;
       startRequestTokenRef.current += 1;
+      controlGenerationRef.current += 1;
+      humanInterruptionRef.current = null;
+      if (humanCaptureRef.current?.timer !== null && humanCaptureRef.current?.timer !== undefined) {
+        window.clearTimeout(humanCaptureRef.current.timer);
+      }
+      humanCaptureRef.current = null;
     };
   }, []);
 
@@ -283,12 +339,21 @@ export function GroupInteractCall({
   }, [participants]);
 
   const applyAudioGate = useCallback((ownerAvatarId: string | null) => {
+    if (
+      humanInterruptionRef.current ||
+      (ownerAvatarId && liveSessionsRef.current.get(ownerAvatarId)?.reuse.blocked)
+    )
+      ownerAvatarId = null;
     audibleOwnerRef.current = ownerAvatarId;
     applyGroupAudioGate(mediaElementsRef.current, ownerAvatarId);
     setAudibleOwnerId(ownerAvatarId);
   }, []);
 
   const closeScribe = useCallback(() => {
+    if (humanCaptureRef.current?.timer !== null && humanCaptureRef.current?.timer !== undefined) {
+      window.clearTimeout(humanCaptureRef.current.timer);
+    }
+    humanCaptureRef.current = null;
     scribeCleanupRef.current?.();
     scribeCleanupRef.current = null;
     scribeRef.current?.close();
@@ -328,6 +393,7 @@ export function GroupInteractCall({
     }) => {
       clearTurnTimeout();
       const timeoutMs = Math.max(0, new Date(input.leaseExpiresAt).getTime() - Date.now());
+      const controlGeneration = controlGenerationRef.current;
       turnTimeoutRef.current = window.setTimeout(() => {
         const authorization = floorAuthorizationRef.current;
         const pendingDirective = pendingDirectiveRef.current;
@@ -352,14 +418,22 @@ export function GroupInteractCall({
             turnId: input.turnId,
           })
           .then(async (result) => {
-            if (callEpochRef.current !== input.callEpoch) return;
+            if (
+              callEpochRef.current !== input.callEpoch ||
+              controlGenerationRef.current !== controlGeneration
+            )
+              return;
             await reconcileServerResultRef.current(result);
             if (result.phase === "listening") {
               setCallError(`${input.avatarName} no respondió a tiempo. Ya podés volver a hablar.`);
             }
           })
           .catch((error) => {
-            if (callEpochRef.current !== input.callEpoch) return;
+            if (
+              callEpochRef.current !== input.callEpoch ||
+              controlGenerationRef.current !== controlGeneration
+            )
+              return;
             releaseDisplayedFloor();
             setServerPhase("listening");
             setCallError(error instanceof Error ? error.message : "No pudimos cerrar el turno vencido.");
@@ -397,6 +471,7 @@ export function GroupInteractCall({
           ? (floorAuthorizationRef.current?.avatarId ?? pendingDirectiveRef.current?.avatarId ?? null)
           : options.floorOwnerAvatarId;
       const phase = turnPhaseRef.current;
+      if (humanInterruptionRef.current) return;
       await Promise.allSettled(
         [...liveSessionsRef.current.entries()].map(async ([avatarId, instance]) => {
           const shouldSend = options.force
@@ -478,6 +553,7 @@ export function GroupInteractCall({
         ...input,
         sessionId,
         callEpoch,
+        controlGeneration: controlGenerationRef.current,
         attempt: 0,
         timer: null,
         state: "pending",
@@ -520,6 +596,7 @@ export function GroupInteractCall({
           refreshPendingFailureCount();
           if (
             callEpochRef.current !== delivery.callEpoch ||
+            controlGenerationRef.current !== delivery.controlGeneration ||
             endingRef.current ||
             sessionRef.current?.id !== delivery.sessionId
           )
@@ -581,6 +658,7 @@ export function GroupInteractCall({
 
   const handleDirective = useCallback(
     async (directive: ApiGroupTurnDirective) => {
+      if (humanInterruptionRef.current) return;
       if (directive.action === "suppress") {
         safelyInterruptLiveSession(liveSessionsRef.current.get(directive.avatarId)?.session);
         speakingAvatarIdsRef.current.delete(directive.avatarId);
@@ -620,6 +698,7 @@ export function GroupInteractCall({
       if (endingRef.current) return;
       if (handledTurnIdsRef.current.has(directive.turnId)) return;
       const callEpoch = callEpochRef.current;
+      const controlGeneration = controlGenerationRef.current;
       const instance = liveSessionsRef.current.get(directive.avatarId);
       if (!instance) {
         const participant = participantsRef.current.find((item) => item.avatar.id === directive.avatarId);
@@ -647,6 +726,7 @@ export function GroupInteractCall({
       setTurnOwnerId(directive.avatarId);
       setServerPhase("queued");
       turnLedgerRef.current.set(directive.turnId, {
+        participantAttemptId: instance.participantAttemptId,
         turnId: directive.turnId,
         avatarId: directive.avatarId,
         callEpoch,
@@ -667,9 +747,19 @@ export function GroupInteractCall({
 
       try {
         await sendUserActivity({ floorOwnerAvatarId: directive.avatarId, force: true });
+        if (
+          callEpochRef.current !== callEpoch ||
+          controlGenerationRef.current !== controlGeneration ||
+          humanInterruptionRef.current ||
+          endingRef.current ||
+          liveSessionsRef.current.get(directive.avatarId) !== instance
+        )
+          return;
         const contextCommandId = instance.session.sendContextualUpdate(directive.context);
         if (
           callEpochRef.current !== callEpoch ||
+          controlGenerationRef.current !== controlGeneration ||
+          humanInterruptionRef.current ||
           endingRef.current ||
           sessionRef.current === null ||
           pendingDirectiveRef.current?.turnId !== directive.turnId ||
@@ -695,9 +785,11 @@ export function GroupInteractCall({
         // The public SDK constructs the command and its UUID. Its return value is
         // a local command ID, not a provider acknowledgement; only inbound events
         // advance the turn, and the existing floor lease remains the timeout guard.
-        const providerCommandId = instance.session.sendUserMessage(directive.instruction);
         const commandDispatchedAt = Date.now();
         const ledger = turnLedgerRef.current.get(directive.turnId);
+        instance.reuse.dispatch(directive.turnId);
+        if (ledger) ledger.commandDispatchedAt = commandDispatchedAt;
+        const providerCommandId = instance.session.sendUserMessage(directive.instruction);
         if (ledger) {
           ledger.providerCommandId = providerCommandId;
           ledger.commandDispatchedAt = commandDispatchedAt;
@@ -715,6 +807,13 @@ export function GroupInteractCall({
           providerAcknowledged: false,
         });
       } catch (error) {
+        if (
+          callEpochRef.current !== callEpoch ||
+          controlGenerationRef.current !== controlGeneration ||
+          liveSessionsRef.current.get(directive.avatarId) !== instance ||
+          endingRef.current
+        )
+          return;
         console.info("[group-call] command_failed", {
           callEpoch,
           turnId: directive.turnId,
@@ -785,6 +884,19 @@ export function GroupInteractCall({
 
   const reconcileServerResult = useCallback(
     async (result: ApiGroupOrchestrationResult) => {
+      if (humanInterruptionRef.current) return;
+      // A committed phrase during orchestration/preparation is retained. Anchor
+      // cancellation to the returned turn BEFORE it can dispatch another command.
+      if (pendingHumanTurnsRef.current.length && result.floor) {
+        beginHumanInterruptionRef.current({
+          sourceEventId: `barge:${crypto.randomUUID()}`,
+          anchor: { ...result.floor, callEpoch: callEpochRef.current, state: "queued" },
+          startedSpeaking: false,
+          text: "",
+          timer: null,
+        });
+        return;
+      }
       setServerPhase(result.phase);
       const directive = result.directive;
       if (directive?.action === "speak") {
@@ -797,10 +909,12 @@ export function GroupInteractCall({
       }
       if (directive) {
         await handleDirective(directive);
+        if (directive.action === "listen") queueMicrotask(() => flushPendingHumanRef.current());
         return;
       }
       if (result.phase === "listening" || result.phase === "ended" || result.phase === "errored") {
         releaseDisplayedFloor();
+        if (result.phase === "listening") queueMicrotask(() => flushPendingHumanRef.current());
         return;
       }
       reconcileExistingFloor(result.floor);
@@ -821,16 +935,38 @@ export function GroupInteractCall({
       )
         return;
       const callEpoch = callEpochRef.current;
+      const controlGeneration = controlGenerationRef.current;
       setServerPhase("deliberating");
       applyAudioGate(null);
       orchestrationQueueRef.current = orchestrationQueueRef.current
         .then(async () => {
+          if (
+            callEpochRef.current !== callEpoch ||
+            controlGenerationRef.current !== controlGeneration ||
+            endingRef.current
+          )
+            return;
           const result = await transport.submitTurn(sessionId, input);
-          if (callEpochRef.current !== callEpoch || endingRef.current) return;
+          if (
+            callEpochRef.current !== callEpoch ||
+            controlGenerationRef.current !== controlGeneration ||
+            endingRef.current
+          )
+            return;
+          if (!result.round) {
+            failedHumanTurnRef.current = input;
+            setHumanTurnFailed(true);
+            setCallError(
+              "La ronda anterior todavía no está disponible para recibir tu frase. Conservamos el mensaje para reintentar."
+            );
+          }
           await reconcileServerResult(result);
         })
         .catch((error) => {
-          if (callEpochRef.current !== callEpoch) return;
+          if (callEpochRef.current !== callEpoch || controlGenerationRef.current !== controlGeneration)
+            return;
+          failedHumanTurnRef.current = input;
+          setHumanTurnFailed(true);
           releaseDisplayedFloor();
           setServerPhase("listening");
           setCallError(error instanceof Error ? error.message : "No pudimos coordinar el siguiente turno.");
@@ -847,6 +983,7 @@ export function GroupInteractCall({
       const sessionId = sessionRef.current?.id;
       if (!sessionId || endingRef.current) return;
       const callEpoch = callEpochRef.current;
+      const controlGeneration = controlGenerationRef.current;
       const participantInstance = liveSessionsRef.current.get(input.avatarId);
       const reportedEpisode = participantInstance
         ? {
@@ -857,6 +994,7 @@ export function GroupInteractCall({
       orchestrationQueueRef.current = orchestrationQueueRef.current
         .then(async () => {
           if (callEpochRef.current !== callEpoch || endingRef.current) return;
+          if (options.affectsFloor !== false && controlGenerationRef.current !== controlGeneration) return;
           if (options.beforeSend && !options.beforeSend()) return;
           let result;
           try {
@@ -867,6 +1005,7 @@ export function GroupInteractCall({
           }
           if (callEpochRef.current !== callEpoch || endingRef.current) return;
           providerEventDeliveryStateRef.current.set(input.sourceEventId, "acked");
+          if (controlGenerationRef.current !== controlGeneration) return;
           if (result.directive?.action === "suppress") {
             const currentInstance = liveSessionsRef.current.get(result.directive.avatarId);
             const authorization = floorAuthorizationRef.current;
@@ -891,13 +1030,105 @@ export function GroupInteractCall({
           }
         })
         .catch((error) => {
-          if (callEpochRef.current !== callEpoch) return;
+          if (callEpochRef.current !== callEpoch || controlGenerationRef.current !== controlGeneration)
+            return;
           providerEventDeliveryStateRef.current.set(input.sourceEventId, "failed");
           setCallError(error instanceof Error ? error.message : "No pudimos confirmar el turno del avatar.");
         });
     },
     [reconcileServerResult, transport]
   );
+
+  const flushPendingHuman = useCallback(() => {
+    if (
+      humanInterruptionRef.current ||
+      failedHumanTurnRef.current ||
+      endingRef.current ||
+      !sessionRef.current ||
+      turnPhaseRef.current !== "listening" ||
+      floorAuthorizationRef.current ||
+      participantFailureDeliveriesRef.current.size ||
+      participantRetryInFlightRef.current.size
+    )
+      return;
+    const input = pendingHumanTurnsRef.current.shift();
+    if (input) routeHumanTurn(input);
+  }, [routeHumanTurn]);
+  flushPendingHumanRef.current = flushPendingHuman;
+
+  const beginHumanInterruption = useCallback(
+    (capture: HumanCapture) => {
+      if (humanInterruptionRef.current || !capture.anchor || endingRef.current || !sessionRef.current) return;
+      const anchor = capture.anchor;
+      const ledger = turnLedgerRef.current.get(anchor.turnId);
+      const episode: HumanInterruption = {
+        sourceEventId: capture.sourceEventId,
+        sessionId: sessionRef.current.id,
+        callEpoch: callEpochRef.current,
+        avatarId: anchor.avatarId,
+        avatarName:
+          participantsRef.current.find((item) => item.avatar.id === anchor.avatarId)?.avatar.name ??
+          "el avatar",
+        turnId: anchor.turnId,
+        generatedText: (
+          ledger?.originalResponse ??
+          ledger?.latestResponse ??
+          latestAvatarTextRef.current.get(anchor.avatarId)
+        )?.slice(0, 8_000),
+        committed: pendingHumanTurnsRef.current.splice(0),
+        captureComplete: false,
+        captureFailed: false,
+        requiresRecovery: false,
+        result: null,
+        replacements: new Map(),
+        failedAttempts: new Map(),
+        resolvedAvatars: new Set(),
+        running: false,
+        ready: false,
+      };
+      episode.captureComplete = episode.committed.length > 0;
+      humanInterruptionRef.current = episode;
+      controlGenerationRef.current += 1;
+      // Silence synchronously, before HTTP or the SDK. Old ACKs cannot reopen it.
+      applyAudioGate(null);
+      const localTurns = new Map([[anchor.avatarId, anchor.turnId]]);
+      const currentFloor = floorAuthorizationRef.current;
+      const preparing = pendingDirectiveRef.current;
+      if (currentFloor) localTurns.set(currentFloor.avatarId, currentFloor.turnId);
+      if (preparing) localTurns.set(preparing.avatarId, preparing.turnId);
+      // The human phrase can begin on A and finish on B. Capture B before
+      // releasing the floor so its terminal cannot get lost during cancellation.
+      for (const [avatarId, turnId] of localTurns) {
+        const instance = liveSessionsRef.current.get(avatarId);
+        if (instance) {
+          instance.interruptedTurnId = turnId;
+          instance.reuse.quarantine(turnId, episode.sourceEventId);
+          instance.cancelSpeechCompletion();
+        }
+        const interruptedLedger = turnLedgerRef.current.get(turnId);
+        if (interruptedLedger) interruptedLedger.wasInterrupted = true;
+        if (interruptedLedger && interruptedLedger.state !== "completed")
+          interruptedLedger.state = "interrupted";
+      }
+      releaseDisplayedFloor();
+      speakingAvatarIdsRef.current.clear();
+      setInterruptionStatus("capturing");
+      setCallError(null);
+      for (const avatarId of localTurns.keys())
+        safelyInterruptLiveSession(liveSessionsRef.current.get(avatarId)?.session);
+      console.info("[group-call] human_interruption_started", {
+        sessionId: episode.sessionId,
+        callEpoch: episode.callEpoch,
+        sourceEventId: episode.sourceEventId,
+        turnId: episode.turnId,
+        avatarId: episode.avatarId,
+        generatedLength: episode.generatedText?.length ?? 0,
+      });
+      void resumeHumanInterruptionRef.current();
+    },
+    [applyAudioGate, releaseDisplayedFloor]
+  );
+  beginHumanInterruptionRef.current = beginHumanInterruption;
 
   const startScribe = useCallback(async () => {
     const sessionId = sessionRef.current?.id;
@@ -919,29 +1150,107 @@ export function GroupInteractCall({
         channelCount: 1,
       },
     });
+    const isCurrentScribe = () =>
+      callEpochRef.current === callEpoch && scribeRef.current === connection && !endingRef.current;
+    const captureFor = (text: string) => {
+      let capture = humanCaptureRef.current;
+      if (!capture) {
+        const authorization = floorAuthorizationRef.current;
+        capture = {
+          sourceEventId: `barge:${crypto.randomUUID()}`,
+          anchor: authorization ? { ...authorization } : null,
+          startedSpeaking: authorization?.state === "speaking",
+          text,
+          timer: null,
+        };
+        humanCaptureRef.current = capture;
+      }
+      capture.text = text;
+      return capture;
+    };
+    const isEcho = (capture: HumanCapture) =>
+      capture.anchor && avatarEchoRef.current.get(capture.anchor.avatarId)?.matches(capture.text, Date.now());
+    const onPartialTranscript = (event: { text: string }) => {
+      if (!isCurrentScribe()) return;
+      if (!event.text.trim()) return;
+      const capture = captureFor(event.text.trim());
+      if (humanInterruptionRef.current || !capture.startedSpeaking) return;
+      const classification = classifyGroupHumanIntervention(capture.text);
+      if (classification === "empty" || classification === "backchannel" || isEcho(capture)) return;
+      if (classification === "immediate") {
+        if (capture.timer !== null) window.clearTimeout(capture.timer);
+        capture.timer = null;
+        beginHumanInterruptionRef.current(capture);
+      } else if (capture.timer === null) {
+        capture.timer = window.setTimeout(() => {
+          capture.timer = null;
+          if (!isCurrentScribe() || humanCaptureRef.current !== capture || isEcho(capture)) return;
+          const latest = classifyGroupHumanIntervention(capture.text);
+          if (latest === "candidate" || latest === "immediate") beginHumanInterruptionRef.current(capture);
+        }, GROUP_BARGE_IN_CONFIRM_MS);
+      }
+    };
     const onCommittedTranscript = (event: { text: string }) => {
-      if (callEpochRef.current !== callEpoch) return;
+      if (!isCurrentScribe()) return;
       const content = event.text.trim();
+      const capture = captureFor(content);
+      if (capture.timer !== null) window.clearTimeout(capture.timer);
+      humanCaptureRef.current = null;
+      if (!content) {
+        const episode = humanInterruptionRef.current;
+        if (episode) {
+          episode.captureComplete = true;
+          resumeHumanInterruptionRef.current();
+        }
+        return;
+      }
+      // Redelivery has no provider ID in Scribe's public text event. Bound this
+      // guard to the same immediate delivery burst, not future repeated requests.
+      const previous = lastHumanCommitRef.current;
+      if (previous?.text === content && Date.now() - previous.at < 250) return;
+      lastHumanCommitRef.current = { text: content, at: Date.now() };
+      const classification = classifyGroupHumanIntervention(content);
+      const duringRound = capture.anchor !== null || turnPhaseRef.current !== "listening";
       if (
-        !content ||
-        floorAuthorizationRef.current !== null ||
-        turnPhaseRef.current !== "listening" ||
-        participantFailureDeliveriesRef.current.size > 0 ||
-        participantRetryInFlightRef.current.size > 0
+        !humanInterruptionRef.current &&
+        duringRound &&
+        (classification === "backchannel" || isEcho(capture))
       )
         return;
       const id = crypto.randomUUID();
       setTranscript((current) => [...current, { id, role: "user", speakerName: "Vos", content }]);
-      routeHumanTurn({ sourceEventId: `scribe:${id}`, content });
+      const input = { sourceEventId: `scribe:${id}`, content };
+      const episode = humanInterruptionRef.current;
+      if (episode) {
+        episode.captureComplete = true;
+        episode.committed.push(input);
+        resumeHumanInterruptionRef.current();
+      } else {
+        pendingHumanTurnsRef.current.push(input);
+        // A phrase that started in preparation does not trigger a partial cut,
+        // but its commit still cancels the obsolete round (or waits for a floor).
+        if (!capture.anchor && floorAuthorizationRef.current)
+          capture.anchor = { ...floorAuthorizationRef.current };
+        if (capture.anchor) beginHumanInterruptionRef.current(capture);
+        else flushPendingHumanRef.current();
+      }
     };
     const onError = (event: { error: string }) => {
-      if (callEpochRef.current !== callEpoch) return;
+      if (!isCurrentScribe()) return;
       setCallError(event.error || "La transcripción en vivo se interrumpió.");
       if (scribeRef.current === connection) closeScribe();
+      setIsMuted(true);
+      if (humanInterruptionRef.current) {
+        humanInterruptionRef.current.captureFailed = true;
+        humanInterruptionRef.current.requiresRecovery = true;
+        setInterruptionStatus("failed");
+      }
     };
+    connection.on(RealtimeEvents.PARTIAL_TRANSCRIPT, onPartialTranscript);
     connection.on(RealtimeEvents.COMMITTED_TRANSCRIPT, onCommittedTranscript);
     connection.on(RealtimeEvents.ERROR, onError);
     scribeCleanupRef.current = () => {
+      connection.off(RealtimeEvents.PARTIAL_TRANSCRIPT, onPartialTranscript);
       connection.off(RealtimeEvents.COMMITTED_TRANSCRIPT, onCommittedTranscript);
       connection.off(RealtimeEvents.ERROR, onError);
     };
@@ -952,7 +1261,7 @@ export function GroupInteractCall({
     async (
       participant: ApiGroupVoiceParticipant,
       callEpoch = callEpochRef.current,
-      options: { requireCompleteStartup?: boolean } = {}
+      options: { requireCompleteStartup?: boolean; interruptionReplacement?: boolean } = {}
     ) => {
       if (!participant.sessionToken || !participant.participantAttemptId) return false;
       const avatarId = participant.avatar.id;
@@ -968,12 +1277,14 @@ export function GroupInteractCall({
         startupCueFinishersRef.current.get(avatarId)?.finish();
         await stopLiveSessionBestEffort(existing.session);
       }
+      if (callEpochRef.current !== callEpoch || endingRef.current || !mountedRef.current) return false;
 
       const live = new ElevenLabsAgentSession(participant.sessionToken, {
         voiceChat: { defaultMuted: true },
       });
       let resolveStartupCue: () => void = () => undefined;
       let startupCueFinished = false;
+      let initializationComplete = false;
       const startupCompletion = createGroupSpeechCompletionBarrier();
       let speechCompletion = createGroupSpeechCompletionBarrier();
       let completionTurnId: string | null = null;
@@ -1027,6 +1338,7 @@ export function GroupInteractCall({
         generation,
         callEpoch,
         cancelSpeechCompletion: () => speechCompletion.cancel(),
+        reuse: createGroupInterruptionReuse(),
       };
       const isCurrentCall = () => {
         const current = liveSessionsRef.current.get(avatarId);
@@ -1046,13 +1358,25 @@ export function GroupInteractCall({
 
       const failCurrentInstance = (reason: "session_stopped" | "stream_error") => {
         if (!isCurrentCall()) return;
+        const retiringForInterruption = instance.retiringForInterruption;
+        const interruption = humanInterruptionRef.current;
+        if (instance.interruptedTurnId && interruption?.callEpoch === callEpoch && !retiringForInterruption) {
+          interruption.requiresRecovery = true;
+          interruption.failedAttempts.set(avatarId, participantAttemptId);
+          setInterruptionStatus("failed");
+          setCallError("Se perdió la conexión del avatar. Conservamos tu frase para reintentar.");
+        }
         finishStartupCue();
         detachLiveSessionListeners(avatarId, generation);
         liveSessionsRef.current.delete(avatarId);
         const element = mediaElementsRef.current.get(avatarId);
         if (element) element.muted = true;
         void live.stop().catch(() => undefined);
+        // Backend cleanup can close the quarantined attempt before /retry replies.
+        // Its replacement is already owned by the interruption recovery flow.
+        if (retiringForInterruption) return;
         if (options.requireCompleteStartup && startingRef.current) return;
+        if (options.interruptionReplacement && !initializationComplete) return;
         const authorization = floorAuthorizationRef.current;
         enqueueParticipantFailure({
           avatarId,
@@ -1075,7 +1399,12 @@ export function GroupInteractCall({
       };
       const onSpeakStarted = (event: { event_id: string; source_event_id?: string | null }) => {
         if (!isCurrentCall()) return;
-        if (event.source_event_id && completedSpeechSources.has(event.source_event_id)) return;
+        if (instance.interruptedTurnId || (instance.reuse.reused && !event.source_event_id)) return;
+        if (
+          instance.reuse.isRetired(event.source_event_id) ||
+          (event.source_event_id && completedSpeechSources.has(event.source_event_id))
+        )
+          return;
         if (startupPendingAvatarIdsRef.current.get(avatarId) === startupKey) {
           startupCompletion.start(event.event_id);
           if (event.source_event_id) currentSpeechSources.add(event.source_event_id);
@@ -1097,6 +1426,7 @@ export function GroupInteractCall({
         });
         const deliveryState = providerEventDeliveryStateRef.current.get(sourceEventId);
         if (logicalTurnId) {
+          if (!instance.reuse.start(logicalTurnId, event.source_event_id)) return;
           completionForTurn(logicalTurnId).start(event.event_id);
           if (event.source_event_id) currentSpeechSources.add(event.source_event_id);
         }
@@ -1141,6 +1471,11 @@ export function GroupInteractCall({
       };
       const onSpeakEnded = (event: { event_id: string; source_event_id?: string | null }) => {
         if (!isCurrentCall()) return;
+        if (instance.interruptedTurnId) {
+          instance.reuse.end(instance.interruptedTurnId, event);
+          return;
+        }
+        if (instance.reuse.isRetired(event.source_event_id)) return;
         if (
           event.source_event_id &&
           completedSpeechSources.has(event.source_event_id) &&
@@ -1178,6 +1513,9 @@ export function GroupInteractCall({
           (!isAuthorizedSpeechEnd(authorization, avatarId, callEpoch) && !isFailedAuthorizedRedelivery)
         )
           return;
+        if (instance.reuse.reused && !instance.reuse.matchesTurn(authorization.turnId, event.source_event_id))
+          return;
+        instance.reuse.end(authorization.turnId, event);
         const completion = completionForTurn(authorization.turnId);
         if (event.source_event_id) currentSpeechSources.add(event.source_event_id);
         completion.end(
@@ -1202,6 +1540,7 @@ export function GroupInteractCall({
                   return false;
                 if (!beginProviderEventDelivery(sourceEventId)) return false;
                 rememberCompletedSources();
+                instance.reuse.complete(authorization.turnId);
                 applyAudioGate(null);
                 authorization.state = "committing";
                 const ledgerEntry = turnLedgerRef.current.get(authorization.turnId);
@@ -1229,9 +1568,35 @@ export function GroupInteractCall({
           }
         );
       };
-      const onAvatarTranscription = (event: { event_id: string; text: string }) => {
-        if (!isCurrentCall()) return;
+      const onAvatarTranscription = (event: {
+        event_id: string;
+        text: string;
+        source_event_id?: string | null;
+      }) => {
+        if (
+          !isCurrentCall() ||
+          instance.interruptedTurnId ||
+          instance.reuse.isRetired(event.source_event_id) ||
+          (instance.reuse.reused && !event.source_event_id)
+        )
+          return;
+        const transcriptionFloor = floorAuthorizationRef.current;
+        if (
+          instance.reuse.reused &&
+          (!transcriptionFloor ||
+            transcriptionFloor.avatarId !== avatarId ||
+            !instance.reuse.matchesTurn(transcriptionFloor.turnId, event.source_event_id))
+        )
+          return;
         const content = event.text.trim();
+        if (content && !instance.interruptedTurnId) {
+          let echo = avatarEchoRef.current.get(avatarId);
+          if (!echo) {
+            echo = createGroupAvatarEchoBuffer();
+            avatarEchoRef.current.set(avatarId, echo);
+          }
+          echo.add(content, Date.now());
+        }
         const authorization = floorAuthorizationRef.current;
         if (
           !content ||
@@ -1243,7 +1608,31 @@ export function GroupInteractCall({
           return;
         latestAvatarTextRef.current.set(avatarId, content);
         const ledgerEntry = turnLedgerRef.current.get(authorization.turnId);
-        if (ledgerEntry && !ledgerEntry.latestResponse) ledgerEntry.latestResponse = content;
+        if (ledgerEntry && !ledgerEntry.responseReceived) ledgerEntry.latestResponse = content;
+      };
+      const onAvatarTranscriptionChunk = (event: { text: string; source_event_id?: string | null }) => {
+        if (
+          !isCurrentCall() ||
+          instance.interruptedTurnId ||
+          !event.text.trim() ||
+          instance.reuse.isRetired(event.source_event_id) ||
+          (instance.reuse.reused && !event.source_event_id)
+        )
+          return;
+        const transcriptionFloor = floorAuthorizationRef.current;
+        if (
+          instance.reuse.reused &&
+          (!transcriptionFloor ||
+            transcriptionFloor.avatarId !== avatarId ||
+            !instance.reuse.matchesTurn(transcriptionFloor.turnId, event.source_event_id))
+        )
+          return;
+        let echo = avatarEchoRef.current.get(avatarId);
+        if (!echo) {
+          echo = createGroupAvatarEchoBuffer();
+          avatarEchoRef.current.set(avatarId, echo);
+        }
+        echo.add(event.text, Date.now());
       };
       const onElevenLabsAgentEvent = (event: {
         event_id: string;
@@ -1255,10 +1644,11 @@ export function GroupInteractCall({
           event.elevenlabs_event_type === "agent_response" ||
           event.elevenlabs_event_type === "agent_response_correction"
         ) {
-          const response = parseElevenLabsResponse(event.data);
-          if (!response) return;
           const type = event.elevenlabs_event_type;
-          const turnId = resolveTurnForAgentResponse({
+          const response = parseElevenLabsResponse(event.data, type === "agent_response_correction");
+          if (!response) return;
+          const resolvedTurnId = resolveTurnForAgentResponse({
+            participantAttemptId,
             avatarId,
             callEpoch,
             type,
@@ -1267,6 +1657,9 @@ export function GroupInteractCall({
             ledger: turnLedgerRef.current,
             responseTurnIds: responseTurnIdRef.current,
           });
+          // Explicit response IDs/original text win, including a late correction
+          // for an earlier completed turn of this same connector.
+          const turnId = resolvedTurnId;
           if (!turnId) return;
           const sourceEventId = providerEventSourceId({
             type,
@@ -1308,36 +1701,55 @@ export function GroupInteractCall({
             ]);
           }
           reportProviderEvent(
-            { sourceEventId, turnId, avatarId, type, content: response.text },
+            {
+              sourceEventId,
+              turnId,
+              avatarId,
+              type,
+              content: response.text.slice(0, 8_000),
+              ...(type === "agent_response_correction" && response.originalText
+                ? { generatedText: response.originalText.slice(0, 8_000) }
+                : {}),
+            },
             { affectsFloor: false }
           );
           return;
         }
         if (event.elevenlabs_event_type !== "interruption") return;
         const authorization = floorAuthorizationRef.current;
-        if (!authorization || authorization.avatarId !== avatarId || authorization.callEpoch !== callEpoch)
-          return;
+        const interruptedTurns = [...turnLedgerRef.current.values()].filter(
+          (entry) =>
+            entry.avatarId === avatarId &&
+            entry.callEpoch === callEpoch &&
+            entry.participantAttemptId === participantAttemptId &&
+            (entry.wasInterrupted || entry.state === "interrupted")
+        );
+        // The passthrough interruption has no reliable turn ID. After repeated
+        // cuts it is ambiguous; never attach it to whichever turn is speaking.
+        const turnId =
+          interruptedTurns.length > 1
+            ? null
+            : (interruptedTurns[0]?.turnId ??
+              (authorization?.avatarId === avatarId && authorization.callEpoch === callEpoch
+                ? authorization.turnId
+                : null));
+        if (!turnId) return;
         const sourceEventId = providerEventSourceId({
           type: "interruption",
           avatarId,
           providerEventId: event.event_id,
         });
-        const deliveryState = providerEventDeliveryStateRef.current.get(sourceEventId);
-        const isFailedAuthorizedRedelivery =
-          deliveryState === "failed" && authorization.state === "committing";
-        if (authorization.state !== "speaking" && !isFailedAuthorizedRedelivery) return;
         if (!beginProviderEventDelivery(sourceEventId)) return;
-        speechCompletion.cancel();
-        applyAudioGate(null);
-        if (!isFailedAuthorizedRedelivery) authorization.state = "committing";
-        const ledgerEntry = turnLedgerRef.current.get(authorization.turnId);
-        if (ledgerEntry) ledgerEntry.state = "interrupted";
-        reportProviderEvent({
-          sourceEventId,
-          turnId: authorization.turnId,
-          avatarId,
-          type: "interruption",
-        });
+        // Provider interruption is evidence, never authority to cancel a round.
+        reportProviderEvent(
+          {
+            sourceEventId,
+            turnId,
+            avatarId,
+            type: "interruption",
+          },
+          { affectsFloor: false }
+        );
       };
       const onSessionStopped = () => failCurrentInstance("session_stopped");
       const onSessionDisconnected = () => failCurrentInstance("stream_error");
@@ -1347,6 +1759,7 @@ export function GroupInteractCall({
       live.on(AgentEventsEnum.AVATAR_SPEAK_STARTED, onSpeakStarted);
       live.on(AgentEventsEnum.AVATAR_SPEAK_ENDED, onSpeakEnded);
       live.on(AgentEventsEnum.AVATAR_TRANSCRIPTION, onAvatarTranscription);
+      live.on(AgentEventsEnum.AVATAR_TRANSCRIPTION_CHUNK, onAvatarTranscriptionChunk);
       live.on(AgentEventsEnum.ELEVENLABS_AGENT_EVENT, onElevenLabsAgentEvent);
       live.on(AgentEventsEnum.SESSION_STOPPED, onSessionStopped);
       liveSessionCleanupRef.current.set(avatarId, {
@@ -1359,6 +1772,7 @@ export function GroupInteractCall({
           live.off(AgentEventsEnum.AVATAR_SPEAK_STARTED, onSpeakStarted);
           live.off(AgentEventsEnum.AVATAR_SPEAK_ENDED, onSpeakEnded);
           live.off(AgentEventsEnum.AVATAR_TRANSCRIPTION, onAvatarTranscription);
+          live.off(AgentEventsEnum.AVATAR_TRANSCRIPTION_CHUNK, onAvatarTranscriptionChunk);
           live.off(AgentEventsEnum.ELEVENLABS_AGENT_EVENT, onElevenLabsAgentEvent);
           live.off(AgentEventsEnum.SESSION_STOPPED, onSessionStopped);
         },
@@ -1408,13 +1822,14 @@ export function GroupInteractCall({
           participantsRef.current = next;
           return next;
         });
+        initializationComplete = true;
         return true;
       } catch {
         finishStartupCue();
         if (isCurrentCall()) {
           detachLiveSessionListeners(avatarId, generation);
           liveSessionsRef.current.delete(avatarId);
-          if (!options.requireCompleteStartup || !startingRef.current) {
+          if (!options.interruptionReplacement && (!options.requireCompleteStartup || !startingRef.current)) {
             enqueueParticipantFailure({
               avatarId,
               participantAttemptId,
@@ -1440,6 +1855,239 @@ export function GroupInteractCall({
     ]
   );
 
+  const resumeHumanInterruption = useCallback(
+    async (manualRecovery = false) => {
+      const episode = humanInterruptionRef.current;
+      if (!episode || episode.running || (episode.requiresRecovery && !manualRecovery)) return;
+      const isCurrent = () =>
+        humanInterruptionRef.current === episode &&
+        callEpochRef.current === episode.callEpoch &&
+        sessionRef.current?.id === episode.sessionId &&
+        !endingRef.current &&
+        mountedRef.current;
+      if (!isCurrent()) return;
+      episode.running = true;
+      episode.requiresRecovery = false;
+      setInterruptionStatus("capturing");
+      try {
+        if (episode.captureFailed) {
+          await startScribe();
+          if (!isCurrent()) return;
+          episode.captureFailed = false;
+          setIsMuted(false);
+        }
+        if (!episode.result) {
+          for (let attempt = 0; attempt < 3; attempt += 1) {
+            try {
+              const result = await withTimeout(
+                transport.interrupt(episode.sessionId, "user", {
+                  avatarId: episode.avatarId,
+                  turnId: episode.turnId,
+                  sourceEventId: episode.sourceEventId,
+                  trigger: "voice",
+                  ...(episode.generatedText ? { generatedText: episode.generatedText } : {}),
+                }),
+                5_000,
+                isCurrent
+              );
+              if (!isCurrent()) return;
+              if (
+                result.interruption?.sourceEventId !== episode.sourceEventId ||
+                result.interruption.status !== "cancelled" ||
+                result.floor !== null ||
+                result.phase !== "listening"
+              ) {
+                throw new Error(
+                  "La ronda cambió antes de confirmar la interrupción. Conservamos tu frase; podés reintentar o finalizar la llamada."
+                );
+              }
+              episode.result = result;
+              break;
+            } catch (error) {
+              if (!isCurrent()) return;
+              if (attempt === 2 || !isRetryableParticipantFailure(error)) throw error;
+            }
+          }
+        }
+        if (!episode.result) return;
+        const affected =
+          episode.result.interruption?.affectedParticipants ??
+          (episode.result.interruption?.avatarIds ?? []).map((avatarId) => ({
+            avatarId,
+            participantAttemptId: liveSessionsRef.current.get(avatarId)?.participantAttemptId,
+            interruptedTurnId:
+              avatarId === episode.avatarId
+                ? episode.turnId
+                : [...turnLedgerRef.current.values()].reverse().find((entry) => entry.avatarId === avatarId)
+                    ?.turnId,
+          }));
+        // Quarantine every affected connector before waiting on any request.
+        for (const item of affected) {
+          const old = liveSessionsRef.current.get(item.avatarId);
+          if (!old || episode.resolvedAvatars.has(item.avatarId) || episode.replacements.has(item.avatarId))
+            continue;
+          if (!item.interruptedTurnId || old.participantAttemptId !== item.participantAttemptId)
+            throw new Error(
+              "La conexión cambió durante la interrupción. Conservamos tu frase para reintentar."
+            );
+          if (old.interruptedTurnId && old.interruptedTurnId !== item.interruptedTurnId)
+            throw new Error(
+              "La respuesta cambió durante la interrupción. Conservamos tu frase para reintentar."
+            );
+          if (!old.interruptedTurnId) {
+            old.interruptedTurnId = item.interruptedTurnId;
+            old.reuse.quarantine(item.interruptedTurnId, episode.sourceEventId);
+            old.cancelSpeechCompletion();
+            const ledger = turnLedgerRef.current.get(item.interruptedTurnId);
+            if (ledger) ledger.wasInterrupted = true;
+            if (ledger && ledger.state !== "completed") ledger.state = "interrupted";
+            safelyInterruptLiveSession(old.session);
+          }
+        }
+        for (const item of affected) {
+          const { avatarId } = item;
+          if (episode.resolvedAvatars.has(avatarId)) continue;
+          const old = liveSessionsRef.current.get(avatarId);
+          if (
+            old &&
+            !episode.replacements.has(avatarId) &&
+            !old.retiringForInterruption &&
+            (!manualRecovery || old.reuse.readyEvidence)
+          ) {
+            const turnId = old.interruptedTurnId;
+            const evidencePromise = turnId && old.reuse.evidence(turnId, episode.sourceEventId);
+            if (!turnId || !evidencePromise)
+              throw new Error("No pudimos identificar la respuesta interrumpida.");
+            let evidence;
+            try {
+              evidence = await withTimeout(evidencePromise, 5_000, isCurrent);
+            } catch {
+              throw new Error(
+                "El avatar todavía no confirmó el corte. Conservamos tu frase; podés reintentar la conexión."
+              );
+            }
+            if (!isCurrent()) return;
+            if (liveSessionsRef.current.get(avatarId) !== old)
+              throw new Error("Se perdió la conexión del avatar. Conservamos tu frase para reintentar.");
+            const ready = await withTimeout(
+              transport.confirmParticipantInterruptionReady(episode.sessionId, avatarId, {
+                interruptionSourceEventId: episode.sourceEventId,
+                participantAttemptId: old.participantAttemptId,
+                interruptedTurnId: turnId,
+                evidence,
+              }),
+              5_000,
+              isCurrent
+            );
+            if (!isCurrent()) return;
+            if (
+              !ready.applied ||
+              ready.floor !== null ||
+              ready.phase !== "listening" ||
+              liveSessionsRef.current.get(avatarId) !== old ||
+              !old.reuse.release(turnId, episode.sourceEventId)
+            )
+              throw new Error(
+                "No pudimos confirmar que el avatar esté listo. Conservamos tu frase para reintentar."
+              );
+            delete old.interruptedTurnId;
+            episode.resolvedAvatars.add(avatarId);
+            avatarEchoRef.current.delete(avatarId);
+            continue;
+          }
+          if (!manualRecovery)
+            throw new Error("Se perdió la conexión del avatar. Conservamos tu frase para reintentar.");
+          // Reconnection is an explicit recovery, never a terminal timeout side effect.
+          if (old) old.retiringForInterruption = true;
+          let replacement = episode.replacements.get(avatarId);
+          if (!replacement) {
+            const response = await withTimeout(
+              transport.retryParticipant(episode.sessionId, avatarId, {
+                interruptionSourceEventId: episode.sourceEventId,
+                ...(episode.failedAttempts.has(avatarId)
+                  ? { failedParticipantAttemptId: episode.failedAttempts.get(avatarId)! }
+                  : {}),
+              }),
+              20_000,
+              isCurrent
+            );
+            if (!isCurrent()) return;
+            replacement = response.participant;
+            episode.replacements.set(avatarId, replacement);
+          }
+          if (!replacement.sessionToken || !replacement.participantAttemptId) {
+            throw new Error("No pudimos preparar una conexión limpia para el avatar.");
+          }
+          setParticipants((current) => {
+            const next = current.map(
+              (item): LocalParticipant =>
+                item.avatar.id === avatarId
+                  ? { ...replacement, clientStatus: "connecting", clientError: null }
+                  : item
+            );
+            participantsRef.current = next;
+            return next;
+          });
+          const connected = await initializeLiveParticipant(replacement, episode.callEpoch, {
+            interruptionReplacement: true,
+          });
+          if (!isCurrent()) return;
+          if (!connected) {
+            episode.failedAttempts.set(avatarId, replacement.participantAttemptId);
+            episode.replacements.delete(avatarId);
+            throw new Error(
+              "No pudimos reconectar al avatar interrumpido. Tu frase sigue guardada para reintentar."
+            );
+          }
+          episode.resolvedAvatars.add(avatarId);
+          avatarEchoRef.current.delete(avatarId);
+        }
+        episode.ready = true;
+        if (!isCurrent()) return;
+        if (episode.captureFailed || episode.requiresRecovery) {
+          episode.requiresRecovery = true;
+          setInterruptionStatus("failed");
+          return;
+        }
+        if (!episode.captureComplete) return;
+        // Cancellation and every connector resolution are confirmed. Preserve the queue rather
+        // than chaining behind a possibly hung, pre-cut HTTP request.
+        orchestrationQueueRef.current = Promise.resolve();
+        humanInterruptionRef.current = null;
+        setInterruptionStatus(null);
+        setCallError(null);
+        releaseDisplayedFloor();
+        setServerPhase("listening");
+        // Scribe may commit several segments while cancellation/reconnection is
+        // pending. They are one intervention and must not cancel one another.
+        const committed = episode.committed[0];
+        if (committed) {
+          pendingHumanTurnsRef.current.unshift({
+            sourceEventId: committed.sourceEventId,
+            content: episode.committed.map((input) => input.content).join("\n"),
+          });
+        }
+        flushPendingHumanRef.current();
+      } catch (error) {
+        if (!isCurrent()) return;
+        episode.requiresRecovery = true;
+        applyAudioGate(null);
+        setInterruptionStatus("failed");
+        setCallError(
+          error instanceof Error
+            ? error.message
+            : "No pudimos confirmar la interrupción. Conservamos tu frase."
+        );
+      } finally {
+        episode.running = false;
+      }
+    },
+    [applyAudioGate, initializeLiveParticipant, releaseDisplayedFloor, setServerPhase, startScribe, transport]
+  );
+  resumeHumanInterruptionRef.current = () => {
+    void resumeHumanInterruption();
+  };
+
   const endCall = useCallback(
     async (reason: "user" | "timeout" | "no_participants" | "unload" = "user") => {
       const activeSession = sessionRef.current;
@@ -1449,6 +2097,13 @@ export function GroupInteractCall({
       startingRef.current = false;
       heartbeatInFlightRef.current = false;
       callEpochRef.current += 1;
+      controlGenerationRef.current += 1;
+      humanInterruptionRef.current = null;
+      failedHumanTurnRef.current = null;
+      setHumanTurnFailed(false);
+      pendingHumanTurnsRef.current = [];
+      avatarEchoRef.current.clear();
+      setInterruptionStatus(null);
       orchestrationQueueRef.current = Promise.resolve();
       applyAudioGate(null);
       setCallStatus("ending");
@@ -1613,6 +2268,15 @@ export function GroupInteractCall({
     setCallStatus("starting");
     callEpochRef.current += 1;
     const callEpoch = callEpochRef.current;
+    controlGenerationRef.current += 1;
+    humanInterruptionRef.current = null;
+    failedHumanTurnRef.current = null;
+    setHumanTurnFailed(false);
+    humanCaptureRef.current = null;
+    pendingHumanTurnsRef.current = [];
+    lastHumanCommitRef.current = null;
+    avatarEchoRef.current.clear();
+    setInterruptionStatus(null);
     orchestrationQueueRef.current = Promise.resolve();
     applyAudioGate(null);
     setCallError(null);
@@ -1829,12 +2493,7 @@ export function GroupInteractCall({
   }
 
   async function toggleMute() {
-    if (
-      floorAuthorizationRef.current !== null ||
-      turnPhaseRef.current !== "listening" ||
-      participantRetryInFlightRef.current.size > 0
-    )
-      return;
+    if (humanInterruptionRef.current !== null || participantRetryInFlightRef.current.size > 0) return;
     if (isMuted) {
       setCallError(null);
       try {
@@ -1846,25 +2505,6 @@ export function GroupInteractCall({
     } else {
       closeScribe();
       setIsMuted(true);
-    }
-  }
-
-  async function interruptCurrentAvatar() {
-    const directive = floorAuthorizationRef.current;
-    const activeSessionId = sessionRef.current?.id;
-    if (!directive || !activeSessionId) return;
-    try {
-      const result = await transport.interrupt(activeSessionId, "user", {
-        avatarId: directive.avatarId,
-        turnId: directive.turnId,
-      });
-      safelyInterruptLiveSession(liveSessionsRef.current.get(directive.avatarId)?.session);
-      speakingAvatarIdsRef.current.delete(directive.avatarId);
-      latestAvatarTextRef.current.delete(directive.avatarId);
-      await reconcileServerResult(result);
-      setCallError(null);
-    } catch (error) {
-      setCallError(error instanceof Error ? error.message : "No pudimos interrumpir al avatar.");
     }
   }
 
@@ -2016,11 +2656,7 @@ export function GroupInteractCall({
   );
   const isLive = callStatus === "active" || callStatus === "degraded";
   const canUserSpeak =
-    isLive &&
-    pendingFailureCount === 0 &&
-    pendingRetryCount === 0 &&
-    turnOwnerId === null &&
-    turnPhase === "listening";
+    isLive && pendingFailureCount === 0 && pendingRetryCount === 0 && interruptionStatus === null;
   const requiresFullRoster = group.access.type === "shared" || privacyPrompt === "handled";
   const canStart =
     group.access.canInteract &&
@@ -2149,13 +2785,33 @@ export function GroupInteractCall({
             <Badge
               tone={turnPhase === "speaking" ? "success" : turnPhase === "listening" ? "warning" : "neutral"}
             >
-              {formatTurnPhase(turnPhase)}
+              {interruptionStatus
+                ? `Te escuchamos · interrumpiendo a ${humanInterruptionRef.current?.avatarName ?? "el avatar"}…`
+                : turnPhase === "speaking" && !isMuted
+                  ? `${displayedParticipants.find((item) => item.avatar.id === activeSpeakerId)?.avatar.name ?? "El avatar"} está hablando · hablá para interrumpir`
+                  : formatTurnPhase(turnPhase)}
             </Badge>
             <Badge tone="neutral">{displayedParticipants.length} participantes</Badge>
             {remainingSeconds !== null ? (
               <Badge tone={remainingSeconds <= 60 ? "warning" : "neutral"}>
                 Tiempo · {formatRemainingTime(remainingSeconds)}
               </Badge>
+            ) : null}
+            {interruptionStatus === "failed" ? (
+              <Button onClick={() => void resumeHumanInterruption(true)}>Reintentar interrupción</Button>
+            ) : null}
+            {humanTurnFailed ? (
+              <Button
+                onClick={() => {
+                  const input = failedHumanTurnRef.current;
+                  if (!input) return;
+                  failedHumanTurnRef.current = null;
+                  setHumanTurnFailed(false);
+                  routeHumanTurn(input);
+                }}
+              >
+                Reintentar envío
+              </Button>
             ) : null}
           </>
         }
@@ -2169,7 +2825,7 @@ export function GroupInteractCall({
             canInterrupt={false}
             onStart={() => void requestGroupCallStart()}
             onToggleMute={() => void toggleMute()}
-            onInterrupt={() => void interruptCurrentAvatar()}
+            onInterrupt={() => undefined}
             onEnd={() => void endCall("user")}
           />
         }

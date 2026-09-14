@@ -4,6 +4,7 @@ import {
   type EndGroupVoiceSessionInput,
   type GroupProviderEventInput,
   type GroupVoiceParticipantFailureInput,
+  type GroupVoiceParticipantInterruptionReadyInput,
   type GroupVoiceParticipantStartedInput,
   type GroupVoiceTurnInput,
   type IdentifyPublicGroupLinkInput,
@@ -207,8 +208,31 @@ export function createPublicGroupSessionsService(dependencies: PublicGroupSessio
     async interrupt(id: string, token: string, ip: string, input: InterruptGroupVoiceSessionInput) {
       return groups.interrupt(await principalForRuntime(id, token, ip, "command"), id, input);
     },
-    async retry(id: string, token: string, ip: string, avatarId: string) {
-      return groups.retry(await principalForRuntime(id, token, ip, "command"), id, avatarId);
+    async retry(
+      id: string,
+      token: string,
+      ip: string,
+      avatarId: string,
+      input: {
+        interruptionSourceEventId?: string | undefined;
+        failedParticipantAttemptId?: string | undefined;
+      } = {}
+    ) {
+      return groups.retry(await principalForRuntime(id, token, ip, "command"), id, avatarId, input);
+    },
+    async confirmParticipantInterruptionReady(
+      id: string,
+      token: string,
+      ip: string,
+      avatarId: string,
+      input: GroupVoiceParticipantInterruptionReadyInput
+    ) {
+      return groups.confirmParticipantInterruptionReady(
+        await principalForRuntime(id, token, ip, "command"),
+        id,
+        avatarId,
+        input
+      );
     },
     async confirmParticipantStarted(
       id: string,

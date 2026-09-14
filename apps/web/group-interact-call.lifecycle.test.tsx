@@ -18,6 +18,7 @@ let restoreConsoleInfo = () => {};
 
 const apiMocks = vi.hoisted(() => ({
   confirmGroupParticipantStarted: vi.fn(),
+  confirmGroupParticipantInterruptionReady: vi.fn(),
   endGroupVoiceSession: vi.fn(),
   getAvatarGroup: vi.fn(),
   getGroupConversation: vi.fn(),
@@ -37,6 +38,7 @@ const authMocks = vi.hoisted(() => ({
 }));
 
 const liveAvatarMocks = vi.hoisted(() => ({
+  autoInterruptTerminal: false,
   startBehaviors: new Map<string, () => Promise<void>>(),
   instances: [] as Array<{
     token: string;
@@ -72,7 +74,13 @@ vi.mock("@heygen/liveavatar-web-sdk", () => {
   class MockElevenLabsAgentSession {
     readonly token: string;
     readonly attach = vi.fn();
-    readonly interrupt = vi.fn();
+    readonly interrupt = vi.fn(() => {
+      if (liveAvatarMocks.autoInterruptTerminal)
+        this.emit("avatar.speak_ended", {
+          event_id: `interrupted-end:${this.token}:${this.sendUserMessage.mock.calls.length}`,
+          source_event_id: `speech:${this.token}:${this.sendUserMessage.mock.calls.length}`,
+        });
+    });
     readonly keepAlive = vi.fn(async () => undefined);
     readonly commands = vi.fn();
     readonly sendContextualUpdate = vi.fn((text: string) => {
@@ -304,6 +312,74 @@ async function renderActiveCall() {
 
 function recordedCommands(instanceIndex: number) {
   return liveAvatarMocks.instances[instanceIndex]!.commands.mock.calls.map(([command]) => command);
+}
+
+function deferred<T = unknown>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
+function interruptedRoundResponse(sourceEventId: string) {
+  return {
+    phase: "listening",
+    directive: { action: "listen", reason: "interrupted" },
+    floor: null,
+    interruption: {
+      sourceEventId,
+      status: "cancelled",
+      turnId: "turn-1",
+      avatarIds: ["avatar-1"],
+    },
+  };
+}
+
+function nextHumanRoundResponse(avatarId = "avatar-2") {
+  return {
+    round: { id: "round-2", intent: "normal", status: "queued", contextVersion: 2 },
+    phase: "queued",
+    floor: { turnId: "turn-new", avatarId, leaseExpiresAt: "2026-08-21T12:01:15.000Z" },
+    directive: {
+      action: "speak",
+      turnId: "turn-new",
+      avatarId,
+      avatarName: avatarId === "avatar-1" ? "Ada" : "Grace",
+      context: "Ada fue interrumpida; lo oído no está confirmado y el borrador sigue pendiente.",
+      instruction: "Respondé a la nueva intervención.",
+      leaseExpiresAt: "2026-08-21T12:01:15.000Z",
+    },
+  };
+}
+
+async function requestInterruptionRecovery() {
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(5_001);
+    await flushAsyncWork();
+  });
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: /Reintentar interrupción/ }));
+    await flushAsyncWork();
+    await settleSpeechCompletion();
+  });
+}
+
+async function renderSpeakingCall() {
+  const view = await renderActiveCall();
+  await act(async () => {
+    scribeMocks.connection?.emit("committed_transcript", { text: "Respondé Ada" });
+    await flushAsyncWork();
+    liveAvatarMocks.instances[0]!.emit("avatar.speak_started", {
+      event_id: "barge-owner-start",
+      source_event_id: `speech:${liveAvatarMocks.instances[0]!.token}:1`,
+    });
+    await flushAsyncWork();
+  });
+  expect(view.container.querySelectorAll("video")[0]!.muted).toBe(false);
+  return view;
 }
 
 describe("GroupInteractCall lifecycle", () => {
@@ -565,7 +641,11 @@ describe("GroupInteractCall lifecycle", () => {
       });
       await flushAsyncWork();
     });
-    expect(apiMocks.reportGroupProviderEvent).toHaveBeenCalledTimes(providerEventCount);
+    expect(apiMocks.reportGroupProviderEvent).toHaveBeenCalledTimes(providerEventCount + 1);
+    expect(apiMocks.reportGroupProviderEvent).toHaveBeenLastCalledWith(
+      "group-session-1",
+      expect.objectContaining({ type: "interruption", turnId: "turn-1", avatarId: "avatar-1" })
+    );
     expect(videos[0]!.muted).toBe(false);
 
     liveAvatarMocks.instances[1]!.interrupt.mockImplementation(() => {
@@ -1195,7 +1275,7 @@ describe("GroupInteractCall lifecycle", () => {
     unmount();
   });
 
-  it("releases committing floor when an interruption retry ACK returns listening without a directive", async () => {
+  it("does not let a provider-only interruption or its listening ACK release the human-controlled floor", async () => {
     const { container, unmount } = await renderActiveCall();
     await act(async () => {
       scribeMocks.connection?.emit("committed_transcript", { text: "Respondé Ada" });
@@ -1216,19 +1296,16 @@ describe("GroupInteractCall lifecycle", () => {
       await flushAsyncWork();
     });
 
-    const interruptionCalls = apiMocks.reportGroupProviderEvent.mock.calls.filter(
-      ([, input]) => input.type === "interruption"
-    );
-    expect(interruptionCalls).toHaveLength(2);
-    expect(interruptionCalls[0]?.[1].sourceEventId).toBe(interruptionCalls[1]?.[1].sourceEventId);
     const videos = [...container.querySelectorAll("video")];
-    expect(videos.every((video) => video.muted)).toBe(true);
-    expect(videos[0]!.closest("article")?.getAttribute("data-turn-owner")).toBe("false");
-    expect(screen.getAllByText("Tu turno").length).toBeGreaterThan(0);
+    expect(videos.map((video) => video.muted)).toEqual([false, true]);
+    expect(videos[0]!.closest("article")?.getAttribute("data-turn-owner")).toBe("true");
+    expect(apiMocks.interruptGroupVoiceSession).not.toHaveBeenCalled();
+    expect(liveAvatarMocks.instances[0]!.interrupt).not.toHaveBeenCalled();
+    expect(apiMocks.submitGroupTurn).toHaveBeenCalledTimes(1);
     unmount();
   });
 
-  it("keeps deliberating and dispatches nobody when the busy router returns no directive", async () => {
+  it("retains the input for explicit retry and dispatches nobody when the busy router accepts no round", async () => {
     const { container, unmount } = await renderActiveCall();
     for (const instance of liveAvatarMocks.instances) instance.commands.mockClear();
     apiMocks.submitGroupTurn.mockResolvedValueOnce({
@@ -1249,6 +1326,7 @@ describe("GroupInteractCall lifecycle", () => {
       true
     );
     expect([...container.querySelectorAll("video")].every((video) => video.muted)).toBe(true);
+    expect(screen.getByRole("button", { name: "Reintentar envío" })).toBeTruthy();
     expect(screen.getAllByText("Analizando").length).toBeGreaterThan(0);
     unmount();
   });
@@ -2293,6 +2371,1173 @@ describe("GroupInteractCall lifecycle", () => {
       false
     );
     unmount();
+  });
+
+  describe("Scribe-authoritative human interruption", () => {
+    beforeEach(() => {
+      liveAvatarMocks.autoInterruptTerminal = true;
+      apiMocks.confirmGroupParticipantInterruptionReady.mockResolvedValue({
+        applied: true,
+        phase: "listening",
+        floor: null,
+      });
+      apiMocks.interruptGroupVoiceSession.mockImplementation(async (_sessionId, reason, input) =>
+        reason === "user"
+          ? interruptedRoundResponse(input.sourceEventId)
+          : { phase: "listening", directive: { action: "listen", reason: "interrupted" }, floor: null }
+      );
+      apiMocks.retryGroupParticipant.mockResolvedValue({
+        participant: {
+          ...participants[0]!,
+          participantAttemptId: "attempt-after-interruption",
+          sessionToken: "token-after-interruption",
+          sessionId: "live-after-interruption",
+          realtimeSessionId: "realtime-after-interruption",
+        },
+      });
+    });
+
+    it("retains silence and the human phrase without replacing when terminal evidence is absent or unrelated", async () => {
+      liveAvatarMocks.autoInterruptTerminal = false;
+      const { container, unmount } = await renderSpeakingCall();
+      const owner = liveAvatarMocks.instances[0]!;
+      await act(async () => {
+        scribeMocks.connection?.emit("committed_transcript", { text: "Ahora quiero hablar de otra cosa" });
+        owner.emit("avatar.speak_ended", { event_id: "unknown-end", source_event_id: "unrelated" });
+        owner.emit("avatar.speak_ended", { event_id: "source-less-end" });
+        await vi.advanceTimersByTimeAsync(5_001);
+        await flushAsyncWork();
+      });
+      expect(apiMocks.confirmGroupParticipantInterruptionReady).not.toHaveBeenCalled();
+      expect(apiMocks.retryGroupParticipant).not.toHaveBeenCalled();
+      expect(owner.stop).not.toHaveBeenCalled();
+      expect(apiMocks.submitGroupTurn).toHaveBeenCalledTimes(1);
+      expect([...container.querySelectorAll("video")].every((video) => video.muted)).toBe(true);
+      expect(screen.getByRole("button", { name: /Reintentar interrupción/ })).toBeTruthy();
+      // A terminal after timeout is retained, but never silently resumes failed recovery.
+      apiMocks.submitGroupTurn.mockResolvedValue(nextHumanRoundResponse());
+      await act(async () => {
+        owner.emit("avatar.speak_ended", {
+          event_id: "late-valid-end",
+          source_event_id: `speech:${owner.token}:1`,
+        });
+        await flushAsyncWork();
+      });
+      expect(apiMocks.submitGroupTurn).toHaveBeenCalledTimes(1);
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: /Reintentar interrupción/ }));
+        await flushAsyncWork();
+      });
+      expect(apiMocks.submitGroupTurn.mock.calls[1]![1].content).toBe("Ahora quiero hablar de otra cosa");
+      expect(apiMocks.retryGroupParticipant).not.toHaveBeenCalled();
+      expect(owner.stop).not.toHaveBeenCalled();
+      unmount();
+    });
+
+    it("waits for a correlated terminal arriving after cancellation before resolving reuse", async () => {
+      liveAvatarMocks.autoInterruptTerminal = false;
+      const { unmount } = await renderSpeakingCall();
+      const owner = liveAvatarMocks.instances[0]!;
+      apiMocks.submitGroupTurn.mockResolvedValue(nextHumanRoundResponse());
+      await act(async () => {
+        scribeMocks.connection?.emit("committed_transcript", { text: "Mejor que responda Grace" });
+        await flushAsyncWork();
+      });
+      expect(apiMocks.interruptGroupVoiceSession).toHaveBeenCalledTimes(1);
+      expect(apiMocks.confirmGroupParticipantInterruptionReady).not.toHaveBeenCalled();
+      await act(async () => {
+        owner.emit("avatar.speak_ended", {
+          event_id: "terminal-after-cancel",
+          source_event_id: `speech:${owner.token}:1`,
+        });
+        await flushAsyncWork();
+      });
+      expect(apiMocks.confirmGroupParticipantInterruptionReady).toHaveBeenCalledWith(
+        "group-session-1",
+        "avatar-1",
+        expect.objectContaining({
+          evidence: {
+            type: "speak_ended",
+            eventId: "terminal-after-cancel",
+            speechSourceEventId: `speech:${owner.token}:1`,
+          },
+        })
+      );
+      expect(apiMocks.submitGroupTurn).toHaveBeenCalledTimes(2);
+      expect(owner.stop).not.toHaveBeenCalled();
+      unmount();
+    });
+
+    it("retries the identical reuse ACK after a lost response without starting replacement", async () => {
+      apiMocks.confirmGroupParticipantInterruptionReady.mockRejectedValueOnce(new Error("ACK lost"));
+      const { unmount } = await renderSpeakingCall();
+      apiMocks.submitGroupTurn.mockResolvedValue(nextHumanRoundResponse());
+      await act(async () => {
+        scribeMocks.connection?.emit("committed_transcript", { text: "Que responda Grace" });
+        await flushAsyncWork();
+      });
+      expect(apiMocks.submitGroupTurn).toHaveBeenCalledTimes(1);
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: /Reintentar interrupción/ }));
+        await flushAsyncWork();
+      });
+      const calls = apiMocks.confirmGroupParticipantInterruptionReady.mock.calls;
+      expect(calls).toHaveLength(2);
+      expect(calls[1]).toEqual(calls[0]);
+      expect(apiMocks.retryGroupParticipant).not.toHaveBeenCalled();
+      expect(apiMocks.submitGroupTurn).toHaveBeenCalledTimes(2);
+      unmount();
+    });
+
+    it("resolves both affected A→B attempts and proves that B was never dispatched", async () => {
+      const { unmount } = await renderSpeakingCall();
+      apiMocks.interruptGroupVoiceSession.mockImplementation(async (_sessionId, _reason, input) => ({
+        ...interruptedRoundResponse(input.sourceEventId),
+        interruption: {
+          ...interruptedRoundResponse(input.sourceEventId).interruption,
+          avatarIds: ["avatar-1", "avatar-2"],
+          affectedParticipants: [
+            {
+              avatarId: "avatar-1",
+              participantAttemptId: participants[0]!.participantAttemptId,
+              interruptedTurnId: "turn-1",
+            },
+            {
+              avatarId: "avatar-2",
+              participantAttemptId: participants[1]!.participantAttemptId,
+              interruptedTurnId: "turn-b-cancelled",
+            },
+          ],
+        },
+      }));
+      const secondAck = deferred();
+      apiMocks.confirmGroupParticipantInterruptionReady
+        .mockResolvedValueOnce({ applied: true, phase: "listening", floor: null })
+        .mockReturnValueOnce(secondAck.promise);
+      apiMocks.submitGroupTurn.mockResolvedValue(nextHumanRoundResponse());
+      await act(async () => {
+        scribeMocks.connection?.emit("committed_transcript", { text: "Esperá, reformulo" });
+        await flushAsyncWork();
+      });
+      expect(apiMocks.confirmGroupParticipantInterruptionReady).toHaveBeenNthCalledWith(
+        2,
+        "group-session-1",
+        "avatar-2",
+        expect.objectContaining({
+          interruptedTurnId: "turn-b-cancelled",
+          evidence: { type: "not_dispatched" },
+        })
+      );
+      expect(apiMocks.submitGroupTurn).toHaveBeenCalledTimes(1);
+      await act(async () => {
+        secondAck.resolve({ applied: true, phase: "listening", floor: null });
+        await flushAsyncWork();
+      });
+      expect(apiMocks.submitGroupTurn).toHaveBeenCalledTimes(2);
+      expect(liveAvatarMocks.instances).toHaveLength(2);
+      expect(apiMocks.retryGroupParticipant).not.toHaveBeenCalled();
+      unmount();
+    });
+
+    it("captures B's terminal before the cancellation ACK when the human phrase began on A", async () => {
+      liveAvatarMocks.autoInterruptTerminal = false;
+      const { unmount } = await renderSpeakingCall();
+      const a = liveAvatarMocks.instances[0]!;
+      const b = liveAvatarMocks.instances[1]!;
+      const cancellation = deferred();
+      apiMocks.interruptGroupVoiceSession.mockReturnValue(cancellation.promise);
+      apiMocks.reportGroupProviderEvent.mockImplementation(async (_sessionId, input) =>
+        input.type === "speak_ended" && input.avatarId === "avatar-1"
+          ? nextHumanRoundResponse("avatar-2")
+          : {
+              phase: "speaking",
+              floor: {
+                turnId: input.turnId,
+                avatarId: input.avatarId,
+                leaseExpiresAt: "2026-08-21T12:01:15.000Z",
+              },
+              directive: null,
+            }
+      );
+      await act(async () => {
+        scribeMocks.connection?.emit("partial_transcript", { text: "sí" });
+        a.emit("avatar.speak_ended", { event_id: "a-natural-end", source_event_id: `speech:${a.token}:1` });
+        await settleSpeechCompletion();
+        b.emit("avatar.speak_started", { event_id: "b-start", source_event_id: "b-source" });
+        await flushAsyncWork();
+        scribeMocks.connection?.emit("partial_transcript", { text: "sí, pero esperá" });
+        await flushAsyncWork();
+      });
+      expect(a.interrupt).toHaveBeenCalledTimes(1);
+      expect(b.interrupt).toHaveBeenCalledTimes(1);
+      const sourceEventId = apiMocks.interruptGroupVoiceSession.mock.calls[0]![2].sourceEventId;
+      await act(async () => {
+        b.emit("avatar.speak_ended", { event_id: "b-native-terminal", source_event_id: "b-source" });
+        scribeMocks.connection?.emit("committed_transcript", { text: "Reformulo para ambos" });
+        await flushAsyncWork();
+      });
+      expect(apiMocks.confirmGroupParticipantInterruptionReady).not.toHaveBeenCalled();
+      await act(async () => {
+        cancellation.resolve({
+          ...interruptedRoundResponse(sourceEventId),
+          interruption: {
+            ...interruptedRoundResponse(sourceEventId).interruption,
+            avatarIds: ["avatar-1", "avatar-2"],
+            affectedParticipants: [
+              {
+                avatarId: "avatar-1",
+                participantAttemptId: participants[0]!.participantAttemptId,
+                interruptedTurnId: "turn-1",
+              },
+              {
+                avatarId: "avatar-2",
+                participantAttemptId: participants[1]!.participantAttemptId,
+                interruptedTurnId: "turn-new",
+              },
+            ],
+          },
+        });
+        await flushAsyncWork();
+      });
+      expect(apiMocks.confirmGroupParticipantInterruptionReady).toHaveBeenCalledTimes(2);
+      expect(apiMocks.confirmGroupParticipantInterruptionReady).toHaveBeenLastCalledWith(
+        "group-session-1",
+        "avatar-2",
+        expect.objectContaining({
+          evidence: { type: "speak_ended", eventId: "b-native-terminal", speechSourceEventId: "b-source" },
+        })
+      );
+      expect(apiMocks.retryGroupParticipant).not.toHaveBeenCalled();
+      expect(apiMocks.submitGroupTurn).toHaveBeenCalledTimes(2);
+      unmount();
+    });
+
+    it("recovers a real failed attempt when the server applied reuse but its ACK was lost", async () => {
+      mockThreeParticipantStart();
+      apiMocks.confirmGroupParticipantInterruptionReady.mockRejectedValueOnce(
+        new Error("response lost after apply")
+      );
+      const { unmount } = await renderSpeakingCall();
+      const owner = liveAvatarMocks.instances[0]!;
+      apiMocks.submitGroupTurn.mockResolvedValue(nextHumanRoundResponse());
+      await act(async () => {
+        scribeMocks.connection?.emit("committed_transcript", { text: "Guardá esta nueva intención" });
+        await flushAsyncWork();
+        owner.emit("session.disconnected");
+        await vi.advanceTimersByTimeAsync(0);
+        await flushAsyncWork();
+      });
+      expect(apiMocks.reportGroupParticipantFailure).toHaveBeenCalledTimes(1);
+      expect(apiMocks.submitGroupTurn).toHaveBeenCalledTimes(1);
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: /Reintentar interrupción/ }));
+        await flushAsyncWork();
+        await settleSpeechCompletion();
+      });
+      expect(apiMocks.retryGroupParticipant).toHaveBeenCalledWith("group-session-1", "avatar-1", {
+        interruptionSourceEventId: apiMocks.interruptGroupVoiceSession.mock.calls[0]![2].sourceEventId,
+        failedParticipantAttemptId: participants[0]!.participantAttemptId,
+      });
+      expect(apiMocks.submitGroupTurn).toHaveBeenCalledTimes(2);
+      expect(apiMocks.submitGroupTurn.mock.calls[1]![1].content).toBe("Guardá esta nueva intención");
+      unmount();
+    });
+
+    it("keeps retired speech and transcription out of the new turn on the same connector", async () => {
+      const { container, unmount } = await renderSpeakingCall();
+      const owner = liveAvatarMocks.instances[0]!;
+      apiMocks.submitGroupTurn.mockResolvedValue(nextHumanRoundResponse("avatar-1"));
+      await act(async () => {
+        scribeMocks.connection?.emit("committed_transcript", { text: "Ada, otra explicación" });
+        await flushAsyncWork();
+        owner.emit("session.stream_ready");
+        owner.emit("avatar.speak_started", {
+          event_id: "retired-start",
+          source_event_id: `speech:${owner.token}:1`,
+        });
+        owner.emit("avatar.speak_started", { event_id: "missing-source" });
+      });
+      expect(container.querySelectorAll("video")[0]!.muted).toBe(true);
+      await act(async () => {
+        owner.emit("avatar.speak_started", { event_id: "fresh-start", source_event_id: "fresh-new" });
+        owner.emit("avatar.transcription", {
+          event_id: "retired-text",
+          source_event_id: `speech:${owner.token}:1`,
+          text: "Borrador retirado",
+        });
+        owner.emit("avatar.speak_ended", { event_id: "late-no-source" });
+        owner.emit("avatar.speak_ended", {
+          event_id: "late-unrelated-source",
+          source_event_id: "unrelated-old",
+        });
+        owner.emit("avatar.speak_ended", {
+          event_id: "retired-end",
+          source_event_id: `speech:${owner.token}:1`,
+        });
+        await vi.advanceTimersByTimeAsync(1_100);
+        await flushAsyncWork();
+      });
+      expect(container.querySelectorAll("video")[0]!.muted).toBe(false);
+      expect(
+        apiMocks.reportGroupProviderEvent.mock.calls.some(
+          ([, event]) => event.type === "speak_ended" && event.turnId === "turn-new"
+        )
+      ).toBe(false);
+      unmount();
+    });
+
+    it.each(["session.stopped", "session.disconnected"])(
+      "reports genuine %s after reuse on the current connector",
+      async (event) => {
+        mockThreeParticipantStart();
+        const { unmount } = await renderSpeakingCall();
+        const owner = liveAvatarMocks.instances[0]!;
+        apiMocks.submitGroupTurn.mockResolvedValue(nextHumanRoundResponse("avatar-1"));
+        await act(async () => {
+          scribeMocks.connection?.emit("committed_transcript", { text: "Ada, otra explicación" });
+          await flushAsyncWork();
+          owner.emit("avatar.speak_started", { event_id: "new-owner-start", source_event_id: "fresh-owner" });
+          await flushAsyncWork();
+          owner.emit(event);
+          await vi.advanceTimersByTimeAsync(0);
+          await flushAsyncWork();
+        });
+        expect(apiMocks.reportGroupParticipantFailure).toHaveBeenCalledWith(
+          "group-session-1",
+          "avatar-1",
+          expect.objectContaining({
+            participantAttemptId: participants[0]!.participantAttemptId,
+            expectedTurnId: "turn-new",
+          }),
+          expect.anything()
+        );
+        expect(apiMocks.retryGroupParticipant).not.toHaveBeenCalled();
+        unmount();
+      }
+    );
+
+    it.each(["pará", "sí, pero esperá"])(
+      "closes audio synchronously for %s before the cancellation request resolves",
+      async (text) => {
+        const cancellation = deferred();
+        apiMocks.interruptGroupVoiceSession.mockReturnValue(cancellation.promise);
+        const { container, unmount } = await renderSpeakingCall();
+        const videos = [...container.querySelectorAll("video")];
+        const owner = liveAvatarMocks.instances[0]!;
+        let mutedAtRequest = false;
+        apiMocks.interruptGroupVoiceSession.mockImplementation(() => {
+          mutedAtRequest = videos.every((video) => video.muted);
+          return cancellation.promise;
+        });
+
+        await act(async () => {
+          scribeMocks.connection?.emit("partial_transcript", { text });
+          expect(videos.every((video) => video.muted)).toBe(true);
+          await flushAsyncWork();
+        });
+
+        expect(mutedAtRequest).toBe(true);
+        expect(owner.interrupt).toHaveBeenCalledTimes(1);
+        expect(liveAvatarMocks.instances[1]!.interrupt).not.toHaveBeenCalled();
+        expect(apiMocks.interruptGroupVoiceSession).toHaveBeenCalledExactlyOnceWith(
+          "group-session-1",
+          "user",
+          expect.objectContaining({
+            avatarId: "avatar-1",
+            turnId: "turn-1",
+            sourceEventId: expect.any(String),
+            trigger: "voice",
+          })
+        );
+        expect(apiMocks.submitGroupTurn).toHaveBeenCalledTimes(1);
+        expect(
+          (screen.getByRole("button", { name: "Silenciar micrófono" }) as HTMLButtonElement).disabled
+        ).toBe(true);
+        expect(
+          (screen.getByRole("button", { name: "Interrumpir avatar" }) as HTMLButtonElement).disabled
+        ).toBe(true);
+        unmount();
+      }
+    );
+
+    it("waits 300 ms once for ordinary significant speech without resetting on later partials", async () => {
+      const cancellation = deferred();
+      apiMocks.interruptGroupVoiceSession.mockReturnValue(cancellation.promise);
+      const { container, unmount } = await renderSpeakingCall();
+      const owner = liveAvatarMocks.instances[0]!;
+
+      await act(async () => {
+        scribeMocks.connection?.emit("partial_transcript", { text: "Quiero cambiar" });
+        await vi.advanceTimersByTimeAsync(200);
+        scribeMocks.connection?.emit("partial_transcript", { text: "Quiero cambiar la pregunta" });
+        await vi.advanceTimersByTimeAsync(99);
+      });
+      expect(owner.interrupt).not.toHaveBeenCalled();
+      expect(container.querySelectorAll("video")[0]!.muted).toBe(false);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1);
+        await flushAsyncWork();
+      });
+      expect(owner.interrupt).toHaveBeenCalledTimes(1);
+      expect(apiMocks.interruptGroupVoiceSession).toHaveBeenCalledTimes(1);
+      expect([...container.querySelectorAll("video")].every((video) => video.muted)).toBe(true);
+      unmount();
+    });
+
+    it.each(["Okey.", "sí sí", "ok dale", "ajá mhm claro"])(
+      "does not cut or reroute a backchannel-only partial and commit: %s",
+      async (text) => {
+        const { container, unmount } = await renderSpeakingCall();
+        await act(async () => {
+          scribeMocks.connection?.emit("partial_transcript", { text });
+          await vi.advanceTimersByTimeAsync(350);
+          scribeMocks.connection?.emit("committed_transcript", { text });
+          await flushAsyncWork();
+        });
+        expect(apiMocks.interruptGroupVoiceSession).not.toHaveBeenCalled();
+        expect(liveAvatarMocks.instances[0]!.interrupt).not.toHaveBeenCalled();
+        expect(apiMocks.submitGroupTurn).toHaveBeenCalledTimes(1);
+        expect(container.querySelectorAll("video")[0]!.muted).toBe(false);
+        unmount();
+      }
+    );
+
+    it("allows muting while the avatar speaks and ignores late Scribe events from the closed microphone", async () => {
+      const { container, unmount } = await renderSpeakingCall();
+      const scribe = scribeMocks.connection!;
+      const microphone = screen.getByRole("button", { name: "Silenciar micrófono" });
+      expect((microphone as HTMLButtonElement).disabled).toBe(false);
+      await act(async () => {
+        fireEvent.click(microphone);
+        await flushAsyncWork();
+        scribe.emit("partial_transcript", { text: "pará" });
+        scribe.emit("committed_transcript", { text: "pará, quiero otra cosa" });
+        await vi.advanceTimersByTimeAsync(350);
+        await flushAsyncWork();
+      });
+      expect(scribe.close).toHaveBeenCalledTimes(1);
+      expect(apiMocks.interruptGroupVoiceSession).not.toHaveBeenCalled();
+      expect(apiMocks.submitGroupTurn).toHaveBeenCalledTimes(1);
+      expect(container.querySelectorAll("video")[0]!.muted).toBe(false);
+      expect(screen.getByRole("button", { name: "Activar micrófono" })).toBeTruthy();
+      unmount();
+    });
+
+    it("ignores echoed avatar text, but cuts when the same partial adds a new user intervention", async () => {
+      const cancellation = deferred();
+      apiMocks.interruptGroupVoiceSession.mockReturnValue(cancellation.promise);
+      const { container, unmount } = await renderSpeakingCall();
+      await act(async () => {
+        liveAvatarMocks.instances[0]!.emit("avatar.transcription", {
+          event_id: "echo-source",
+          text: "Podemos empezar por los requisitos y seguir con el diseño.",
+        });
+        scribeMocks.connection?.emit("partial_transcript", {
+          text: "Podemos empezar por los requisitos y seguir con el diseño.",
+        });
+        await vi.advanceTimersByTimeAsync(500);
+      });
+      expect(apiMocks.interruptGroupVoiceSession).not.toHaveBeenCalled();
+      expect(container.querySelectorAll("video")[0]!.muted).toBe(false);
+      await act(async () => {
+        scribeMocks.connection?.emit("partial_transcript", {
+          text: "Podemos empezar por los requisitos y seguir con el diseño, quiero otra alternativa.",
+        });
+        await vi.advanceTimersByTimeAsync(299);
+      });
+      expect(apiMocks.interruptGroupVoiceSession).not.toHaveBeenCalled();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1);
+        await flushAsyncWork();
+      });
+      expect(apiMocks.interruptGroupVoiceSession).toHaveBeenCalledTimes(1);
+      expect([...container.querySelectorAll("video")].every((video) => video.muted)).toBe(true);
+      unmount();
+    });
+
+    it("retains a new committed phrase during pending orchestration and cancels before dispatching the obsolete instruction", async () => {
+      const firstRoute = deferred();
+      apiMocks.submitGroupTurn.mockReturnValueOnce(firstRoute.promise);
+      const { unmount } = await renderActiveCall();
+      await act(async () => {
+        scribeMocks.connection?.emit("committed_transcript", { text: "Primera pregunta" });
+        await flushAsyncWork();
+        scribeMocks.connection?.emit("committed_transcript", { text: "Mejor expliquen otra cosa" });
+        await flushAsyncWork();
+      });
+      expect(apiMocks.submitGroupTurn).toHaveBeenCalledTimes(1);
+      expect(apiMocks.interruptGroupVoiceSession).not.toHaveBeenCalled();
+      await act(async () => {
+        firstRoute.resolve(nextHumanRoundResponse("avatar-1"));
+        await flushAsyncWork();
+        await settleSpeechCompletion();
+      });
+      expect(apiMocks.interruptGroupVoiceSession).toHaveBeenCalledTimes(1);
+      expect(liveAvatarMocks.instances[0]!.sendUserMessage).toHaveBeenCalledTimes(1);
+      expect(apiMocks.confirmGroupParticipantInterruptionReady).toHaveBeenCalledWith(
+        "group-session-1",
+        "avatar-1",
+        expect.objectContaining({ evidence: { type: "not_dispatched" } })
+      );
+      expect(apiMocks.submitGroupTurn).toHaveBeenCalledTimes(2);
+      expect(apiMocks.submitGroupTurn.mock.calls[1]![1].content).toBe("Mejor expliquen otra cosa");
+      unmount();
+    });
+
+    it.each(["before", "after"])(
+      "keeps a human commit %s the cancellation ACK and reroutes it exactly once after confirmed connector reuse",
+      async (order) => {
+        const cancellation = deferred();
+        apiMocks.interruptGroupVoiceSession.mockReturnValue(cancellation.promise);
+        const { container, unmount } = await renderSpeakingCall();
+        apiMocks.submitGroupTurn.mockResolvedValue(nextHumanRoundResponse());
+        const owner = liveAvatarMocks.instances[0]!;
+        await act(async () => {
+          scribeMocks.connection?.emit("partial_transcript", { text: "pará" });
+          scribeMocks.connection?.emit("partial_transcript", { text: "pará, reformulo" });
+          await flushAsyncWork();
+        });
+        const sourceEventId = apiMocks.interruptGroupVoiceSession.mock.calls[0]![2].sourceEventId;
+        const commit = () =>
+          scribeMocks.connection?.emit("committed_transcript", { text: "Quiero otra explicación" });
+        await act(async () => {
+          if (order === "before") commit();
+          await flushAsyncWork();
+        });
+        expect(apiMocks.submitGroupTurn).toHaveBeenCalledTimes(1);
+        await act(async () => {
+          cancellation.resolve(interruptedRoundResponse(sourceEventId));
+          await flushAsyncWork();
+          if (order === "after") commit();
+          await flushAsyncWork();
+          await settleSpeechCompletion();
+        });
+        expect(apiMocks.submitGroupTurn).toHaveBeenCalledTimes(2);
+        expect(apiMocks.submitGroupTurn.mock.calls[1]![1]).toEqual(
+          expect.objectContaining({ content: "Quiero otra explicación", sourceEventId: expect.any(String) })
+        );
+        expect(owner.interrupt).toHaveBeenCalledTimes(1);
+        expect(owner.stop).not.toHaveBeenCalled();
+        expect(apiMocks.retryGroupParticipant).not.toHaveBeenCalled();
+        expect(apiMocks.confirmGroupParticipantInterruptionReady).toHaveBeenCalledWith(
+          "group-session-1",
+          "avatar-1",
+          expect.objectContaining({ interruptionSourceEventId: sourceEventId })
+        );
+        expect(liveAvatarMocks.instances[1]!.sendUserMessage).toHaveBeenCalledTimes(1);
+        expect([...container.querySelectorAll("video")].filter((video) => !video.muted)).toHaveLength(1);
+        unmount();
+      }
+    );
+
+    it("commits before the 300 ms timer as an immediate fallback and never performs a second cut", async () => {
+      const cancellation = deferred();
+      apiMocks.interruptGroupVoiceSession.mockReturnValue(cancellation.promise);
+      const { unmount } = await renderSpeakingCall();
+      await act(async () => {
+        scribeMocks.connection?.emit("partial_transcript", { text: "Quiero otra" });
+        await vi.advanceTimersByTimeAsync(100);
+        scribeMocks.connection?.emit("committed_transcript", { text: "Quiero otra explicación" });
+        await flushAsyncWork();
+      });
+      expect(liveAvatarMocks.instances[0]!.interrupt).toHaveBeenCalledTimes(1);
+      expect(apiMocks.interruptGroupVoiceSession).toHaveBeenCalledTimes(1);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(500);
+        scribeMocks.connection?.emit("committed_transcript", { text: "Quiero otra explicación" });
+        await flushAsyncWork();
+      });
+      expect(liveAvatarMocks.instances[0]!.interrupt).toHaveBeenCalledTimes(1);
+      expect(apiMocks.interruptGroupVoiceSession).toHaveBeenCalledTimes(1);
+      expect(apiMocks.submitGroupTurn).toHaveBeenCalledTimes(1);
+      unmount();
+    });
+
+    it("does not cut a partial that began while queued, but preserves its committed intervention", async () => {
+      const cancellation = deferred();
+      apiMocks.interruptGroupVoiceSession.mockReturnValue(cancellation.promise);
+      const { unmount } = await renderActiveCall();
+      await act(async () => {
+        scribeMocks.connection?.emit("committed_transcript", { text: "Respondé Ada" });
+        await flushAsyncWork();
+        scribeMocks.connection?.emit("partial_transcript", { text: "pará" });
+        liveAvatarMocks.instances[0]!.emit("avatar.speak_started", {
+          event_id: "after-queued-candidate",
+          source_event_id: `speech:${liveAvatarMocks.instances[0]!.token}:1`,
+        });
+        await vi.advanceTimersByTimeAsync(500);
+        scribeMocks.connection?.emit("partial_transcript", { text: "pará, reformulo" });
+        await vi.advanceTimersByTimeAsync(500);
+      });
+      expect(apiMocks.interruptGroupVoiceSession).not.toHaveBeenCalled();
+      await act(async () => {
+        scribeMocks.connection?.emit("committed_transcript", { text: "pará, reformulo la pregunta" });
+        await flushAsyncWork();
+      });
+      expect(apiMocks.interruptGroupVoiceSession).toHaveBeenCalledTimes(1);
+      expect(apiMocks.submitGroupTurn).toHaveBeenCalledTimes(1);
+      const sourceEventId = apiMocks.interruptGroupVoiceSession.mock.calls[0]![2].sourceEventId;
+      apiMocks.submitGroupTurn.mockResolvedValue(nextHumanRoundResponse());
+      await act(async () => {
+        cancellation.resolve(interruptedRoundResponse(sourceEventId));
+        await flushAsyncWork();
+        await settleSpeechCompletion();
+      });
+      expect(apiMocks.submitGroupTurn).toHaveBeenCalledTimes(2);
+      expect(apiMocks.submitGroupTurn.mock.calls[1]![1].content).toBe("pará, reformulo la pregunta");
+      unmount();
+    });
+
+    it("reuses the same connector and opens synchronous short responses only for a fresh speech source", async () => {
+      const { container, unmount } = await renderSpeakingCall();
+      const owner = liveAvatarMocks.instances[0]!;
+      apiMocks.submitGroupTurn.mockResolvedValue(nextHumanRoundResponse("avatar-1"));
+      owner.sendUserMessage.mockImplementationOnce(() => {
+        expect(container.querySelectorAll("video")[0]!.muted).toBe(true);
+        owner.emit("avatar.speak_started", { event_id: "new-short-start", source_event_id: "fresh-source" });
+        expect(container.querySelectorAll("video")[0]!.muted).toBe(false);
+        owner.emit("avatar.speak_ended", { event_id: "new-short-end", source_event_id: "fresh-source" });
+        return "new-command-id";
+      });
+      await act(async () => {
+        scribeMocks.connection?.emit("partial_transcript", { text: "pará" });
+        scribeMocks.connection?.emit("committed_transcript", { text: "Ada, explicalo más simple" });
+        await flushAsyncWork();
+      });
+      expect(liveAvatarMocks.instances).toHaveLength(2);
+      expect(owner.stop).not.toHaveBeenCalled();
+      expect(apiMocks.retryGroupParticipant).not.toHaveBeenCalled();
+      expect(owner.sendUserMessage).toHaveBeenCalledTimes(2);
+      expect(owner.sendUserMessage).toHaveBeenLastCalledWith("Respondé a la nueva intervención.");
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(645);
+        owner.emit("avatar.speak_started", { event_id: "new-continuation", source_event_id: "fresh-source" });
+        await vi.advanceTimersByTimeAsync(500);
+      });
+      expect(container.querySelectorAll("video")[0]!.muted).toBe(false);
+      expect(
+        apiMocks.reportGroupProviderEvent.mock.calls.filter(([, event]) => event.type === "speak_ended")
+      ).toHaveLength(0);
+      unmount();
+    });
+
+    it("attributes correction during cancellation to the interrupted turn without presenting its draft as heard", async () => {
+      const cancellation = deferred();
+      apiMocks.interruptGroupVoiceSession.mockReturnValue(cancellation.promise);
+      const { container, unmount } = await renderSpeakingCall();
+      const owner = liveAvatarMocks.instances[0]!;
+      await act(async () => {
+        owner.emit("elevenlabs_agent_event", {
+          event_id: "draft-before-cut",
+          elevenlabs_event_type: "agent_response",
+          data: {
+            agent_response_event: {
+              agent_response: "Primero esto. Luego una explicación pendiente.",
+              event_id: 51,
+            },
+          },
+        });
+        await flushAsyncWork();
+        scribeMocks.connection?.emit("partial_transcript", { text: "pará" });
+        scribeMocks.connection?.emit("committed_transcript", { text: "Cambiemos de prioridad" });
+        await flushAsyncWork();
+        owner.emit("elevenlabs_agent_event", {
+          event_id: "correction-after-cut",
+          elevenlabs_event_type: "agent_response_correction",
+          data: {
+            agent_response_correction_event: {
+              original_agent_response: "Primero esto. Luego una explicación pendiente.",
+              corrected_agent_response: "Primero esto.",
+              event_id: 51,
+            },
+          },
+        });
+        await flushAsyncWork();
+      });
+      expect(apiMocks.interruptGroupVoiceSession.mock.calls[0]![2]).toEqual(
+        expect.objectContaining({ generatedText: "Primero esto. Luego una explicación pendiente." })
+      );
+      expect(apiMocks.reportGroupProviderEvent).toHaveBeenCalledWith(
+        "group-session-1",
+        expect.objectContaining({
+          type: "agent_response_correction",
+          turnId: "turn-1",
+          avatarId: "avatar-1",
+          content: "Primero esto.",
+        })
+      );
+      expect([...container.querySelectorAll("video")].every((video) => video.muted)).toBe(true);
+      expect(apiMocks.submitGroupTurn).toHaveBeenCalledTimes(1);
+      expect(owner.sendUserMessage).toHaveBeenCalledTimes(1);
+      unmount();
+    });
+
+    it("keeps the transcript and silence after bounded cancellation failures, then retries the same episode explicitly", async () => {
+      apiMocks.interruptGroupVoiceSession.mockRejectedValue(new Error("response lost"));
+      const { container, unmount } = await renderSpeakingCall();
+      const owner = liveAvatarMocks.instances[0]!;
+      await act(async () => {
+        scribeMocks.connection?.emit("partial_transcript", { text: "pará" });
+        scribeMocks.connection?.emit("committed_transcript", { text: "Necesito cambiar de tema" });
+        await flushAsyncWork();
+        await vi.advanceTimersByTimeAsync(5_000);
+        await flushAsyncWork();
+      });
+      expect(apiMocks.interruptGroupVoiceSession).toHaveBeenCalledTimes(3);
+      const sourceEventIds = apiMocks.interruptGroupVoiceSession.mock.calls.map(
+        ([, , input]) => input.sourceEventId
+      );
+      expect(new Set(sourceEventIds).size).toBe(1);
+      expect(owner.interrupt).toHaveBeenCalledTimes(1);
+      expect(apiMocks.submitGroupTurn).toHaveBeenCalledTimes(1);
+      expect([...container.querySelectorAll("video")].every((video) => video.muted)).toBe(true);
+      expect(apiMocks.retryGroupParticipant).not.toHaveBeenCalled();
+
+      apiMocks.interruptGroupVoiceSession.mockResolvedValue(interruptedRoundResponse(sourceEventIds[0]!));
+      apiMocks.submitGroupTurn.mockResolvedValue(nextHumanRoundResponse());
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: /Reintentar interrupción/ }));
+        await flushAsyncWork();
+        await settleSpeechCompletion();
+      });
+      expect(apiMocks.interruptGroupVoiceSession).toHaveBeenCalledTimes(4);
+      expect(apiMocks.interruptGroupVoiceSession.mock.calls[3]![2].sourceEventId).toBe(sourceEventIds[0]);
+      expect(apiMocks.submitGroupTurn).toHaveBeenCalledTimes(2);
+      expect(apiMocks.submitGroupTurn.mock.calls[1]![1].content).toBe("Necesito cambiar de tema");
+      expect(owner.interrupt).toHaveBeenCalledTimes(1);
+      unmount();
+    });
+
+    it("retains a commit arriving after cancellation retries are exhausted without restarting retries until explicit recovery", async () => {
+      apiMocks.interruptGroupVoiceSession.mockRejectedValue(new Error("response lost"));
+      const { container, unmount } = await renderSpeakingCall();
+      const owner = liveAvatarMocks.instances[0]!;
+      await act(async () => {
+        scribeMocks.connection?.emit("partial_transcript", { text: "pará" });
+        await flushAsyncWork();
+        await vi.advanceTimersByTimeAsync(5_000);
+        await flushAsyncWork();
+      });
+      expect(apiMocks.interruptGroupVoiceSession).toHaveBeenCalledTimes(3);
+      const sourceEventId = apiMocks.interruptGroupVoiceSession.mock.calls[0]![2].sourceEventId;
+      expect(screen.getByRole("button", { name: /Reintentar interrupción/ })).toBeTruthy();
+
+      await act(async () => {
+        scribeMocks.connection?.emit("committed_transcript", {
+          text: "Esta frase llegó después del error y debe conservarse",
+        });
+        await flushAsyncWork();
+        await vi.advanceTimersByTimeAsync(5_000);
+        await flushAsyncWork();
+      });
+      expect(apiMocks.interruptGroupVoiceSession).toHaveBeenCalledTimes(3);
+      expect(apiMocks.submitGroupTurn).toHaveBeenCalledTimes(1);
+      expect(apiMocks.retryGroupParticipant).not.toHaveBeenCalled();
+      expect(owner.interrupt).toHaveBeenCalledTimes(1);
+      expect([...container.querySelectorAll("video")].every((video) => video.muted)).toBe(true);
+
+      apiMocks.interruptGroupVoiceSession.mockResolvedValue(interruptedRoundResponse(sourceEventId));
+      apiMocks.submitGroupTurn.mockResolvedValue(nextHumanRoundResponse());
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: /Reintentar interrupción/ }));
+        await flushAsyncWork();
+        await settleSpeechCompletion();
+        await vi.advanceTimersByTimeAsync(2_000);
+        await flushAsyncWork();
+      });
+      expect(apiMocks.interruptGroupVoiceSession).toHaveBeenCalledTimes(4);
+      expect(
+        apiMocks.interruptGroupVoiceSession.mock.calls.every(
+          ([, , input]) => input.sourceEventId === sourceEventId
+        )
+      ).toBe(true);
+      expect(apiMocks.submitGroupTurn).toHaveBeenCalledTimes(2);
+      expect(apiMocks.submitGroupTurn.mock.calls[1]![1].content).toBe(
+        "Esta frase llegó después del error y debe conservarse"
+      );
+      expect(apiMocks.retryGroupParticipant).not.toHaveBeenCalled();
+      expect(liveAvatarMocks.instances[1]!.sendUserMessage).toHaveBeenCalledTimes(1);
+      expect(owner.interrupt).toHaveBeenCalledTimes(1);
+      unmount();
+    });
+
+    it("recovers a failed connector replacement without cancelling again or losing the committed phrase", async () => {
+      liveAvatarMocks.autoInterruptTerminal = false;
+      apiMocks.retryGroupParticipant.mockRejectedValueOnce(new Error("replacement not available"));
+      const { container, unmount } = await renderSpeakingCall();
+      apiMocks.submitGroupTurn.mockResolvedValue(nextHumanRoundResponse("avatar-1"));
+      await act(async () => {
+        scribeMocks.connection?.emit("partial_transcript", { text: "pará" });
+        scribeMocks.connection?.emit("committed_transcript", { text: "Ada, reformulalo" });
+        await flushAsyncWork();
+      });
+      await requestInterruptionRecovery();
+      expect(apiMocks.interruptGroupVoiceSession).toHaveBeenCalledTimes(1);
+      expect(apiMocks.retryGroupParticipant).toHaveBeenCalledTimes(1);
+      expect(apiMocks.submitGroupTurn).toHaveBeenCalledTimes(1);
+      expect([...container.querySelectorAll("video")].every((video) => video.muted)).toBe(true);
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: /Reintentar interrupción/ }));
+        await flushAsyncWork();
+        await settleSpeechCompletion();
+      });
+      expect(apiMocks.interruptGroupVoiceSession).toHaveBeenCalledTimes(1);
+      expect(apiMocks.retryGroupParticipant).toHaveBeenCalledTimes(2);
+      expect(apiMocks.retryGroupParticipant.mock.calls[1]![2]).toEqual(
+        apiMocks.retryGroupParticipant.mock.calls[0]![2]
+      );
+      expect(apiMocks.submitGroupTurn).toHaveBeenCalledTimes(2);
+      expect(apiMocks.submitGroupTurn.mock.calls[1]![1].content).toBe("Ada, reformulalo");
+      expect(liveAvatarMocks.instances[0]!.sendUserMessage).toHaveBeenCalledTimes(1);
+      expect(liveAvatarMocks.instances[2]!.sendUserMessage).toHaveBeenCalledTimes(1);
+      unmount();
+    });
+
+    it("recovers Scribe after a capture error and retains the committed phrase without reopening old audio", async () => {
+      const { container, unmount } = await renderSpeakingCall();
+      const oldScribe = scribeMocks.connection!;
+      apiMocks.submitGroupTurn.mockResolvedValue(nextHumanRoundResponse());
+      await act(async () => {
+        oldScribe.emit("partial_transcript", { text: "pará" });
+        oldScribe.emit("committed_transcript", { text: "La frase sigue guardada" });
+        oldScribe.emit("error", { error: "capture disconnected" });
+        await flushAsyncWork();
+        await settleSpeechCompletion();
+      });
+      expect(oldScribe.close).toHaveBeenCalledTimes(1);
+      expect(apiMocks.submitGroupTurn).toHaveBeenCalledTimes(1);
+      expect([...container.querySelectorAll("video")].every((video) => video.muted)).toBe(true);
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: /Reintentar interrupción/ }));
+        await flushAsyncWork();
+        await settleSpeechCompletion();
+      });
+      expect(scribeMocks.connection).not.toBe(oldScribe);
+      expect(apiMocks.interruptGroupVoiceSession).toHaveBeenCalledTimes(1);
+      expect(apiMocks.submitGroupTurn).toHaveBeenCalledTimes(2);
+      expect(apiMocks.submitGroupTurn.mock.calls[1]![1].content).toBe("La frase sigue guardada");
+      expect(liveAvatarMocks.instances).toHaveLength(2);
+      await act(async () => {
+        oldScribe.emit("partial_transcript", { text: "pará" });
+        oldScribe.emit("committed_transcript", { text: "La frase sigue guardada" });
+        oldScribe.emit("error", { error: "stale capture error" });
+        await flushAsyncWork();
+      });
+      expect(apiMocks.interruptGroupVoiceSession).toHaveBeenCalledTimes(1);
+      expect(apiMocks.submitGroupTurn).toHaveBeenCalledTimes(2);
+      expect([...container.querySelectorAll("video")].map((video) => video.muted)).toEqual([true, false]);
+      unmount();
+    });
+
+    it("does not end a two-avatar call on replacement startup failure and requests a fresh attempt on recovery", async () => {
+      liveAvatarMocks.autoInterruptTerminal = false;
+      const failedReplacement = {
+        ...participants[0]!,
+        participantAttemptId: "attempt-failed-replacement",
+        sessionToken: "token-failed-replacement",
+        sessionId: "live-failed-replacement",
+      };
+      apiMocks.retryGroupParticipant.mockResolvedValueOnce({ participant: failedReplacement });
+      liveAvatarMocks.startBehaviors.set("token-failed-replacement", async () => {
+        throw new Error("replacement startup failed");
+      });
+      const { container, unmount } = await renderSpeakingCall();
+      apiMocks.submitGroupTurn.mockResolvedValue(nextHumanRoundResponse());
+      await act(async () => {
+        scribeMocks.connection?.emit("partial_transcript", { text: "pará" });
+        scribeMocks.connection?.emit("committed_transcript", { text: "Que responda Grace después" });
+        await flushAsyncWork();
+      });
+      await requestInterruptionRecovery();
+      expect(apiMocks.endGroupVoiceSession).not.toHaveBeenCalled();
+      expect(apiMocks.reportGroupParticipantFailure).not.toHaveBeenCalled();
+      expect(apiMocks.submitGroupTurn).toHaveBeenCalledTimes(1);
+      expect([...container.querySelectorAll("video")].every((video) => video.muted)).toBe(true);
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: /Reintentar interrupción/ }));
+        await flushAsyncWork();
+        await settleSpeechCompletion();
+      });
+      expect(apiMocks.retryGroupParticipant).toHaveBeenCalledTimes(2);
+      expect(apiMocks.retryGroupParticipant.mock.calls[1]![2]).toEqual({
+        interruptionSourceEventId: apiMocks.interruptGroupVoiceSession.mock.calls[0]![2].sourceEventId,
+        failedParticipantAttemptId: "attempt-failed-replacement",
+      });
+      expect(apiMocks.interruptGroupVoiceSession).toHaveBeenCalledTimes(1);
+      expect(apiMocks.submitGroupTurn).toHaveBeenCalledTimes(2);
+      expect(apiMocks.submitGroupTurn.mock.calls[1]![1].content).toBe("Que responda Grace después");
+      expect(liveAvatarMocks.instances).toHaveLength(4);
+      expect(liveAvatarMocks.instances[1]!.sendUserMessage).toHaveBeenCalledTimes(1);
+      unmount();
+    });
+
+    it.each(["session.stopped", "session.disconnected"])(
+      "treats an old connector %s before the replacement ACK as expected retirement without degrading or ending the call",
+      async (event) => {
+        liveAvatarMocks.autoInterruptTerminal = false;
+        const replacement = deferred();
+        apiMocks.retryGroupParticipant.mockReturnValueOnce(replacement.promise);
+        const { container, unmount } = await renderSpeakingCall();
+        const retiredOwner = liveAvatarMocks.instances[0]!;
+        apiMocks.submitGroupTurn.mockResolvedValue(nextHumanRoundResponse());
+        await act(async () => {
+          scribeMocks.connection?.emit("partial_transcript", { text: "pará" });
+          scribeMocks.connection?.emit("committed_transcript", { text: "Ahora que responda Grace" });
+          await flushAsyncWork();
+        });
+        await requestInterruptionRecovery();
+        expect(apiMocks.retryGroupParticipant).toHaveBeenCalledTimes(1);
+        await act(async () => {
+          retiredOwner.emit(event, { reason: "session_ended" });
+          await vi.advanceTimersByTimeAsync(0);
+          await flushAsyncWork();
+        });
+        expect(apiMocks.reportGroupParticipantFailure).not.toHaveBeenCalled();
+        expect(apiMocks.endGroupVoiceSession).not.toHaveBeenCalled();
+        expect(screen.getByText("En vivo")).toBeTruthy();
+        expect(apiMocks.submitGroupTurn).toHaveBeenCalledTimes(1);
+        expect([...container.querySelectorAll("video")].every((video) => video.muted)).toBe(true);
+
+        await act(async () => {
+          replacement.resolve({
+            participant: {
+              ...participants[0]!,
+              participantAttemptId: "attempt-after-interruption",
+              sessionToken: "token-after-interruption",
+              sessionId: "live-after-interruption",
+              realtimeSessionId: "realtime-after-interruption",
+            },
+          });
+          await flushAsyncWork();
+          await settleSpeechCompletion();
+        });
+        expect(apiMocks.reportGroupParticipantFailure).not.toHaveBeenCalled();
+        expect(apiMocks.endGroupVoiceSession).not.toHaveBeenCalled();
+        expect(apiMocks.submitGroupTurn).toHaveBeenCalledTimes(2);
+        expect(liveAvatarMocks.instances[1]!.sendUserMessage).toHaveBeenCalledTimes(1);
+        expect(screen.getByText("En vivo")).toBeTruthy();
+        expect([...container.querySelectorAll("video")].map((video) => video.muted)).toEqual([true, false]);
+        unmount();
+      }
+    );
+
+    it("reports a real replacement connector failure after startup and a new turn through normal participant recovery", async () => {
+      liveAvatarMocks.autoInterruptTerminal = false;
+      mockThreeParticipantStart();
+      const { container, unmount } = await renderSpeakingCall();
+      apiMocks.submitGroupTurn.mockResolvedValue(nextHumanRoundResponse("avatar-1"));
+      await act(async () => {
+        scribeMocks.connection?.emit("partial_transcript", { text: "pará" });
+        scribeMocks.connection?.emit("committed_transcript", { text: "Ada, respondé más simple" });
+        await flushAsyncWork();
+        await settleSpeechCompletion();
+      });
+      await requestInterruptionRecovery();
+      expect(liveAvatarMocks.instances).toHaveLength(4);
+      const replacement = liveAvatarMocks.instances[3]!;
+      await act(async () => {
+        replacement.emit("avatar.speak_started", { event_id: "replacement-authorized-start" });
+        await flushAsyncWork();
+      });
+      expect(container.querySelectorAll("video")[0]!.muted).toBe(false);
+      await act(async () => {
+        replacement.emit("session.stopped", { reason: "network" });
+        replacement.emit("session.disconnected", { reason: "network" });
+        await vi.advanceTimersByTimeAsync(0);
+        await flushAsyncWork();
+      });
+      expect(apiMocks.reportGroupParticipantFailure).toHaveBeenCalledTimes(1);
+      expect(apiMocks.reportGroupParticipantFailure).toHaveBeenCalledWith(
+        "group-session-1",
+        "avatar-1",
+        expect.objectContaining({
+          participantAttemptId: "attempt-after-interruption",
+          reason: "session_stopped",
+          expectedTurnId: "turn-new",
+        }),
+        expect.objectContaining({ signal: expect.anything() })
+      );
+      expect(screen.getByText("En vivo · parcial")).toBeTruthy();
+      expect(screen.getByRole("button", { name: /^Reintentar$/ })).toBeTruthy();
+      expect(apiMocks.endGroupVoiceSession).not.toHaveBeenCalled();
+      expect([...container.querySelectorAll("video")].every((video) => video.muted)).toBe(true);
+      expect(apiMocks.submitGroupTurn).toHaveBeenCalledTimes(2);
+      unmount();
+    });
+
+    it("retries failed rerouting with the same human event ID without cancelling or replacing again", async () => {
+      const { container, unmount } = await renderSpeakingCall();
+      apiMocks.submitGroupTurn.mockRejectedValueOnce(new Error("route response lost"));
+      await act(async () => {
+        scribeMocks.connection?.emit("partial_transcript", { text: "pará" });
+        scribeMocks.connection?.emit("committed_transcript", { text: "Esta pregunta no debe perderse" });
+        await flushAsyncWork();
+        await settleSpeechCompletion();
+      });
+      expect(apiMocks.submitGroupTurn).toHaveBeenCalledTimes(2);
+      const retainedInput = apiMocks.submitGroupTurn.mock.calls[1]![1];
+      expect([...container.querySelectorAll("video")].every((video) => video.muted)).toBe(true);
+      apiMocks.submitGroupTurn.mockResolvedValue(nextHumanRoundResponse());
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "Reintentar envío" }));
+        await flushAsyncWork();
+      });
+      expect(apiMocks.submitGroupTurn).toHaveBeenCalledTimes(3);
+      expect(apiMocks.submitGroupTurn.mock.calls[2]![1]).toEqual(retainedInput);
+      expect(apiMocks.interruptGroupVoiceSession).toHaveBeenCalledTimes(1);
+      expect(apiMocks.retryGroupParticipant).not.toHaveBeenCalled();
+      expect(liveAvatarMocks.instances[1]!.sendUserMessage).toHaveBeenCalledTimes(1);
+      unmount();
+    });
+
+    it("coalesces multiple committed segments captured during one interruption into exactly one new round", async () => {
+      const cancellation = deferred();
+      apiMocks.interruptGroupVoiceSession.mockReturnValue(cancellation.promise);
+      const { unmount } = await renderSpeakingCall();
+      apiMocks.submitGroupTurn.mockResolvedValue(nextHumanRoundResponse());
+      await act(async () => {
+        scribeMocks.connection?.emit("partial_transcript", { text: "pará" });
+        scribeMocks.connection?.emit("committed_transcript", { text: "Primero quiero cambiar el objetivo." });
+        await vi.advanceTimersByTimeAsync(400);
+        scribeMocks.connection?.emit("committed_transcript", { text: "Después evaluemos las opciones." });
+        await flushAsyncWork();
+      });
+      expect(apiMocks.submitGroupTurn).toHaveBeenCalledTimes(1);
+      const sourceEventId = apiMocks.interruptGroupVoiceSession.mock.calls[0]![2].sourceEventId;
+      await act(async () => {
+        cancellation.resolve(interruptedRoundResponse(sourceEventId));
+        await flushAsyncWork();
+        await settleSpeechCompletion();
+      });
+      expect(apiMocks.interruptGroupVoiceSession).toHaveBeenCalledTimes(1);
+      expect(apiMocks.submitGroupTurn).toHaveBeenCalledTimes(2);
+      expect(apiMocks.submitGroupTurn.mock.calls[1]![1].content).toBe(
+        "Primero quiero cambiar el objetivo.\nDespués evaluemos las opciones."
+      );
+      expect(liveAvatarMocks.instances[1]!.sendUserMessage).toHaveBeenCalledTimes(1);
+      unmount();
+    });
+
+    it("buffers later committed speech while a failed human input awaits retry without overwriting either phrase", async () => {
+      const { unmount } = await renderActiveCall();
+      apiMocks.submitGroupTurn.mockRejectedValueOnce(new Error("first route failed"));
+      await act(async () => {
+        scribeMocks.connection?.emit("committed_transcript", { text: "Esta es la primera pregunta" });
+        await flushAsyncWork();
+      });
+      const retainedInput = apiMocks.submitGroupTurn.mock.calls[0]![1];
+      await act(async () => {
+        scribeMocks.connection?.emit("committed_transcript", { text: "Y esta es una segunda pregunta" });
+        await flushAsyncWork();
+      });
+      expect(apiMocks.submitGroupTurn).toHaveBeenCalledTimes(1);
+      apiMocks.submitGroupTurn.mockResolvedValueOnce({
+        round: { id: "round-recovered", intent: "normal", status: "completed", contextVersion: 1 },
+        phase: "listening",
+        floor: null,
+        directive: { action: "listen", reason: "round_complete" },
+      });
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "Reintentar envío" }));
+        await flushAsyncWork();
+      });
+      expect(apiMocks.submitGroupTurn).toHaveBeenCalledTimes(3);
+      expect(apiMocks.submitGroupTurn.mock.calls[1]![1]).toEqual(retainedInput);
+      expect(apiMocks.submitGroupTurn.mock.calls[2]![1].content).toBe("Y esta es una segunda pregunta");
+      expect(apiMocks.submitGroupTurn.mock.calls[2]![1].sourceEventId).not.toBe(retainedInput.sourceEventId);
+      unmount();
+    });
+
+    it("ignores a pre-cut provider HTTP response and old connector events after the new owner starts", async () => {
+      const { container, unmount } = await renderActiveCall();
+      await act(async () => {
+        scribeMocks.connection?.emit("committed_transcript", { text: "Respondé Ada" });
+        await flushAsyncWork();
+      });
+      const staleResponse = deferred();
+      const originalReport = apiMocks.reportGroupProviderEvent.getMockImplementation()!;
+      apiMocks.reportGroupProviderEvent.mockImplementation((sessionId, input) =>
+        input.type === "speak_started" && input.turnId === "turn-1"
+          ? staleResponse.promise
+          : originalReport(sessionId, input)
+      );
+      const owner = liveAvatarMocks.instances[0]!;
+      await act(async () => {
+        owner.emit("avatar.speak_started", {
+          event_id: "old-start-pending",
+          source_event_id: `speech:${owner.token}:1`,
+        });
+        await flushAsyncWork();
+      });
+      apiMocks.submitGroupTurn.mockResolvedValue(nextHumanRoundResponse());
+      await act(async () => {
+        scribeMocks.connection?.emit("partial_transcript", { text: "pará" });
+        scribeMocks.connection?.emit("committed_transcript", { text: "Que responda Grace" });
+        await flushAsyncWork();
+        await settleSpeechCompletion();
+      });
+      expect(apiMocks.interruptGroupVoiceSession).toHaveBeenCalledTimes(1);
+      expect(apiMocks.submitGroupTurn).toHaveBeenCalledTimes(2);
+      expect([...container.querySelectorAll("video")].map((video) => video.muted)).toEqual([true, false]);
+      await act(async () => {
+        staleResponse.resolve({
+          phase: "speaking",
+          floor: { turnId: "turn-1", avatarId: "avatar-1", leaseExpiresAt: "2026-08-21T12:01:15.000Z" },
+          directive: null,
+        });
+        await flushAsyncWork();
+        await settleSpeechCompletion();
+      });
+      expect(apiMocks.submitGroupTurn).toHaveBeenCalledTimes(2);
+      expect(liveAvatarMocks.instances[1]!.sendUserMessage).toHaveBeenCalledTimes(1);
+      const videos = [...container.querySelectorAll("video")];
+      expect(videos.map((video) => video.muted)).toEqual([true, false]);
+      await act(async () => {
+        owner.emit("session.stream_ready");
+        owner.emit("avatar.speak_started", { event_id: "stale-uncorrelated-start" });
+        owner.emit("avatar.speak_ended", { event_id: "stale-uncorrelated-end" });
+        owner.emit("elevenlabs_agent_event", {
+          event_id: "stale-uncorrelated-interruption",
+          elevenlabs_event_type: "interruption",
+          data: {},
+        });
+        await settleSpeechCompletion();
+      });
+      expect(videos.map((video) => video.muted)).toEqual([true, false]);
+      expect(liveAvatarMocks.instances[1]!.sendUserMessage).toHaveBeenCalledTimes(1);
+      expect(liveAvatarMocks.instances[1]!.interrupt).not.toHaveBeenCalled();
+      unmount();
+    });
+
+    it.each(["close", "unmount"])(
+      "invalidates an outstanding cancellation and retained commit on %s",
+      async (action) => {
+        const cancellation = deferred();
+        apiMocks.interruptGroupVoiceSession.mockReturnValue(cancellation.promise);
+        const { container, unmount } = await renderSpeakingCall();
+        await act(async () => {
+          scribeMocks.connection?.emit("partial_transcript", { text: "pará" });
+          scribeMocks.connection?.emit("committed_transcript", {
+            text: "Esta frase no debe abrir otra sesión",
+          });
+          await flushAsyncWork();
+        });
+        const sourceEventId = apiMocks.interruptGroupVoiceSession.mock.calls[0]![2].sourceEventId;
+        await act(async () => {
+          if (action === "unmount") unmount();
+          else fireEvent.click(screen.getByRole("button", { name: "Finalizar llamada" }));
+          await flushAsyncWork();
+          cancellation.resolve(interruptedRoundResponse(sourceEventId));
+          await vi.advanceTimersByTimeAsync(5_000);
+          await flushAsyncWork();
+        });
+        expect(apiMocks.submitGroupTurn).toHaveBeenCalledTimes(1);
+        expect(apiMocks.retryGroupParticipant).not.toHaveBeenCalled();
+        expect(liveAvatarMocks.instances).toHaveLength(2);
+        expect([...container.querySelectorAll("video")].every((video) => video.muted)).toBe(true);
+        if (action !== "unmount") unmount();
+      }
+    );
   });
 
   it("terminates locally when the heartbeat says the server session is gone", async () => {

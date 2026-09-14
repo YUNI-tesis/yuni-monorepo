@@ -28,10 +28,17 @@ export function useAvatarContext(avatarId: string) {
   const [uploads, setUploads] = useState<LocalDocumentUpload[]>([]);
   const [error, setError] = useState<string | null>(null);
   const initializedText = useRef(false);
+  const loadVersion = useRef(0);
+  const busyDocuments = useRef(new Set<string>());
+  const [pendingDocuments, setPendingDocuments] = useState<Record<string, "retry" | "remove">>({});
+  const [documentErrors, setDocumentErrors] = useState<Record<string, string>>({});
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
+    const version = ++loadVersion.current;
     try {
       const result = await getAvatarContext(avatarId);
+      if (version !== loadVersion.current) return;
       setContext(result.context);
       if (!initializedText.current) {
         setText(result.context.text);
@@ -39,26 +46,42 @@ export function useAvatarContext(avatarId: string) {
       }
       setError(null);
     } catch (caughtError) {
+      if (version !== loadVersion.current) return;
       setError(caughtError instanceof Error ? caughtError.message : "No pudimos cargar el contexto.");
     } finally {
-      setLoading(false);
+      if (version === loadVersion.current) setLoading(false);
     }
   }, [avatarId]);
 
   useEffect(() => {
     void load();
+    return () => {
+      loadVersion.current += 1;
+    };
   }, [load]);
 
   useEffect(() => {
-    if (!context || context.status !== "processing") return;
-    const timer = window.setInterval(() => void load(), 3_000);
+    const processing =
+      context?.textStatus === "processing" ||
+      context?.status === "processing" ||
+      context?.documents.some((document) =>
+        ["pending_upload", "processing", "deleting"].includes(document.status)
+      );
+    const timer = window.setInterval(
+      () => {
+        if (document.visibilityState !== "hidden") void load();
+      },
+      processing ? 3_000 : 15_000
+    );
     return () => window.clearInterval(timer);
-  }, [context?.status, load]);
+  }, [context, load]);
 
   async function saveText() {
     setSaving(true);
+    setSaveError(null);
     try {
       const result = await updateAvatarContext(avatarId, text.trim());
+      loadVersion.current += 1;
       setContext(result.context);
       setError(null);
       toast.success("El nuevo contexto se está preparando para las próximas conversaciones.", {
@@ -66,6 +89,7 @@ export function useAvatarContext(avatarId: string) {
         dedupeKey: `avatar:${avatarId}:context:saved`,
       });
     } catch (caughtError) {
+      setSaveError(actionError(caughtError, "No pudimos guardar el contexto. Intentá nuevamente."));
       toast.error(actionError(caughtError, "Intentá nuevamente."), {
         title: "No pudimos guardar el contexto",
         dedupeKey: `avatar:${avatarId}:context:error`,
@@ -137,6 +161,7 @@ export function useAvatarContext(avatarId: string) {
   }
 
   async function remove(documentId: string, fileName: string) {
+    if (!beginDocumentAction(documentId, "remove")) return;
     try {
       await deleteDocument(documentId);
       await load();
@@ -145,14 +170,21 @@ export function useAvatarContext(avatarId: string) {
         dedupeKey: `document:${documentId}:deleted`,
       });
     } catch (caughtError) {
+      setDocumentErrors((current) => ({
+        ...current,
+        [documentId]: "No pudimos eliminar el documento. Intentá nuevamente.",
+      }));
       toast.error(actionError(caughtError, "Intentá nuevamente."), {
         title: "No pudimos eliminar el documento",
         dedupeKey: `document:${documentId}:delete:error`,
       });
+    } finally {
+      endDocumentAction(documentId);
     }
   }
 
   async function retry(documentId: string, fileName: string) {
+    if (!beginDocumentAction(documentId, "retry")) return;
     try {
       await retryDocument(documentId);
       await load();
@@ -161,15 +193,41 @@ export function useAvatarContext(avatarId: string) {
         dedupeKey: `document:${documentId}:retried`,
       });
     } catch (caughtError) {
+      setDocumentErrors((current) => ({
+        ...current,
+        [documentId]: "No pudimos reintentar el documento. Intentá nuevamente.",
+      }));
       toast.error(actionError(caughtError, "Intentá nuevamente."), {
         title: "No pudimos reintentar el documento",
         dedupeKey: `document:${documentId}:retry:error`,
       });
+    } finally {
+      endDocumentAction(documentId);
     }
+  }
+
+  function beginDocumentAction(id: string, action: "retry" | "remove") {
+    if (busyDocuments.current.has(id)) return false;
+    busyDocuments.current.add(id);
+    setPendingDocuments((current) => ({ ...current, [id]: action }));
+    setDocumentErrors((current) => ({ ...current, [id]: "" }));
+    return true;
+  }
+
+  function endDocumentAction(id: string) {
+    busyDocuments.current.delete(id);
+    setPendingDocuments((current) => {
+      const next = { ...current };
+      delete next[id];
+      return next;
+    });
   }
 
   return {
     context,
+    pendingDocuments,
+    documentErrors,
+    saveError,
     text,
     setText,
     loading,

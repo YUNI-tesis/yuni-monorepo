@@ -1,4 +1,5 @@
 import {
+  confirmGroupParticipantInterruptionReady,
   confirmGroupParticipantStarted,
   endGroupVoiceSession,
   getGroupScribeToken,
@@ -11,6 +12,7 @@ import {
   submitGroupTurn,
 } from "./api/avatar-group-api";
 import {
+  confirmPublicGroupParticipantInterruptionReady,
   confirmPublicGroupParticipantStarted,
   endPublicGroupSession,
   getPublicGroupScribeToken,
@@ -32,6 +34,7 @@ export type GroupCallTransport = {
   submitTurn: typeof submitGroupTurn;
   reportProviderEvent: typeof reportGroupProviderEvent;
   interrupt: typeof interruptGroupVoiceSession;
+  confirmParticipantInterruptionReady: typeof confirmGroupParticipantInterruptionReady;
   reportParticipantFailure: typeof reportGroupParticipantFailure;
   confirmParticipantStarted: typeof confirmGroupParticipantStarted;
   retryParticipant: typeof retryGroupParticipant;
@@ -45,6 +48,7 @@ export const authenticatedGroupCallTransport: GroupCallTransport = {
   submitTurn: submitGroupTurn,
   reportProviderEvent: reportGroupProviderEvent,
   interrupt: interruptGroupVoiceSession,
+  confirmParticipantInterruptionReady: confirmGroupParticipantInterruptionReady,
   reportParticipantFailure: reportGroupParticipantFailure,
   confirmParticipantStarted: confirmGroupParticipantStarted,
   retryParticipant: retryGroupParticipant,
@@ -81,14 +85,17 @@ export function createPublicGroupCallTransport(input: {
     interrupt(sessionId, reason, expected) {
       return interruptPublicGroupSession(sessionId, token(), reason, expected);
     },
+    confirmParticipantInterruptionReady(sessionId, avatarId, ready) {
+      return confirmPublicGroupParticipantInterruptionReady(sessionId, token(), avatarId, ready);
+    },
     reportParticipantFailure(sessionId, avatarId, failure, options) {
       return reportPublicGroupParticipantFailure(sessionId, token(), avatarId, failure, options);
     },
     confirmParticipantStarted(sessionId, avatarId, participantAttemptId) {
       return confirmPublicGroupParticipantStarted(sessionId, token(), avatarId, participantAttemptId);
     },
-    retryParticipant(sessionId, avatarId) {
-      return retryPublicGroupParticipant(sessionId, token(), avatarId);
+    retryParticipant(sessionId, avatarId, options) {
+      return retryPublicGroupParticipant(sessionId, token(), avatarId, options);
     },
     heartbeat(sessionId) {
       return heartbeatPublicGroupSession(sessionId, token());

@@ -194,6 +194,7 @@ export function toAvatarListItemDto(
     description: avatar.description,
     status: avatar.status,
     providerSyncStatus: avatar.providerSyncStatus,
+    ...(isOwner ? { contextIssueCount: avatar.contextIssueCount ?? 0 } : {}),
     thumbnailUrl: parsedLiveAvatarConfig.success
       ? readSafeHttpUrl(parsedLiveAvatarConfig.data.thumbnailUrl)
       : null,

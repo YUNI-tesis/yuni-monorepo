@@ -36,6 +36,24 @@ function renderCard(avatar: ApiAvatarSummary, variant: AvatarCardVariant = "dash
 }
 
 describe("AvatarCard", () => {
+  it("makes context failures visible while keeping a usable avatar available", () => {
+    const html = renderCard(createAvatar({ contextIssueCount: 3 }), "catalog");
+    expect(html).toContain("Contexto con errores");
+    expect(html).toContain("Interactuar");
+    expect(html).not.toContain("Listo para interactuar");
+  });
+
+  it("does not show the owner's processing problems to shared users", () => {
+    const html = renderCard(
+      createAvatar({
+        contextIssueCount: 3,
+        access: { type: "shared", canEdit: false, canShare: false, canInteract: true },
+      })
+    );
+    expect(html).not.toContain("Contexto con errores");
+    expect(html).toContain("Listo para interactuar");
+  });
+
   it("renders the visual launcher without catalog metadata on Dashboard", () => {
     const html = renderCard(createAvatar());
 

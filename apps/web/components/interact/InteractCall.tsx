@@ -407,10 +407,6 @@ export function InteractCall({ avatarId }: { avatarId: string }) {
             id: avatar.id,
             name: avatar.name,
             status: call.status === "active" ? "active" : call.status === "starting" ? "connecting" : "ready",
-            statusLabel:
-              call.status === "active"
-                ? formatConversationState(call.conversationState)
-                : formatCallStatus(call.status),
             isSpeaking: call.isAvatarSpeaking,
             ownsTurn: call.conversationState === "thinking" || call.conversationState === "speaking",
             attachMediaElement: call.attachMediaElement,
@@ -424,15 +420,6 @@ export function InteractCall({ avatarId }: { avatarId: string }) {
         ]}
         badges={
           <>
-            <Badge tone={call.status === "active" ? "success" : "neutral"}>
-              {formatCallStatus(call.status)}
-            </Badge>
-            <Badge tone={conversationTone(call.conversationState)}>
-              {formatConversationState(call.conversationState)}
-            </Badge>
-            <Badge tone={formatContextStatusTone(interactionContext.contextStatus)}>
-              {formatContextStatusLabel(interactionContext.contextStatus)}
-            </Badge>
             {call.remainingSeconds !== null ? (
               <Badge tone={call.remainingSeconds <= 60 ? "warning" : "neutral"}>
                 {call.remainingSeconds <= 60 ? "Un minuto o menos · " : "Disponible · "}
@@ -533,29 +520,4 @@ function getContextStatusDescription(status: ApiInteractionContext["contextStatu
   }
 
   return null;
-}
-
-function formatCallStatus(status: ReturnType<typeof useLiveAvatarSession>["status"]) {
-  if (status === "starting") return "Conectando";
-  if (status === "active") return "En llamada";
-  if (status === "ending") return "Cerrando";
-  if (status === "ended") return "Finalizada";
-  if (status === "error") return "Error";
-  return "Lista";
-}
-
-function formatConversationState(state: ReturnType<typeof useLiveAvatarSession>["conversationState"]) {
-  if (state === "listening") return "Escuchando";
-  if (state === "thinking") return "Pensando";
-  if (state === "speaking") return "Hablando";
-  if (state === "interrupted") return "Interrumpido";
-  return "En espera";
-}
-
-function conversationTone(state: ReturnType<typeof useLiveAvatarSession>["conversationState"]): BadgeTone {
-  if (state === "listening") return "warning";
-  if (state === "thinking") return "neutral";
-  if (state === "speaking") return "success";
-  if (state === "interrupted") return "danger";
-  return "neutral";
 }

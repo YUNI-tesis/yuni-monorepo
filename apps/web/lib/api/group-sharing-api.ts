@@ -1,14 +1,17 @@
 "use client";
 
 import { apiRequest } from "./http-client";
+import { groupInterruptionBody } from "./avatar-group-api";
 import type {
   ApiGroupFloorSnapshot,
   ApiGroupOrchestrationResult,
+  ApiGroupParticipantInterruptionReadyResult,
   ApiGroupOrchestrationPhase,
   ApiGroupTurnDirective,
   ApiGroupVoiceParticipant,
   ApiGroupVoiceSession,
   ApiAvatarGroupInteractionAvailability,
+  GroupParticipantInterruptionReadyInput,
 } from "./avatar-group-api";
 import type { ApiAccessGrantBase, ApiInteractionLimits, ApiShareLinkBase } from "./sharing-api";
 
@@ -194,6 +197,7 @@ export function reportPublicGroupProviderEvent(
         avatarId: string;
         type: "agent_response" | "agent_response_correction" | "speak_ended" | "interruption";
         content?: string;
+        generatedText?: string;
       }
 ) {
   return publicGroupSessionRequest<ApiGroupOrchestrationResult>(sessionId, token, "/provider-events", {
@@ -206,15 +210,26 @@ export function interruptPublicGroupSession(
   sessionId: string,
   token: string,
   reason: "user" | "unauthorized_audio" | "timeout" | "participant_error" = "user",
-  expected?: { avatarId: string; turnId: string }
+  expected?: import("./avatar-group-api").GroupInterruptionExpectation
 ) {
   return publicGroupSessionRequest<ApiGroupOrchestrationResult>(sessionId, token, "/interrupt", {
     method: "POST",
-    body: JSON.stringify({
-      reason,
-      ...(expected ? { expectedAvatarId: expected.avatarId, expectedTurnId: expected.turnId } : {}),
-    }),
+    body: JSON.stringify(groupInterruptionBody(reason, expected)),
   });
+}
+
+export function confirmPublicGroupParticipantInterruptionReady(
+  sessionId: string,
+  token: string,
+  avatarId: string,
+  input: GroupParticipantInterruptionReadyInput
+) {
+  return publicGroupSessionRequest<ApiGroupParticipantInterruptionReadyResult>(
+    sessionId,
+    token,
+    `/participants/${encodeURIComponent(avatarId)}/interruption-ready`,
+    { method: "POST", body: JSON.stringify(input) }
+  );
 }
 
 export function reportPublicGroupParticipantFailure(
@@ -255,12 +270,17 @@ export function confirmPublicGroupParticipantStarted(
   );
 }
 
-export function retryPublicGroupParticipant(sessionId: string, token: string, avatarId: string) {
+export function retryPublicGroupParticipant(
+  sessionId: string,
+  token: string,
+  avatarId: string,
+  options?: { interruptionSourceEventId: string; failedParticipantAttemptId?: string }
+) {
   return publicGroupSessionRequest<{ participant: ApiGroupVoiceParticipant }>(
     sessionId,
     token,
     `/participants/${encodeURIComponent(avatarId)}/retry`,
-    { method: "POST" }
+    { method: "POST", ...(options ? { body: JSON.stringify(options) } : {}) }
   );
 }
 

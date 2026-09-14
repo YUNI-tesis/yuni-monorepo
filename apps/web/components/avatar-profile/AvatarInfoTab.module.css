@@ -1,0 +1,173 @@
+.sheet {
+  min-width: 0;
+  border: 1px solid var(--yuni-color-border);
+  border-radius: var(--yuni-radius-md);
+  background: var(--yuni-color-surface);
+}
+
+.section {
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr);
+  gap: 40px;
+  margin: 0 32px;
+  padding: 32px 0;
+}
+
+.section + .section {
+  border-top: 1px solid var(--yuni-color-border);
+}
+
+.sectionLabel h2 {
+  margin: 0;
+  color: var(--yuni-color-text);
+  font-size: 16px;
+  font-weight: 750;
+  line-height: 1.6;
+  letter-spacing: -0.02em;
+}
+
+.sectionLabel p {
+  max-width: 24ch;
+  margin: 8px 0 0;
+  color: var(--yuni-color-text-muted);
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.sectionContent {
+  min-width: 0;
+}
+
+.personality {
+  display: grid;
+  gap: 12px;
+  justify-items: start;
+}
+
+.instructions {
+  max-width: 72ch;
+  margin: 0;
+  color: var(--yuni-color-text);
+  font-size: 15px;
+  font-weight: 450;
+  line-height: 1.85;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.disclosure {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  border: 0;
+  background: transparent;
+  color: var(--yuni-color-accent);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+  text-align: left;
+  transition: color 160ms ease;
+}
+
+.disclosure:hover {
+  color: var(--yuni-color-text);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+.disclosure:focus-visible {
+  outline: 2px solid var(--yuni-color-accent);
+  outline-offset: 5px;
+  border-radius: 2px;
+}
+
+.disclosure svg {
+  flex-shrink: 0;
+  transition: transform 160ms ease;
+}
+
+.disclosure[aria-expanded="true"] svg {
+  transform: rotate(180deg);
+}
+
+.voice {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.voiceIcon {
+  display: grid;
+  flex: 0 0 40px;
+  height: 40px;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--yuni-color-accent);
+  background: var(--yuni-color-surface-muted);
+}
+
+.voiceContent {
+  min-width: 0;
+  max-width: 64ch;
+}
+
+.voiceContent strong {
+  display: block;
+  color: var(--yuni-color-text);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+
+.voiceContent p {
+  margin: 8px 0 0;
+  color: var(--yuni-color-text-muted);
+  font-size: 14px;
+  line-height: 1.75;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.empty {
+  margin: 0;
+  color: var(--yuni-color-text-muted);
+  font-size: 15px;
+  line-height: 1.85;
+}
+
+@media (max-width: 760px) {
+  .section {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 20px;
+    margin: 0 24px;
+    padding: 24px 0;
+  }
+
+  .sectionLabel p {
+    max-width: none;
+    margin-top: 4px;
+  }
+}
+
+@media (max-width: 420px) {
+  .section {
+    margin: 0 20px;
+  }
+
+  .instructions,
+  .empty {
+    font-size: 16px;
+    line-height: 1.75;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .disclosure,
+  .disclosure svg {
+    transition: none;
+  }
+}

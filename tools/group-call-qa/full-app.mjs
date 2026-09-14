@@ -20,14 +20,229 @@ import {
   safeError,
 } from "./runtime.mjs";
 
+function assessInterruptionReuse(report) {
+  const input = report.bargeIn;
+  const media = report.media;
+  const origin = Date.parse(media.wallStartedAt);
+  const toMs = (event, request = false) =>
+    Date.parse((request ? event.requestObservedAt : event.responseObservedAt) ?? event.at) - origin;
+  const originalSessions = report.initialProviderSessions ?? report.providerSessions ?? [];
+  const cuts = report.api.filter(
+    (event) => event.path.endsWith("/interrupt") && event.input?.reason === "user"
+  );
+  const cancelled = cuts.find((event) => event.status === 200 && event.interruption?.status === "cancelled");
+  const interruptionId = cancelled?.interruption?.sourceEventId;
+  const affected = cancelled?.interruption?.affectedParticipants ?? [];
+  const submits = report.api.filter((event) => event.path.endsWith("/turns") && event.method === "POST");
+  const commands = media.commands.filter(
+    (event) => event.commandType === "user_message" && event.atMs >= report.injection.browserAtMs
+  );
+  const nextCommand = commands[1];
+  const ready = report.api.filter(
+    (event) =>
+      event.path.endsWith("/interruption-ready") &&
+      event.status === 200 &&
+      event.applied === true &&
+      event.input?.interruptionSourceEventId === interruptionId
+  );
+  const resolutions = affected.map((participant) => {
+    const original = originalSessions.find((item) => item.avatarId === participant.avatarId);
+    const ack = ready.find(
+      (event) =>
+        event.participantAvatarId === participant.avatarId &&
+        event.input.participantAttemptId === participant.participantAttemptId &&
+        event.input.interruptedTurnId === participant.interruptedTurnId
+    );
+    const evidence = ack?.input.evidence;
+    const terminal =
+      evidence?.type === "speak_ended" &&
+      media.providerEvents.find(
+        (event) =>
+          event.eventType === "avatar.speak_ended" &&
+          event.eventId === evidence.eventId &&
+          event.sourceEventId === evidence.speechSourceEventId &&
+          (participant.avatarId !== input.ownerAvatarId ||
+            event.sourceEventId === input.ownerSpeechSourceEventId) &&
+          event.sessionId === original?.providerSessionId &&
+          event.atMs <= toMs(ack, true)
+      );
+    const sourceStart =
+      terminal &&
+      media.providerEvents.find(
+        (event) =>
+          event.eventType === "avatar.speak_started" &&
+          event.sourceEventId === evidence.speechSourceEventId &&
+          event.sessionId === original?.providerSessionId &&
+          event.atMs <= terminal.atMs
+      );
+    return {
+      avatarId: participant.avatarId,
+      participantAttemptId: participant.participantAttemptId,
+      interruptedTurnId: participant.interruptedTurnId,
+      providerSessionId: original?.providerSessionId ?? null,
+      evidenceType: evidence?.type ?? null,
+      speechSourceEventId: evidence?.speechSourceEventId ?? null,
+      sameAttempt: Boolean(original && original.participantAttemptId === participant.participantAttemptId),
+      readyBeforeNextCommand: Boolean(
+        ack && nextCommand && ack.floorIsEmpty && ack.phase === "listening" && toMs(ack) <= nextCommand.atMs
+      ),
+      correlatedTerminal: Boolean(sourceStart && terminal),
+      notDispatchedObserved: Boolean(
+        ack &&
+        evidence?.type === "not_dispatched" &&
+        participant.avatarId !== input.ownerAvatarId &&
+        !commands.some(
+          (command) => command.sessionId === original?.providerSessionId && command.atMs < toMs(ack)
+        )
+      ),
+    };
+  });
+  const targetSession = originalSessions.find((item) => item.avatarId === input.targetAvatarId);
+  const retiredSources = new Set(resolutions.map((item) => item.speechSourceEventId).filter(Boolean));
+  const nextStart = media.providerEvents.find(
+    (event) =>
+      nextCommand &&
+      event.atMs >= nextCommand.atMs &&
+      event.sessionId === targetSession?.providerSessionId &&
+      event.eventType === "avatar.speak_started" &&
+      event.sourceEventId &&
+      !retiredSources.has(event.sourceEventId)
+  );
+  const energetic = (sample) => sample.rms > 0.001;
+  const audible = (sample) => !sample.muted && !sample.paused && sample.volume > 0;
+  const targetSamples = media.samples.filter(
+    (sample) => nextCommand && sample.name === input.targetName && sample.atMs >= nextCommand.atMs
+  );
+  const targetAudio = targetSamples.filter(
+    (sample) => nextStart && sample.atMs >= nextStart.atMs && energetic(sample) && audible(sample)
+  );
+  const targetBlocked = targetSamples.filter(
+    (sample) => nextStart && sample.atMs >= nextStart.atMs && energetic(sample) && !audible(sample)
+  );
+  const earlyAudio = targetSamples.filter(
+    (sample) => (!nextStart || sample.atMs < nextStart.atMs) && energetic(sample) && audible(sample)
+  );
+  const firstMute = media.samples.find(
+    (sample) => sample.name === input.ownerName && sample.atMs >= input.partialBrowserAtMs && sample.muted
+  );
+  const gateLatencyMs = firstMute ? firstMute.atMs - input.partialBrowserAtMs : null;
+  const lateEvents = media.providerEvents.filter(
+    (event) =>
+      nextCommand &&
+      event.atMs >= nextCommand.atMs &&
+      event.sessionId === input.ownerProviderSessionId &&
+      (retiredSources.has(event.sourceEventId) ||
+        ["interruption", "agent_response_correction"].includes(event.providerType))
+  );
+  const lateEvidence = lateEvents.filter((event) =>
+    ["interruption", "agent_response_correction"].includes(event.providerType)
+  );
+  const lateAttributionSafe = lateEvidence.every((event) => {
+    const deliveries = report.api.filter(
+      (delivery) =>
+        delivery.path.endsWith("/provider-events") &&
+        delivery.input?.sourceEventId === `${event.providerType}:${input.ownerAvatarId}:${event.eventId}`
+    );
+    return deliveries.every((delivery) => delivery.input.turnId === input.oldTurnId);
+  });
+  const trackContinuity = originalSessions.every((participant) => {
+    const before = media.samples.findLast(
+      (sample) => sample.name === participant.name && sample.atMs < input.partialBrowserAtMs
+    );
+    const after = media.samples.filter(
+      (sample) => nextCommand && sample.name === participant.name && sample.atMs >= nextCommand.atMs
+    );
+    return Boolean(
+      before?.audioTrackId &&
+      after.length &&
+      after.every((sample) => sample.audioTrackId === before.audioTrackId)
+    );
+  });
+  return {
+    outcome: "inconclusive",
+    experimental: true,
+    reason: "experimental_oracle_requires_review_and_physical_qa",
+    gateLatencyMs,
+    checks: {
+      commandObserverAvailable: media.commandObserverAvailable === true,
+      oneInterruptionId: Boolean(
+        interruptionId &&
+        new Set(cuts.map((event) => event.input.sourceEventId)).size === 1 &&
+        cuts.every((event) => event.input.sourceEventId === interruptionId)
+      ),
+      exactlyTwoHumanSubmits: submits.length === 2,
+      exactlyTwoUserCommands: commands.length === 2,
+      commandsUseOriginalConnectors:
+        commands[0]?.sessionId === input.ownerProviderSessionId &&
+        nextCommand?.sessionId === targetSession?.providerSessionId,
+      everyAffectedAttemptReused:
+        resolutions.length > 0 &&
+        resolutions.every((item) => item.sameAttempt && item.readyBeforeNextCommand),
+      correlatedInterruptionTerminal:
+        resolutions.find((item) => item.avatarId === input.ownerAvatarId)?.correlatedTerminal === true,
+      everyAffectedAttemptResolvedSafely:
+        resolutions.length > 0 &&
+        resolutions.every((item) => item.correlatedTerminal || item.notDispatchedObserved),
+      noReplacements:
+        report.replacements.length === 0 && !report.api.some((event) => event.path.endsWith("/retry")),
+      noSessionStops:
+        !media.commands.some((event) => event.eventType === "session.stop") &&
+        !media.providerEvents.some((event) => event.eventType === "session.stopped"),
+      sameAudioTracks: trackContinuity,
+      noConnectingTilesAfterInterruption: !media.samples.some(
+        (sample) => sample.atMs >= input.partialBrowserAtMs && sample.status === "connecting"
+      ),
+      oldRoundCancelled:
+        report.roundState.find((round) => round.id === input.oldRoundId)?.status === "cancelled",
+      atMostOneAudible: media.maxUnmutedElements <= 1,
+      gateWithin200Ms: gateLatencyMs !== null && gateLatencyMs <= 200,
+      selectedRequestedTarget: input.actualTargetAvatarId === input.targetAvatarId,
+      freshResponseSource: Boolean(nextStart),
+      freshResponseTerminal: Boolean(
+        nextStart &&
+        media.providerEvents.some(
+          (event) =>
+            event.eventType === "avatar.speak_ended" &&
+            event.sessionId === nextStart.sessionId &&
+            event.sourceEventId === nextStart.sourceEventId &&
+            event.atMs >= nextStart.atMs
+        )
+      ),
+      nextResponseHasAudio: targetAudio.length > 0,
+      noAudiblePcmBeforeFreshSource: earlyAudio.length === 0,
+      noBlockedNewResponsePcm: targetBlocked.length === 0,
+      observedLateEvidenceKeepsOldTurn: lateAttributionSafe,
+    },
+    resolutions,
+    commandCount: commands.length,
+    nextResponseAudibleSamples: targetAudio.length,
+    nextResponseBlockedSamples: targetBlocked.length,
+    audibleSamplesBeforeFreshSource: earlyAudio.length,
+    lateProviderEvents: lateEvents.length,
+    lateEvidenceEvents: lateEvidence.length,
+    lateEventGuardCoverage: lateEvents.length ? "observed_requires_review" : "not_observed",
+    caveats: [
+      "Fake microphone and injected Scribe events; not physical interruption/echo QA",
+      "Gate latency includes Playwright/socket and 20 ms sampling uncertainty",
+      "Provider sources attribute events, not individual PCM samples or exact audible words",
+      "Interrupted buffered audio may intentionally remain muted before the fresh response source",
+      "No observed late events does not validate their guards; synthetic lifecycle regressions remain required",
+    ],
+  };
+}
+
 const groupId = arg("group-id");
 if (!groupId || !/^[a-zA-Z0-9_-]{1,128}$/.test(groupId)) throw new Error("A valid --group-id is required");
 const baseUrl = assertLocalUrl(arg("app-url", "http://localhost:3000"));
 if (process.env.API_INTERNAL_URL) assertLocalUrl(process.env.API_INTERNAL_URL);
 const temp = await outputDirectory();
 let text = arg("text");
-const responseLength = arg("response", "short");
+const scenario = arg("scenario", "normal");
+const bargeTarget = arg("barge-target", "other");
+const responseLength = arg("response", scenario === "barge-in" ? "long" : "short");
 const layout = arg("layout", "desktop");
+if (!["normal", "barge-in"].includes(scenario)) throw new Error("--scenario must be normal or barge-in");
+if (!["same", "other"].includes(bargeTarget)) throw new Error("--barge-target must be same or other");
 if (!["short", "long"].includes(responseLength)) throw new Error("--response must be short or long");
 if (!["desktop", "mobile"].includes(layout)) throw new Error("--layout must be desktop or mobile");
 const report = {
@@ -35,11 +250,14 @@ const report = {
   kind: "full-app-real-provider-fake-scribe",
   run,
   groupId,
+  scenario,
+  ...(scenario === "barge-in" ? { bargeTarget, oracleStatus: "experimental-not-accepted" } : {}),
   responseLength,
   layout,
   api: [],
   errors: [],
   providerChecks: [],
+  replacements: [],
 };
 const sql = (query) =>
   execFileSync(
@@ -121,9 +339,11 @@ try {
     throw new Error("Every participant needs a synchronized group Agent");
   text ??=
     roster.map((item) => item.name).join(", ") +
-    (responseLength === "short"
-      ? ", respondan todos por turno. Cada uno diga únicamente la palabra azul."
-      : ", respondan todos por turno. Cada uno explique una recomendación concreta de su especialidad en dos oraciones breves de unas veinte palabras en total.");
+    (scenario === "barge-in"
+      ? ", respondan todos por turno. Cada uno explique cinco recomendaciones de su especialidad con ejemplos concretos. Empiecen directamente con la explicación."
+      : responseLength === "short"
+        ? ", respondan todos por turno. Cada uno diga únicamente la palabra azul."
+        : ", respondan todos por turno. Cada uno explique una recomendación concreta de su especialidad en dos oraciones breves de unas veinte palabras en total.");
   report.roster = roster;
   report.ttsBefore = await snapshotTts(roster);
   const now = Math.floor(Date.now() / 1000);
@@ -182,6 +402,7 @@ try {
       providerSessionId: participant.sessionId,
       participantAttemptId: participant.participantAttemptId,
     }));
+    report.initialProviderSessions ??= report.providerSessions.map((participant) => ({ ...participant }));
     const guardParticipants = [];
     console.log(
       JSON.stringify({
@@ -230,6 +451,81 @@ try {
       });
     }
     await route.fulfill({ response });
+  });
+
+  // Replacement sessions have the same safety boundary as initial sessions:
+  // inspect the token before the SDK receives it and verify sandbox metadata
+  // after SDK start, before the app receives its participant-started ACK.
+  await page.route(baseUrl + "/api/group-voice-sessions/*/participants/*/retry", async (route) => {
+    if (route.request().method() !== "POST") return route.continue();
+    const response = await route.fetch();
+    const body = await response.json().catch(() => null);
+    if (!body?.participant) return route.fulfill({ response });
+    const participant = body.participant;
+    const claims = inspectSandboxSessionToken(participant.sessionToken, participant.sessionId);
+    const observation = {
+      avatarId: participant.avatar?.id ?? null,
+      name: participant.avatar?.name ?? null,
+      providerSessionId: participant.sessionId ?? null,
+      participantAttemptId: participant.participantAttemptId ?? null,
+      observedAt: new Date().toISOString(),
+      tokenGuard: claims,
+      postStartGuard: null,
+    };
+    report.replacements.push(observation);
+    if (!claims.passed || !observation.participantAttemptId) {
+      startupFailure = "ReplacementSandboxMetadataUnconfirmed";
+      report.errors.push({ type: "replacement_sandbox_guard_denied" });
+      return route.fulfill({
+        status: 503,
+        contentType: "application/json",
+        body: JSON.stringify({
+          error: { code: "QA_SANDBOX_REQUIRED", message: "QA requires a verified sandbox replacement" },
+        }),
+      });
+    }
+    return route.fulfill({ response });
+  });
+  await page.route(baseUrl + "/api/group-voice-sessions/*/participants/*/started", async (route) => {
+    if (route.request().method() !== "POST") return route.continue();
+    let input;
+    try {
+      input = route.request().postDataJSON();
+    } catch {
+      return route.continue();
+    }
+    const replacement = report.replacements.find(
+      (item) => item.participantAttemptId === input?.participantAttemptId
+    );
+    if (!replacement) return route.continue();
+    const observation = { observedAt: new Date().toISOString(), status: null, isSandbox: null };
+    try {
+      const response = await fetch(
+        "https://api.liveavatar.com/v1/sessions/" + encodeURIComponent(replacement.providerSessionId),
+        {
+          headers: { "X-API-KEY": process.env.LIVEAVATAR_API_KEY },
+          signal: AbortSignal.timeout(6000),
+        }
+      );
+      observation.status = response.status;
+      const body = await response.json();
+      observation.isSandbox = (body.data ?? body).is_sandbox === true;
+    } catch (error) {
+      observation.errorName = error.name;
+    }
+    replacement.postStartGuard = observation;
+    if (observation.status !== 200 || observation.isSandbox !== true) {
+      startupFailure = "ReplacementPostStartSandboxUnconfirmed";
+      report.errors.push({ type: "replacement_post_start_sandbox_guard_denied" });
+      return route.fulfill({
+        status: 503,
+        contentType: "application/json",
+        body: JSON.stringify({
+          error: { code: "QA_SANDBOX_REQUIRED", message: "QA replacement sandbox was not confirmed" },
+        }),
+      });
+    }
+    return route.continue();
   });
 
   await page.routeWebSocket(/\/v1\/speech-to-text\/realtime(?:\?|$)/, (socket) => {
@@ -301,6 +597,8 @@ try {
       const event = decodeControl(packet);
       if (!event) return;
       if (event.session_id) sessionByChannel.set(channel, event.session_id);
+      const conversationId =
+        event.data?.conversation_initiation_metadata_event?.conversation_id ?? event.data?.conversation_id;
       const entry = {
         atMs: Math.round(performance.now() - observations.startedAt),
         eventType: event.event_type,
@@ -309,6 +607,10 @@ try {
         sessionId: event.session_id ?? sessionByChannel.get(channel) ?? null,
         commandType: event.elevenlabs_event_type ?? null,
         providerType: event.elevenlabs_event_type ?? event.data?.type ?? null,
+        conversationId:
+          typeof conversationId === "string" && /^conv_[a-zA-Z0-9_-]{1,128}$/.test(conversationId)
+            ? conversationId
+            : null,
       };
       (direction === "out" ? observations.commands : observations.providerEvents).push(entry);
     };
@@ -389,6 +691,7 @@ try {
         observations.samples.push({
           atMs: Math.round(performance.now() - observations.startedAt),
           name,
+          audioTrackId: track.id,
           rms,
           muted: video.muted,
           volume: video.volume,
@@ -432,6 +735,7 @@ try {
         responseObservedAt: new Date().toISOString(),
         timestampMeaning: "Playwright network observation, not provider event time",
         path: pathname,
+        participantAvatarId: pathname.match(/\/participants\/([^/]+)\//)?.[1],
         status: response.status(),
         method: request.method(),
       };
@@ -449,6 +753,20 @@ try {
           sourceEventId: requestBody.sourceEventId,
           contentLength: requestBody.content?.length,
           reason: requestBody.reason,
+          trigger: requestBody.trigger,
+          expectedTurnId: requestBody.expectedTurnId,
+          expectedAvatarId: requestBody.expectedAvatarId,
+          interruptionSourceEventId: requestBody.interruptionSourceEventId,
+          participantAttemptId: requestBody.participantAttemptId,
+          interruptedTurnId: requestBody.interruptedTurnId,
+          evidence: requestBody.evidence
+            ? {
+                type: requestBody.evidence.type,
+                eventId: requestBody.evidence.eventId,
+                speechSourceEventId: requestBody.evidence.speechSourceEventId,
+              }
+            : undefined,
+          generatedTextLength: requestBody.generatedText?.length,
         };
       }
       try {
@@ -464,7 +782,22 @@ try {
           }));
         }
         event.phase = body.phase;
+        event.applied = body.applied;
+        event.floorIsEmpty = body.floor === null;
         event.roundId = body.round?.id;
+        event.interruption = body.interruption
+          ? {
+              sourceEventId: body.interruption.sourceEventId,
+              status: body.interruption.status,
+              turnId: body.interruption.turnId,
+              avatarIds: body.interruption.avatarIds,
+              affectedParticipants: body.interruption.affectedParticipants?.map((participant) => ({
+                avatarId: participant.avatarId,
+                participantAttemptId: participant.participantAttemptId,
+                interruptedTurnId: participant.interruptedTurnId,
+              })),
+            }
+          : undefined;
         event.directive = body.directive
           ? {
               action: body.directive.action,
@@ -551,34 +884,148 @@ try {
   };
   scribeSockets.at(-1).send(JSON.stringify({ message_type: "committed_transcript", text }));
   console.log(JSON.stringify({ stage: "injected", sessionId, contentLength: text.length }));
-  await deadline(
-    (async () => {
-      while (running) {
-        const ended = report.api.filter(
-          (event) =>
-            event.path.endsWith("/provider-events") &&
-            event.input?.type === "speak_ended" &&
-            event.status === 200 &&
-            event.at >= report.injection.at
-        );
-        const unique = new Set(ended.map((event) => event.input.avatarId));
-        if (
-          unique.size >= roster.length &&
-          report.api.some((event) => event.phase === "listening" && event.at >= report.injection.at)
-        )
-          return;
-        if (report.api.some((event) => event.path.endsWith("/failure") && event.at >= report.injection.at))
-          throw new Error("Participant failure during full-app round");
-        await new Promise((resolve) => setTimeout(resolve, 100));
-      }
-    })(),
-    45000,
-    "Complete roster round"
-  );
+  if (scenario === "barge-in") {
+    await deadline(
+      (async () => {
+        while (running && !report.bargeIn) {
+          if (startupFailure)
+            throw Object.assign(new Error("Sandbox verification failed"), { name: startupFailure });
+          const firstRoute = report.api.find(
+            (event) =>
+              event.path.endsWith("/turns") && event.status === 200 && event.directive?.action === "speak"
+          );
+          const owner = roster.find((item) => item.avatarId === firstRoute?.directive.avatarId);
+          const ownerSession = report.providerSessions.find((item) => item.avatarId === owner?.avatarId);
+          if (owner && ownerSession) {
+            const observed = await page.evaluate(() => window.__yuniQAMedia);
+            const started = observed.providerEvents.findLast(
+              (event) =>
+                event.eventType === "avatar.speak_started" &&
+                event.sessionId === ownerSession.providerSessionId &&
+                event.atMs >= report.injection.browserAtMs
+            );
+            const playing = observed.samples.at(-1)?.atMs ?? 0;
+            const recentAudio = observed.samples.findLast(
+              (sample) =>
+                sample.name === owner.name &&
+                sample.atMs >= playing - 150 &&
+                sample.atMs >= report.injection.browserAtMs &&
+                sample.rms > 0.001 &&
+                !sample.muted &&
+                !sample.paused &&
+                sample.turnOwner === "true"
+            );
+            if (started?.sourceEventId && recentAudio) {
+              const target =
+                bargeTarget === "same" ? owner : roster.find((item) => item.avatarId !== owner.avatarId);
+              const committed = `pará, ${target.name} decí únicamente la palabra azul`;
+              report.bargeIn = {
+                oldRoundId: firstRoute.roundId,
+                oldTurnId: firstRoute.directive.turnId,
+                ownerAvatarId: owner.avatarId,
+                ownerName: owner.name,
+                ownerProviderSessionId: ownerSession.providerSessionId,
+                ownerSpeechSourceEventId: started.sourceEventId,
+                targetAvatarId: target.avatarId,
+                targetName: target.name,
+                firstAudibleSampleAtMs: recentAudio.atMs,
+                partialAt: new Date().toISOString(),
+                partialBrowserAtMs: await page.evaluate(() =>
+                  Math.round(performance.now() - window.__yuniQAMedia.startedAt)
+                ),
+                partialLength: 4,
+                committedLength: committed.length,
+              };
+              scribeSockets.at(-1).send(JSON.stringify({ message_type: "partial_transcript", text: "pará" }));
+              await new Promise((resolve) => setTimeout(resolve, 100));
+              report.bargeIn.committedAt = new Date().toISOString();
+              scribeSockets
+                .at(-1)
+                .send(JSON.stringify({ message_type: "committed_transcript", text: committed }));
+              console.log(JSON.stringify({ stage: "barge_injected", sessionId, ...report.bargeIn }));
+            }
+          }
+          if (!report.bargeIn) await new Promise((resolve) => setTimeout(resolve, 50));
+        }
+        while (running) {
+          if (startupFailure)
+            throw Object.assign(new Error("Replacement verification failed"), { name: startupFailure });
+          const cancelled = report.api.some(
+            (event) =>
+              event.path.endsWith("/interrupt") &&
+              event.status === 200 &&
+              event.interruption?.status === "cancelled"
+          );
+          const newRoute = report.api.find(
+            (event) =>
+              event.path.endsWith("/turns") &&
+              event.status === 200 &&
+              event.roundId &&
+              event.roundId !== report.bargeIn.oldRoundId &&
+              event.at >= report.bargeIn.committedAt
+          );
+          const ended =
+            newRoute &&
+            report.api.some(
+              (event) =>
+                event.path.endsWith("/provider-events") &&
+                event.status === 200 &&
+                event.input?.type === "speak_ended" &&
+                event.input.turnId === newRoute.directive?.turnId &&
+                event.phase === "listening"
+            );
+          if (cancelled && ended) {
+            report.bargeIn.newRoundId = newRoute.roundId;
+            report.bargeIn.newTurnId = newRoute.directive?.turnId;
+            report.bargeIn.actualTargetAvatarId = newRoute.directive?.avatarId;
+            return;
+          }
+          if (report.api.some((event) => event.path.endsWith("/failure") && event.at >= report.injection.at))
+            throw new Error("Participant failure during interruption scenario");
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+      })(),
+      45000,
+      "Human interruption and next response"
+    );
+  } else
+    await deadline(
+      (async () => {
+        while (running) {
+          const ended = report.api.filter(
+            (event) =>
+              event.path.endsWith("/provider-events") &&
+              event.input?.type === "speak_ended" &&
+              event.status === 200 &&
+              event.at >= report.injection.at
+          );
+          const unique = new Set(ended.map((event) => event.input.avatarId));
+          if (
+            unique.size >= roster.length &&
+            report.api.some((event) => event.phase === "listening" && event.at >= report.injection.at)
+          )
+            return;
+          if (report.api.some((event) => event.path.endsWith("/failure") && event.at >= report.injection.at))
+            throw new Error("Participant failure during full-app round");
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+      })(),
+      45000,
+      "Complete roster round"
+    );
   await page.waitForTimeout(1000);
   report.media = await page.evaluate(() => window.__yuniQAMedia);
   report.roundPassed = true;
-  report.acousticEvidence = assessFullAppEvidence(report);
+  if (scenario === "barge-in") {
+    if (!/^[a-zA-Z0-9_-]{1,128}$/.test(sessionId)) throw new Error("Unexpected QA session ID");
+    report.roundState = JSON.parse(
+      sql(
+        `SELECT COALESCE(json_agg(json_build_object('id', r.id, 'status', r.status, 'sourceEventId', r."sourceEventId", 'turns', (SELECT json_agg(json_build_object('id', t.id, 'avatarId', t."avatarAgentId", 'status', t.status, 'responseLength', length(t."responseText")) ORDER BY t.position) FROM "GroupPlannedTurn" t WHERE t."roundId"=r.id)) ORDER BY r."createdAt"), '[]'::json) FROM "GroupVoiceRound" r WHERE r."groupVoiceSessionId"='${sessionId}';`
+      )
+    );
+    report.interruptionEvidence = assessInterruptionReuse(report);
+    report.acousticEvidence = report.interruptionEvidence;
+  } else report.acousticEvidence = assessFullAppEvidence(report);
   report.acousticCheck = report.acousticEvidence.outcome;
   await page.getByRole("button", { name: "Finalizar llamada", exact: true }).click();
   await page.waitForTimeout(1000);
@@ -625,9 +1072,44 @@ try {
     report.ttsAfter = await snapshotTts(report.roster);
     if (sessionId && report.sandboxGuard?.passed === true)
       report.providerChecks = await Promise.all(
-        report.roster.map((participant) =>
-          checkConversation({ participant, createdAt: report.createdAt, expectedUserText: null })
-        )
+        report.roster.map(async (participant) => {
+          const expectedUserMessages =
+            scenario === "barge-in"
+              ? Number(participant.avatarId === report.bargeIn?.ownerAvatarId) +
+                Number(participant.avatarId === report.bargeIn?.targetAvatarId)
+              : 1;
+          if (scenario === "barge-in" && expectedUserMessages === 0)
+            return {
+              name: participant.name,
+              outcome: "skipped",
+              reason: "not_expected_to_complete_in_interruption_scenario",
+            };
+          const selectedSession =
+            scenario === "barge-in"
+              ? (report.replacements.findLast((item) => item.avatarId === participant.avatarId) ??
+                report.providerSessions.find((item) => item.avatarId === participant.avatarId))
+              : null;
+          const conversationId =
+            selectedSession &&
+            report.media?.providerEvents.findLast(
+              (event) => event.sessionId === selectedSession.providerSessionId && event.conversationId
+            )?.conversationId;
+          const observation = await checkConversation({
+            participant,
+            createdAt: report.createdAt,
+            expectedUserText: null,
+            ...(conversationId ? { conversationId } : {}),
+          });
+          if (scenario !== "barge-in") return observation;
+          const exactUserMessageCount = observation.userMessages === expectedUserMessages;
+          return {
+            ...observation,
+            expectedUserMessages,
+            exactUserMessageCount,
+            outcome:
+              observation.outcome === "passed" && !exactUserMessageCount ? "failed" : observation.outcome,
+          };
+        })
       );
   }
   report.outcome = report.error

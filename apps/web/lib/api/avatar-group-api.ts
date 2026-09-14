@@ -126,7 +126,47 @@ export type ApiGroupOrchestrationResult = {
   phase: ApiGroupOrchestrationPhase;
   directive: ApiGroupTurnDirective | null;
   floor: ApiGroupFloorSnapshot;
+  interruption?: {
+    sourceEventId: string;
+    status: "cancelled" | "stale";
+    turnId: string;
+    avatarIds: string[];
+    affectedParticipants?: Array<{
+      avatarId: string;
+      participantAttemptId: string;
+      interruptedTurnId?: string;
+    }>;
+  };
 };
+
+export type GroupParticipantInterruptionReadyInput = {
+  interruptionSourceEventId: string;
+  participantAttemptId: string;
+  interruptedTurnId: string;
+  evidence:
+    | { type: "speak_ended"; eventId: string; speechSourceEventId: string }
+    | { type: "not_dispatched" };
+};
+
+export type ApiGroupParticipantInterruptionReadyResult = ApiGroupOrchestrationResult & {
+  applied: boolean;
+};
+
+export type GroupInterruptionExpectation = {
+  avatarId: string;
+  turnId: string;
+  sourceEventId?: string;
+  trigger?: "voice";
+  generatedText?: string;
+  spokenFragment?: string;
+  spokenFragmentSource?: "agent_response_correction";
+};
+
+export function groupInterruptionBody(reason: string, expected?: GroupInterruptionExpectation) {
+  if (!expected) return { reason };
+  const { avatarId, turnId, ...context } = expected;
+  return { reason, expectedAvatarId: avatarId, expectedTurnId: turnId, ...context };
+}
 
 export type ApiGroupConversationSummary = {
   id: string;
@@ -151,6 +191,7 @@ export type ApiGroupConversation = {
     content: string;
     speakerAvatarId: string | null;
     speakerName: string | null;
+    interrupted?: boolean;
     createdAt: string;
   }>;
 };
@@ -226,6 +267,7 @@ export function reportGroupProviderEvent(
         avatarId: string;
         type: "agent_response" | "agent_response_correction" | "speak_ended" | "interruption";
         content?: string;
+        generatedText?: string;
       }
 ) {
   return apiRequest<ApiGroupOrchestrationResult>(`/group-voice-sessions/${sessionId}/provider-events`, {
@@ -237,15 +279,23 @@ export function reportGroupProviderEvent(
 export function interruptGroupVoiceSession(
   sessionId: string,
   reason: "user" | "unauthorized_audio" | "timeout" | "participant_error" = "user",
-  expected?: { avatarId: string; turnId: string }
+  expected?: GroupInterruptionExpectation
 ) {
   return apiRequest<ApiGroupOrchestrationResult>(`/group-voice-sessions/${sessionId}/interrupt`, {
     method: "POST",
-    body: JSON.stringify({
-      reason,
-      ...(expected ? { expectedAvatarId: expected.avatarId, expectedTurnId: expected.turnId } : {}),
-    }),
+    body: JSON.stringify(groupInterruptionBody(reason, expected)),
   });
+}
+
+export function confirmGroupParticipantInterruptionReady(
+  sessionId: string,
+  avatarId: string,
+  input: GroupParticipantInterruptionReadyInput
+) {
+  return apiRequest<ApiGroupParticipantInterruptionReadyResult>(
+    `/group-voice-sessions/${sessionId}/participants/${encodeURIComponent(avatarId)}/interruption-ready`,
+    { method: "POST", body: JSON.stringify(input) }
+  );
 }
 
 export function reportGroupParticipantFailure(
@@ -282,10 +332,14 @@ export function confirmGroupParticipantStarted(
   });
 }
 
-export function retryGroupParticipant(sessionId: string, avatarId: string) {
+export function retryGroupParticipant(
+  sessionId: string,
+  avatarId: string,
+  options?: { interruptionSourceEventId: string; failedParticipantAttemptId?: string }
+) {
   return apiRequest<{ participant: ApiGroupVoiceParticipant }>(
     `/group-voice-sessions/${sessionId}/participants/${avatarId}/retry`,
-    { method: "POST" }
+    { method: "POST", ...(options ? { body: JSON.stringify(options) } : {}) }
   );
 }
 

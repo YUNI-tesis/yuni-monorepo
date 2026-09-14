@@ -139,13 +139,46 @@ El RMS usa umbral heurístico `0.001`, no escucha ni mide calidad perceptual. La
 
 El plazo de 45 segundos del full-app corresponde a **toda la ronda de QA**, no a un watchdog del producto ni a una falla de red. Se informa como `QaDeadlineExceeded` con `timeoutMs`, sin publicar el texto del error. Tres respuestas extensas pueden agotarlo: usar `--text` para una frase de extensión fija permite comparar cierres dentro del sandbox, conservando el intento incompleto como no aprobado. El [checkpoint del 2026-09-09](../../docs/thesis/evidence/2026-09-09-group-speech-completion.md) registra ambos casos. La suite reproduce sus tuplas sanitizadas y también la regresión anterior; no requiere acceder a proveedores para recalcular esos resultados.
 
+### Escenario experimental de interrupción humana
+
+Con la migración de contexto aplicada a la base local y la API reiniciada después de generar Prisma, el runner permite cortar durante una respuesta real y dirigir una frase nueva:
+
+```sh
+node --env-file=.env tools/group-call-qa/full-app.mjs --run --group-id=ID_DEL_GRUPO_LOCAL --scenario=barge-in --barge-target=other --layout=desktop
+node --env-file=.env tools/group-call-qa/full-app.mjs --run --group-id=ID_DEL_GRUPO_LOCAL --scenario=barge-in --barge-target=same --layout=desktop
+```
+
+Espera inicio y energía del primer avatar antes de inyectar un parcial de detención; envía el committed 100 ms después. En `same` y `other`, exige que `/interruption-ready` confirme cada intento afectado antes del comando nuevo, con receipt, intento y turno coincidentes. El avatar audible debe aportar un `speak_ended` observado cuya fuente coincida con un inicio de habla del mismo connector; nunca se compara esa fuente con el UUID del comando. Si otro participante sólo estaba preparado, puede confirmar `not_dispatched` únicamente cuando el observador no registró un comando suyo antes del ACK.
+
+El recorrido nativo exige los intentos, sesiones y tracks originales, cero `/retry`, cero stops y ningún tile que vuelva a «Conectando». Conserva los conteos exactos de dos submits y dos comandos, la cancelación de la ronda, el siguiente interlocutor y máximo un elemento desmuteado. Sólo acredita energía de la respuesta nueva después de un inicio con fuente nueva; falla los checks si observa energía habilitada antes de ese inicio o energía bloqueada durante la respuesta nueva. La comprobación de ElevenLabs exige dos mensajes de usuario en la misma conversación para `same`, o uno por cada interlocutor para `other`. Las guardas sandbox de reemplazo siguen vigentes para detectar y bloquear una recuperación que salga del entorno sandbox, aunque cualquier reemplazo impide aprobar los checks de reutilización nativa.
+
+`lateEventGuardCoverage` distingue eventos tardíos observados de una corrida sin esos eventos. Si una interrupción o corrección vieja aparece después del segundo comando, su entrega al backend debe conservar el turno anterior; también se permite descartarla si carece de atribución suficiente. No observarla no demuestra que la protección funcione: las regresiones locales cubren esos casos. Los IDs de fuentes correlacionan eventos; no identifican cada muestra PCM ni qué palabras oyó la persona.
+
+El reporte `interruptionEvidence` distingue latencia del gate, checks individuales y límites. El oráculo permanece **experimental**: incluso con todos los checks verdaderos conserva `inconclusive` y exit code 1, para evitar confundir entrada simulada y RMS con aceptación física. No usar `repeat.mjs` para promover este escenario a PASS ni el oráculo de cierre normal para reprobar audio intencionalmente muteado después del corte. Los [ensayos del 2026-09-12](../../docs/thesis/evidence/2026-09-12-group-human-barge-in.md) conservan un fallo y dos recorridos técnicos completos.
+
+### Ensayo aislado de interrupción y reutilización nativa
+
+`probe.mjs --scenario=interrupt-reuse` observa una única voz y exige `--variant=official`. El default `normal` permanece intacto. No usa la aplicación, su API ni la base de datos, ni modifica los Agents:
+
+```sh
+node --env-file=.env tools/group-call-qa/probe.mjs --run --scenario=interrupt-reuse --variant=official --avatar='QA A'
+```
+
+Requiere el roster y el entorno sandbox descriptos arriba. Antes de entregar el token al SDK verifica claims de sandbox, vencimiento y sesión, sin verificar criptográficamente la firma; la procedencia es la API autenticada del proveedor. Después de iniciar, exige metadata `is_sandbox === true` antes de enviar pedidos.
+
+Pide dos frases largas, espera `speak_started` y más de 500 ms de muestras PCM no silenciosas con el elemento desmuteado, cierra el gate y llama a `session.interrupt()`. Si no observa un terminal en dos segundos, no envía un segundo pedido. Si lo observa, registra la correlación con la fuente de habla previa y mantiene 300 ms adicionales de observación muteada. Esa ventana **no garantiza que el audio haya terminado**. Envía entonces contexto y un pedido de una palabra sobre la misma instancia SDK, sin `stop()` ni reconexión; abre el gate inmediatamente antes del comando.
+
+El reporte distingue UUID de comando y `source_event_id` de habla; eventos tardíos, PCM residual, continuidad de sesión/tracks y recepción exacta de ambos mensajes en ElevenLabs. `secondResponseObserved` exige fuente nueva conocida, terminal de esa fuente y energía, pero **no acredita inteligibilidad ni finalización acústica**. Las muestras pueden incluir continuaciones posteriores al primer terminal. El reporte siempre conserva `experimental: true`, `inconclusive` y exit code 1, incluso cuando esas observaciones son favorables. El `finally` cierra sólo la sesión del ensayo.
+
+La [traza sanitizada del 2026-09-12](../../docs/thesis/evidence/2026-09-12-native-interrupt-reuse-trace.json) incluye el SHA256 del reporte original, IDs, eventos sin duplicados crudos/VAD y muestras de energía/gate, sin mensajes ni credenciales. Se observaron dos pedidos recibidos y reutilización sin desconexión, pero también una corrección vieja después del segundo comando y una continuación de la respuesta nueva 645 ms después de su primer `speak_ended`. Las doce muestras audibles nuevas incluyen esa continuación: no constituyen prueba de inteligibilidad. No repetir automáticamente ni promover esta evidencia a aceptación general.
+
 ## Validación local de las herramientas
 
 ```sh
 node --check tools/group-call-qa/probe.mjs
 node --check tools/group-call-qa/browser.js
 node --check tools/group-call-qa/full-app.mjs
-node --test tools/group-call-qa/runtime.test.mjs tools/group-call-qa/acoustic-evidence.test.mjs tools/group-call-qa/observer.test.mjs
+node --test tools/group-call-qa/*.test.mjs
 pnpm exec eslint tools/group-call-qa
 pnpm exec prettier --check tools/group-call-qa
 ```

@@ -19,6 +19,8 @@ export type LocalTurnLedgerEntry = {
   avatarId: string;
   callEpoch: number;
   state: "queued" | "speaking" | "completed" | "interrupted";
+  participantAttemptId?: string;
+  wasInterrupted?: boolean;
   originalResponse: string | null;
   latestResponse: string | null;
   responseReceived: boolean;
@@ -97,9 +99,14 @@ export function requiresCompleteGroupStartup(
   return accessType === "shared" || privacyPrompt === "handled";
 }
 
-export function parseElevenLabsResponse(value: unknown): ParsedElevenLabsResponse | null {
-  const text = findNestedString(value, ["corrected_agent_response", "agent_response", "text", "response"]);
-  if (!text) return null;
+export function parseElevenLabsResponse(
+  value: unknown,
+  allowEmptyCorrection = false
+): ParsedElevenLabsResponse | null {
+  const correction = allowEmptyCorrection ? findCorrectionText(value) : undefined;
+  const text =
+    correction ?? findNestedString(value, ["corrected_agent_response", "agent_response", "text", "response"]);
+  if (text === null) return null;
   return {
     text,
     originalText: findNestedString(value, ["original_agent_response"]),
@@ -107,43 +114,86 @@ export function parseElevenLabsResponse(value: unknown): ParsedElevenLabsRespons
   };
 }
 
+function findCorrectionText(value: unknown): string | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const record = value as Record<string, unknown>;
+  if (typeof record.corrected_agent_response === "string") return record.corrected_agent_response.trim();
+  for (const nested of Object.values(record)) {
+    const text = findCorrectionText(nested);
+    if (text !== undefined) return text;
+  }
+  return undefined;
+}
+
 export function resolveTurnForAgentResponse(input: {
   avatarId: string;
   callEpoch: number;
   type: "agent_response" | "agent_response_correction";
+  participantAttemptId?: string;
   response: ParsedElevenLabsResponse;
   authorization: LocalFloorAuthorization | null;
   ledger: Map<string, LocalTurnLedgerEntry>;
   responseTurnIds: Map<string, string>;
 }) {
+  const candidates = [...input.ledger.values()].filter(
+    (entry) =>
+      entry.avatarId === input.avatarId &&
+      entry.callEpoch === input.callEpoch &&
+      (input.participantAttemptId === undefined || entry.participantAttemptId === input.participantAttemptId)
+  );
+  const originalMatches = input.response.originalText
+    ? candidates.filter(
+        (entry) =>
+          entry.originalResponse === input.response.originalText ||
+          entry.latestResponse === input.response.originalText
+      )
+    : [];
+  const mappedTurnIds = new Set<string>();
   for (const key of input.response.responseKeys) {
     const turnId = input.responseTurnIds.get(`${input.avatarId}:${key}`);
-    if (turnId) return turnId;
+    if (!turnId) continue;
+    // A known key from a retired attempt/epoch cannot fall through to the new
+    // authorization. Conflicting provider IDs also supply no safe attribution.
+    if (!candidates.some((entry) => entry.turnId === turnId)) return null;
+    mappedTurnIds.add(turnId);
+  }
+  if (mappedTurnIds.size > 1) return null;
+  if (mappedTurnIds.size === 1) {
+    const turnId = [...mappedTurnIds][0]!;
+    if (originalMatches.length && !originalMatches.some((entry) => entry.turnId === turnId)) return null;
+    return turnId;
   }
 
-  const candidates = [...input.ledger.values()].filter(
-    (entry) => entry.avatarId === input.avatarId && entry.callEpoch === input.callEpoch
-  );
   if (input.type === "agent_response_correction") {
-    if (!input.response.originalText) return null;
-    const originalMatches = candidates.filter(
-      (entry) =>
-        entry.originalResponse === input.response.originalText ||
-        entry.latestResponse === input.response.originalText
-    );
+    // Corrections can arrive after the next command on this same connector.
+    // Neither the active floor nor the latest interrupted turn identifies them.
     return originalMatches.length === 1 ? (originalMatches[0]?.turnId ?? null) : null;
   }
 
-  if (
-    input.authorization?.avatarId === input.avatarId &&
-    input.authorization.callEpoch === input.callEpoch &&
-    input.ledger.has(input.authorization.turnId)
-  ) {
-    return input.authorization.turnId;
+  let candidate =
+    input.authorization?.avatarId === input.avatarId && input.authorization.callEpoch === input.callEpoch
+      ? candidates.find((entry) => entry.turnId === input.authorization?.turnId)
+      : undefined;
+  if (!candidate) {
+    const unmatched = candidates.filter(
+      (entry) =>
+        !entry.responseReceived &&
+        (entry.commandDispatchedAt !== undefined || entry.providerCommandId !== undefined)
+    );
+    if (unmatched.length !== 1) return null;
+    candidate = unmatched[0]!;
   }
-
-  const unmatched = candidates.filter((entry) => !entry.responseReceived);
-  return unmatched.length === 1 ? (unmatched[0]?.turnId ?? null) : null;
+  const candidateTurnId = candidate.turnId;
+  const ambiguousInterruptedResponse = candidates.some(
+    (entry) =>
+      entry.turnId !== candidateTurnId &&
+      (entry.state === "interrupted" || entry.wasInterrupted) &&
+      ((!entry.responseReceived &&
+        (entry.commandDispatchedAt !== undefined || entry.providerCommandId !== undefined)) ||
+        entry.originalResponse === input.response.text ||
+        entry.latestResponse === input.response.text)
+  );
+  return ambiguousInterruptedResponse ? null : candidateTurnId;
 }
 
 export function pruneTurnLedger(

@@ -78,7 +78,7 @@ Decisiones de producto vigentes:
 - `37-group-call-floor-hardening.md`: implementado; router semántico, audio gate, attempts por conexión, `user_activity`, eventos idempotentes y cleanup durable grupal.
 - `38-ci-cd-devsecops.md`: implementado en repositorio; workflows, seguridad y runbook listos. La
   activación administrativa de rulesets y Railway Wait for CI se verifica durante el rollout.
-- [39-user-preemptible-group-call-floor.md](39-user-preemptible-group-call-floor.md): **EN VALIDACIÓN, fase 1 de reconstrucción desde `main` (2026-09-08)**. Contrato de comandos validado; respuestas completas no aceptadas por cierre del gate. Interrupciones y contexto siguen pendientes. Evidencia histórica y nueva en el [estudio de caso](../thesis/group-call-audio-stability-case-study.md).
+- [39-user-preemptible-group-call-floor.md](39-user-preemptible-group-call-floor.md): **EN VALIDACIÓN, fases 2 y 3 implementadas (2026-09-12)**. Corte humano, cancelación y contexto reconstruidos; dos ensayos con providers y Scribe simulado verifican nuevo ruteo al mismo avatar o a otro. QA físico pendiente. [Checkpoint y límites](../thesis/evidence/2026-09-12-group-human-barge-in.md); evidencia histórica en el [estudio de caso](../thesis/group-call-audio-stability-case-study.md).
 
 ## Uso
 

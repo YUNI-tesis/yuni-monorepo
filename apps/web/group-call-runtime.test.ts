@@ -11,6 +11,7 @@ import {
   shouldSendGroupUserActivity,
   type GroupMediaElement,
   type LocalFloorAuthorization,
+  type LocalTurnLedgerEntry,
 } from "./components/interact/group-call-runtime";
 import { ApiClientError } from "./lib/api/http-client";
 
@@ -21,7 +22,62 @@ const authorization: LocalFloorAuthorization = {
   state: "queued",
 };
 
+function ledgerEntry(overrides: Partial<LocalTurnLedgerEntry> = {}): LocalTurnLedgerEntry {
+  return {
+    turnId: "turn-1",
+    avatarId: "avatar-1",
+    callEpoch: 3,
+    participantAttemptId: "attempt-1",
+    state: "queued",
+    originalResponse: null,
+    latestResponse: null,
+    responseReceived: false,
+    responseKeys: new Set(),
+    ...overrides,
+  };
+}
+
+function responseAttributionInput() {
+  const interrupted = ledgerEntry({
+    turnId: "interrupted-turn",
+    state: "interrupted",
+    originalResponse: "Un borrador anterior",
+    latestResponse: "Un borrador anterior",
+    responseReceived: true,
+    commandDispatchedAt: 100,
+  });
+  const current = ledgerEntry();
+  return {
+    avatarId: "avatar-1",
+    callEpoch: 3,
+    participantAttemptId: "attempt-1",
+    type: "agent_response_correction" as const,
+    response: { text: "Un borrador", originalText: null, responseKeys: [] as string[] },
+    authorization,
+    ledger: new Map([
+      [interrupted.turnId, interrupted],
+      [current.turnId, current],
+    ]),
+    responseTurnIds: new Map([["avatar-1:old-response", interrupted.turnId]]),
+  };
+}
+
 describe("strict group call runtime", () => {
+  it("preserves an explicitly empty provider correction and its generated draft", () => {
+    expect(
+      parseElevenLabsResponse(
+        {
+          agent_response_correction_event: {
+            corrected_agent_response: "",
+            original_agent_response: "El borrador completo",
+            event_id: "response-1",
+          },
+        },
+        true
+      )
+    ).toEqual({ text: "", originalText: "El borrador completo", responseKeys: ["response-1"] });
+    expect(parseElevenLabsResponse({ agent_response: "" })).toBeNull();
+  });
   it("treats a server-terminated group heartbeat as terminal", () => {
     expect(
       isTerminalHeartbeatError(
@@ -170,5 +226,144 @@ describe("strict group call runtime", () => {
         responseTurnIds: new Map(),
       })
     ).toBe("turn-1");
+  });
+
+  it("attributes a delayed keyed correction to the interrupted turn after the connector is reused", () => {
+    const input = responseAttributionInput();
+    input.response.responseKeys = ["new-delivery-id", "old-response"];
+    expect(resolveTurnForAgentResponse(input)).toBe("interrupted-turn");
+  });
+
+  it("attributes a correction by its original draft even while a newer turn owns the floor", () => {
+    const input = responseAttributionInput();
+    expect(
+      resolveTurnForAgentResponse({
+        ...input,
+        response: { ...input.response, originalText: "Un borrador anterior" },
+      })
+    ).toBe("interrupted-turn");
+  });
+
+  it("never assigns a correction without correlation evidence to the current or latest interrupted turn", () => {
+    const input = responseAttributionInput();
+    expect(resolveTurnForAgentResponse(input)).toBeNull();
+    input.response.responseKeys = ["unknown-delivery-id"];
+    expect(resolveTurnForAgentResponse(input)).toBeNull();
+    input.ledger.delete("interrupted-turn");
+    expect(resolveTurnForAgentResponse(input)).toBeNull();
+  });
+
+  it("requires a unique draft match unless a known response key disambiguates repeated text", () => {
+    const input = responseAttributionInput();
+    input.ledger.set(
+      "other-interrupted-turn",
+      ledgerEntry({
+        turnId: "other-interrupted-turn",
+        state: "interrupted",
+        originalResponse: "Un borrador anterior",
+      })
+    );
+    const response = { ...input.response, originalText: "Un borrador anterior" };
+    expect(resolveTurnForAgentResponse({ ...input, response })).toBeNull();
+    response.responseKeys = ["old-response"];
+    expect(resolveTurnForAgentResponse({ ...input, response })).toBe("interrupted-turn");
+  });
+
+  it("drops conflicting response IDs and contradictory original-text attribution", () => {
+    const input = responseAttributionInput();
+    input.responseTurnIds.set("avatar-1:current-response", "turn-1");
+    input.response.responseKeys = ["old-response", "current-response"];
+    expect(resolveTurnForAgentResponse(input)).toBeNull();
+    expect(
+      resolveTurnForAgentResponse({
+        ...input,
+        response: {
+          ...input.response,
+          responseKeys: ["current-response"],
+          originalText: "Un borrador anterior",
+        },
+      })
+    ).toBeNull();
+  });
+
+  it.each([{ callEpoch: 2 }, { participantAttemptId: "retired-attempt" }, { avatarId: "another-avatar" }])(
+    "does not revive a known response key outside its current scope: %j",
+    (overrides) => {
+      const input = responseAttributionInput();
+      Object.assign(input.ledger.get("interrupted-turn")!, overrides);
+      input.response.responseKeys = ["old-response"];
+      expect(resolveTurnForAgentResponse(input)).toBeNull();
+      expect(resolveTurnForAgentResponse({ ...input, type: "agent_response" })).toBeNull();
+    }
+  );
+
+  it("drops an unkeyed response while both the interrupted and new dispatched turns can own it", () => {
+    const input = responseAttributionInput();
+    Object.assign(input.ledger.get("interrupted-turn")!, {
+      responseReceived: false,
+      originalResponse: null,
+      latestResponse: null,
+    });
+    expect(resolveTurnForAgentResponse({ ...input, type: "agent_response" })).toBeNull();
+    input.response.responseKeys = ["old-response"];
+    expect(resolveTurnForAgentResponse({ ...input, type: "agent_response" })).toBe("interrupted-turn");
+  });
+
+  it("does not attribute an unkeyed duplicate interrupted draft to a newer turn", () => {
+    const input = responseAttributionInput();
+    input.response.text = "Un borrador anterior";
+    expect(resolveTurnForAgentResponse({ ...input, type: "agent_response" })).toBeNull();
+  });
+
+  it("keeps interruption attribution after a locally completed turn is affected by a cancellation race", () => {
+    const input = responseAttributionInput();
+    Object.assign(input.ledger.get("interrupted-turn")!, { state: "completed", wasInterrupted: true });
+    input.response.text = "Un borrador anterior";
+    expect(resolveTurnForAgentResponse({ ...input, type: "agent_response" })).toBeNull();
+    input.response.responseKeys = ["old-response"];
+    expect(resolveTurnForAgentResponse(input)).toBe("interrupted-turn");
+  });
+
+  it("accepts a new response when the interrupted draft was already captured", () => {
+    const input = responseAttributionInput();
+    input.response.text = "Respuesta a la nueva intención";
+    expect(resolveTurnForAgentResponse({ ...input, type: "agent_response" })).toBe("turn-1");
+  });
+
+  it("does not block a new response because an earlier preparation never dispatched a command", () => {
+    const input = responseAttributionInput();
+    Object.assign(input.ledger.get("interrupted-turn")!, {
+      responseReceived: false,
+      originalResponse: null,
+      latestResponse: null,
+      commandDispatchedAt: undefined,
+    });
+    expect(resolveTurnForAgentResponse({ ...input, type: "agent_response" })).toBe("turn-1");
+  });
+
+  it("ignores unmatched interrupted turns from a replaced connector when attributing a new response", () => {
+    const input = responseAttributionInput();
+    Object.assign(input.ledger.get("interrupted-turn")!, {
+      responseReceived: false,
+      participantAttemptId: "retired-attempt",
+    });
+    expect(resolveTurnForAgentResponse({ ...input, type: "agent_response" })).toBe("turn-1");
+  });
+
+  it("does not fill an undispatched preparation with an unsolicited or delayed provider response", () => {
+    const input = responseAttributionInput();
+    expect(resolveTurnForAgentResponse({ ...input, type: "agent_response", authorization: null })).toBeNull();
+  });
+
+  it("can attribute the sole unresolved dispatched draft after the interrupted floor was released", () => {
+    const input = responseAttributionInput();
+    Object.assign(input.ledger.get("interrupted-turn")!, {
+      responseReceived: false,
+      originalResponse: null,
+      latestResponse: null,
+    });
+    expect(resolveTurnForAgentResponse({ ...input, type: "agent_response", authorization: null })).toBe(
+      "interrupted-turn"
+    );
   });
 });

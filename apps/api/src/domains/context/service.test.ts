@@ -95,6 +95,53 @@ describe("avatar context service", () => {
     expect(serialized).not.toMatch(/storageKey|providerDocumentId|fingerprint|raw provider|private-etag/);
   });
 
+  it("keeps a ready text independent from failed documents", async () => {
+    const record = contextRecord();
+    record.providerContextSyncStatus = "synced";
+    record.documents[0]!.status = "failed";
+    record.documents[0]!.errorMessage = "Knowledge base indexing failed";
+    const service = createAvatarContextService({
+      repository: repository({ getForOwner: async () => record }),
+    });
+    const result = await service.get("owner-1", "avatar-1");
+    expect(result).toMatchObject({ status: "failed", textStatus: "ready", textError: null });
+    expect(result.documents[0]!.error).toContain("No se pudo preparar el contenido");
+  });
+
+  it("reports text failure even without documents and preserves a retry explanation", async () => {
+    const record = contextRecord();
+    record.providerContextSyncStatus = "failed";
+    record.providerContextError = "ElevenLabs quota or rate limit reached";
+    record.documents = [];
+    const service = createAvatarContextService({
+      repository: repository({ getForOwner: async () => record }),
+    });
+    const result = await service.get("owner-1", "avatar-1");
+    expect(result).toMatchObject({
+      status: "failed",
+      textStatus: "failed",
+      textHasPreviousUsableVersion: true,
+    });
+    expect(result.textError).toContain("límite de procesamiento");
+  });
+
+  it("uses the provider projection failure without exposing raw messages", async () => {
+    const record = contextRecord();
+    record.documents[0]!.errorMessage = "";
+    record.documents[0]!.providerSync!.status = "failed";
+    Object.assign(record.documents[0]!.providerSync!, {
+      errorMessage: "ElevenLabs is temporarily unavailable",
+    });
+    const service = createAvatarContextService({
+      repository: repository({ getForOwner: async () => record }),
+    });
+    expect((await service.get("owner-1", "avatar-1")).documents[0]!.error).toContain("temporalmente");
+    record.documents[0]!.errorMessage = "private/storage/key token=secret provider request";
+    const result = await service.get("owner-1", "avatar-1");
+    expect(result.documents[0]!.error).toContain("no recibimos un motivo específico");
+    expect(JSON.stringify(result)).not.toMatch(/private|token=|secret|raw/);
+  });
+
   it("validates the real file extension before allocating storage", async () => {
     const storage = new InMemoryObjectStorage();
     const service = createAvatarContextService({ repository: repository(), storage });

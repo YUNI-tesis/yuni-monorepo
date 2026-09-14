@@ -11,6 +11,7 @@ import {
   checkConversation,
   deadline,
   directory,
+  inspectSandboxSessionToken,
   loadBrowser,
   outputDirectory,
   providerJson,
@@ -29,6 +30,8 @@ if (!esbuildDir) throw new Error("Install workspace dependencies before running 
 const { build } = require(path.join(pnpm, esbuildDir, "node_modules/esbuild"));
 const variant = arg("variant", "official");
 if (!["official", "omitted", "uuid", "custom"].includes(variant)) throw new Error("Invalid variant");
+const scenario = arg("scenario", "normal");
+if (!["normal", "interrupt-reuse"].includes(scenario)) throw new Error("Invalid scenario");
 const sdkFile = path.resolve(
   arg("sdk-file", path.join(repo, "apps/web/node_modules/@heygen/liveavatar-web-sdk/lib/index.esm.js"))
 );
@@ -39,7 +42,15 @@ const selected = args.includes("--group")
   ? roster
   : roster.filter((item) => item.name === arg("avatar", roster[0]?.name));
 if (run && !selected.length) throw new Error("No matching avatar");
-const text = arg("text", "Respondé únicamente con la palabra azul.");
+if (scenario === "interrupt-reuse" && (variant !== "official" || (run && selected.length !== 1)))
+  throw new Error("Interrupt reuse requires the official SDK and exactly one avatar");
+const text = arg(
+  "text",
+  scenario === "interrupt-reuse"
+    ? "Explicá en dos frases largas, de al menos treinta palabras cada una, cómo organizarías una revisión técnica de una aplicación y qué revisarías primero para mejorar su confiabilidad. No uses listas ni hagas preguntas."
+    : "Respondé únicamente con la palabra azul."
+);
+const secondText = "Respondé únicamente con la palabra azul.";
 if (run) {
   assertSandbox();
   for (const key of ["LIVEAVATAR_API_KEY", "LIVEAVATAR_ELEVENLABS_SECRET_ID", "ELEVENLABS_API_KEY"]) {
@@ -82,6 +93,7 @@ const tokens = [];
 const report = {
   createdAt: new Date().toISOString(),
   variant,
+  scenario,
   voiceChat,
   sdkFile,
   participants: selected.map(({ name, agentId }) => ({ name, agentId })),
@@ -120,6 +132,7 @@ try {
       ok: true,
       run,
       variant,
+      scenario,
       voiceChat,
       participants: selected.map((item) => item.name),
     })
@@ -150,6 +163,12 @@ try {
       const sessionToken = data.session_token ?? data.sessionToken ?? data.token;
       if (!sessionToken) throw new Error("Provider token response missing token");
       tokens.push({ ...participant, sessionToken, sessionId: data.session_id ?? null });
+      if (scenario === "interrupt-reuse") {
+        const guard = inspectSandboxSessionToken(sessionToken, data.session_id);
+        guard.trust = "authenticated_provider_api";
+        report.tokenGuard = guard;
+        if (!guard.passed) throw new Error("Sandbox token guard denied native reuse probe");
+      }
     }
     report.steps.push({
       type: "connected",
@@ -163,18 +182,39 @@ try {
         "Provider startup"
       ),
     });
-    for (const participant of selected) {
-      const result = await deadline(
-        page.evaluate(({ name, text, variant }) => window.probeTurn(name, text, variant), {
-          name: participant.name,
-          text,
-          variant,
-        }),
-        30000,
-        "Provider turn"
+    if (scenario === "interrupt-reuse") {
+      const sessionId = tokens[0].sessionId;
+      const metadata = await request(
+        "https://api.liveavatar.com/v1/sessions/" + encodeURIComponent(sessionId),
+        {
+          headers: { "X-API-KEY": process.env.LIVEAVATAR_API_KEY },
+        }
       );
-      console.log(JSON.stringify({ stage: "turn", ...result }));
-    }
+      report.postStartGuard = { sessionId, isSandbox: (metadata.data ?? metadata).is_sandbox === true };
+      if (!report.postStartGuard.isSandbox) throw new Error("Started session sandbox was not confirmed");
+      const result = await deadline(
+        page.evaluate(({ name, text, secondText }) => window.probeInterruptReuse(name, text, secondText), {
+          name: selected[0].name,
+          text,
+          secondText,
+        }),
+        55000,
+        "Native interrupt reuse"
+      );
+      console.log(JSON.stringify({ stage: "interrupt_reuse", ...result }));
+    } else
+      for (const participant of selected) {
+        const result = await deadline(
+          page.evaluate(({ name, text, variant }) => window.probeTurn(name, text, variant), {
+            name: participant.name,
+            text,
+            variant,
+          }),
+          30000,
+          "Provider turn"
+        );
+        console.log(JSON.stringify({ stage: "turn", ...result }));
+      }
     report.browser = await page.evaluate(() => window.probeReport());
     await deadline(
       page.evaluate(() => window.probeStop()),
@@ -182,28 +222,52 @@ try {
       "Browser cleanup"
     );
     report.cleanup = await Promise.all(tokens.map(stopToken));
-    report.providerChecks = await Promise.all(
-      selected.map((participant) =>
-        checkConversation({
-          participant,
-          createdAt: report.createdAt,
-          conversationId: report.browser.conversations.find((item) => item.avatar === participant.name)
-            ?.conversationId,
-          expectedUserText: text,
-        })
-      )
-    );
+    report.providerChecks =
+      scenario === "interrupt-reuse"
+        ? await Promise.all(
+            [text, ...(report.browser.interruptReuse?.commandsSent === 2 ? [secondText] : [])].map(
+              async (expectedUserText, index) => ({
+                ordinal: index + 1,
+                ...(await checkConversation({
+                  participant: selected[0],
+                  createdAt: report.createdAt,
+                  conversationId: report.browser.conversations.find(
+                    (item) => item.avatar === selected[0].name
+                  )?.conversationId,
+                  expectedUserText,
+                })),
+              })
+            )
+          )
+        : await Promise.all(
+            selected.map((participant) =>
+              checkConversation({
+                participant,
+                createdAt: report.createdAt,
+                conversationId: report.browser.conversations.find((item) => item.avatar === participant.name)
+                  ?.conversationId,
+                expectedUserText: text,
+              })
+            )
+          );
     for (const check of report.providerChecks) console.log(JSON.stringify({ stage: "elevenlabs", ...check }));
-    report.outcome =
-      report.providerChecks.some((check) => check.outcome === "inconclusive") ||
-      report.browser.turns.some((turn) => turn.audioSampleCount === 0)
-        ? "inconclusive"
-        : report.providerChecks.every((check) => check.outcome === "passed") &&
-            report.browser.turns.length === selected.length &&
-            report.browser.turns.every((turn) => turn.completed && turn.nonSilentUnmutedSamples > 0) &&
-            report.browser.maxUnmutedElements <= 1
-          ? "passed"
-          : "failed";
+    if (scenario === "interrupt-reuse") {
+      report.outcome = "inconclusive";
+      report.experimental = true;
+      report.exactlyTwoProviderMessagesReceived =
+        report.providerChecks.length === 2 &&
+        report.providerChecks.every((check) => check.exactUserMessageReceived && check.userMessages === 2);
+    } else
+      report.outcome =
+        report.providerChecks.some((check) => check.outcome === "inconclusive") ||
+        report.browser.turns.some((turn) => turn.audioSampleCount === 0)
+          ? "inconclusive"
+          : report.providerChecks.every((check) => check.outcome === "passed") &&
+              report.browser.turns.length === selected.length &&
+              report.browser.turns.every((turn) => turn.completed && turn.nonSilentUnmutedSamples > 0) &&
+              report.browser.maxUnmutedElements <= 1
+            ? "passed"
+            : "failed";
     if (report.outcome !== "passed") process.exitCode = 1;
   }
 } catch (error) {
