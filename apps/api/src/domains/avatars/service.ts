@@ -1,4 +1,5 @@
 import {
+  applyNewAvatarConversationDefaults,
   LiveAvatarConfigSchema,
   VoiceConfigSchema,
   type AvatarListScope,
@@ -12,6 +13,7 @@ import {
   ElevenLabsProviderError,
   ElevenLabsProviderTimeoutError,
   ElevenLabsProviderUnavailableError,
+  ElevenLabsVoiceVerificationError,
   summarizeProviderError,
   type ElevenLabsAgentProvider,
   type ElevenLabsVoiceOption,
@@ -50,8 +52,12 @@ export function createAvatarsService(dependencies: AvatarsServiceDependencies) {
 
   return {
     async createAvatar(ownerId: string, input: CreateAvatarAgentInput): Promise<AvatarAgentDto> {
+      const inputWithDefaults = {
+        ...input,
+        voiceConfig: applyNewAvatarConversationDefaults(input.voiceConfig),
+      };
       const effectiveInput = await withEffectiveVoiceConfig(
-        await withEffectiveLiveAvatarConfig(input, liveAvatarConfig, avatarProvider),
+        await withEffectiveLiveAvatarConfig(inputWithDefaults, liveAvatarConfig, avatarProvider),
         elevenLabsVoiceProvider
       );
       const avatar =
@@ -285,6 +291,20 @@ async function withEffectiveVoiceConfig<Input extends CreateAvatarAgentInput | U
   voiceProvider?: Pick<ElevenLabsAgentProvider, "listVoices">,
   currentAvatar?: AvatarAgentRecord
 ): Promise<Input> {
+  const existingVoice = currentAvatar ? VoiceConfigSchema.safeParse(currentAvatar.voiceConfig) : null;
+  if (input.voiceConfig && existingVoice?.success) {
+    const conversationProfile =
+      input.voiceConfig.conversationProfile ?? existingVoice.data.conversationProfile;
+    const conversationModel = input.voiceConfig.conversationModel ?? existingVoice.data.conversationModel;
+    input = {
+      ...input,
+      voiceConfig: {
+        ...input.voiceConfig,
+        ...(conversationProfile ? { conversationProfile } : {}),
+        ...(conversationModel ? { conversationModel } : {}),
+      },
+    };
+  }
   if (!input.voiceConfig || input.voiceConfig.provider !== "elevenlabs" || !voiceProvider) {
     return input;
   }
@@ -307,6 +327,12 @@ async function withEffectiveVoiceConfig<Input extends CreateAvatarAgentInput | U
             provider: "elevenlabs",
             voiceId: input.voiceConfig.voiceId,
             speakingRate: input.voiceConfig.speakingRate,
+            ...(input.voiceConfig.conversationProfile
+              ? { conversationProfile: input.voiceConfig.conversationProfile }
+              : {}),
+            ...(input.voiceConfig.conversationModel
+              ? { conversationModel: input.voiceConfig.conversationModel }
+              : {}),
             displayName: trustedFallback.displayName,
             ...(trustedFallback.description ? { description: trustedFallback.description } : {}),
           },
@@ -337,6 +363,12 @@ async function withEffectiveVoiceConfig<Input extends CreateAvatarAgentInput | U
       provider: "elevenlabs",
       voiceId: input.voiceConfig.voiceId,
       speakingRate: input.voiceConfig.speakingRate,
+      ...(input.voiceConfig.conversationProfile
+        ? { conversationProfile: input.voiceConfig.conversationProfile }
+        : {}),
+      ...(input.voiceConfig.conversationModel
+        ? { conversationModel: input.voiceConfig.conversationModel }
+        : {}),
       ...(displayName ? { displayName } : {}),
       ...(description ? { description } : {}),
     },
@@ -372,6 +404,13 @@ async function syncAgentAfterSave(
   }
 
   try {
+    if (parsedVoiceConfig.data.conversationProfile === "natural" || avatar.providerVoiceState) {
+      await dependencies.repository.updateProviderSync(ownerId, avatar.id, {
+        agentProvider: "elevenlabs_agents",
+        providerSyncStatus: "syncing",
+        providerSyncError: null,
+      });
+    }
     const sync = await dependencies.elevenLabsAgentProvider.syncAvatarAgent({
       id: avatar.id,
       name: avatar.name,
@@ -381,6 +420,7 @@ async function syncAgentAfterSave(
       voiceConfig: parsedVoiceConfig.data,
       providerAgentId: avatar.providerAgentId,
       providerSyncFingerprint: avatar.providerSyncStatus === "synced" ? avatar.providerSyncFingerprint : null,
+      ...(avatar.providerVoiceState ? { verifyVoice: true } : {}),
     });
 
     return dependencies.repository.updateProviderSync(ownerId, avatar.id, {
@@ -390,6 +430,7 @@ async function syncAgentAfterSave(
       providerSyncError: null,
       providerSyncedAt: sync.synced ? new Date() : avatar.providerSyncedAt,
       providerSyncFingerprint: sync.providerSyncFingerprint,
+      ...(sync.voiceState ? { providerVoiceState: sync.voiceState, providerLastUsableAt: new Date() } : {}),
     });
   } catch (error) {
     return dependencies.repository.updateProviderSync(ownerId, avatar.id, {
@@ -397,6 +438,13 @@ async function syncAgentAfterSave(
       providerSyncStatus: "failed",
       providerSyncError: summarizeProviderError(error),
       providerSyncedAt: null,
+      ...(error instanceof ElevenLabsVoiceVerificationError
+        ? {
+            ...(error.providerAgentId ? { providerAgentId: error.providerAgentId } : {}),
+            providerVoiceState: error.voiceState,
+            providerLastUsableAt: null,
+          }
+        : {}),
     });
   }
 }

@@ -5,9 +5,14 @@ import {
   ElevenLabsDefaultVoiceUnavailableError,
   ELEVENLABS_EXPRESSIVE_TTS_FALLBACK_MODEL,
   ELEVENLABS_EXPRESSIVE_TTS_MODEL,
+  ELEVENLABS_CONVERSATIONAL_TTS_MODEL,
+  resolveElevenLabsAgentTtsModel,
+  isExpressiveTtsModel,
   ElevenLabsAgentProvider,
   ElevenLabsProviderError,
   ElevenLabsProviderUnavailableError,
+  ElevenLabsVoiceVerificationError,
+  isTransientElevenLabsError,
   LIVEAVATAR_ELEVENLABS_CLIENT_EVENTS,
   LIVEAVATAR_ELEVENLABS_SYNC_CONFIG,
   type AvatarAgentProviderSyncInput,
@@ -36,6 +41,22 @@ const avatarInput: AvatarAgentProviderSyncInput = {
   providerAgentId: null,
   providerSyncFingerprint: null,
 };
+
+const naturalAvatarInput: AvatarAgentProviderSyncInput = {
+  ...avatarInput,
+  voiceConfig: { ...avatarInput.voiceConfig, conversationProfile: "natural" },
+};
+
+function agentVoiceResponse(
+  modelId = ELEVENLABS_CONVERSATIONAL_TTS_MODEL,
+  expressiveMode: boolean | null = true
+) {
+  return jsonResponse({
+    conversation_config: {
+      tts: { model_id: modelId, expressive_mode: expressiveMode },
+    },
+  });
+}
 
 function jsonResponse(body: unknown, init: ResponseInit = {}) {
   return new Response(JSON.stringify(body), {
@@ -565,6 +586,536 @@ describe("@yuni/voice ElevenLabsAgentProvider", () => {
       providerSyncFingerprint: fingerprint,
       synced: false,
     });
+  });
+
+  it("resolves the documented Agents V3 model only for the natural profile", () => {
+    expect(resolveElevenLabsAgentTtsModel("eleven_v3", "natural")).toBe("eleven_v3_conversational");
+    expect(resolveElevenLabsAgentTtsModel("eleven_v3", "standard")).toBe("eleven_v3");
+    expect(resolveElevenLabsAgentTtsModel("eleven_flash_v2_5", "natural")).toBe("eleven_flash_v2_5");
+    expect(resolveElevenLabsAgentTtsModel("eleven_v3_conversational", "natural")).toBe(
+      "eleven_v3_conversational"
+    );
+    expect(isExpressiveTtsModel("eleven_v3")).toBe(true);
+    expect(isExpressiveTtsModel("eleven_v3_conversational")).toBe(true);
+    expect(isExpressiveTtsModel("eleven_flash_v2_5")).toBe(false);
+  });
+
+  it("fingerprints the effective conversational model identically whether configured by current ID or legacy default", () => {
+    expect(expectedSyncFingerprint(naturalAvatarInput, "eleven_v3")).toBe(
+      expectedSyncFingerprint(naturalAvatarInput, "eleven_v3_conversational")
+    );
+    expect(createElevenLabsAgentPayload(naturalAvatarInput, config)).toEqual(
+      createElevenLabsAgentPayload(naturalAvatarInput, {
+        ...config,
+        agentTtsModel: "eleven_v3_conversational",
+      })
+    );
+  });
+
+  it("makes natural one-to-one conversations more flexible while retaining the voice, LLM and connector", () => {
+    const standard = createElevenLabsAgentPayload(avatarInput, config);
+    const natural = createElevenLabsAgentPayload(naturalAvatarInput, config);
+    const prompt = natural.conversation_config.agent.prompt;
+
+    expect(natural.conversation_config.agent.first_message).toBe("Hola, soy Tutor Demo.");
+    expect(natural.conversation_config.turn.turn_eagerness).toBe("normal");
+    expect(prompt).toMatchObject({ llm: "gpt-4o-mini", temperature: 0.4, max_tokens: 512 });
+    expect(prompt.prompt).toContain("Ajusta la longitud al momento");
+    expect(prompt.prompt).toContain(avatarInput.instructions);
+    expect(prompt.prompt).toContain("[laughs]");
+    expect(prompt.prompt).not.toContain("prioriza el nuevo pedido");
+    expect(natural.conversation_config.tts).toEqual({
+      ...standard.conversation_config.tts,
+      model_id: ELEVENLABS_CONVERSATIONAL_TTS_MODEL,
+      expressive_mode: true,
+    });
+    expect(natural.conversation_config.asr).toEqual(standard.conversation_config.asr);
+    expect(natural.conversation_config.conversation).toEqual(standard.conversation_config.conversation);
+    expect(natural.conversation_config.agent.disable_first_message_interruptions).toBe(false);
+  });
+
+  it("does not apply the natural profile to group agents or change explicit standard configuration", () => {
+    const groupInput = { ...avatarInput, sessionMode: "group" as const };
+    const naturalGroup = { ...naturalAvatarInput, sessionMode: "group" as const };
+    const explicitStandard = {
+      ...avatarInput,
+      voiceConfig: { ...avatarInput.voiceConfig, conversationProfile: "standard" as const },
+    };
+    expect(createElevenLabsAgentPayload(naturalGroup, config)).toEqual(
+      createElevenLabsAgentPayload(groupInput, config)
+    );
+    expect(expectedSyncFingerprint(naturalGroup)).toBe(expectedSyncFingerprint(groupInput));
+    expect(createElevenLabsAgentPayload(explicitStandard, config)).toEqual(
+      createElevenLabsAgentPayload(avatarInput, config)
+    );
+    expect(expectedSyncFingerprint(explicitStandard)).toBe(expectedSyncFingerprint(avatarInput));
+    expect(expectedSyncFingerprint(naturalAvatarInput)).not.toBe(expectedSyncFingerprint(avatarInput));
+  });
+
+  it("uses the avatar's GPT-5.4 model with no reasoning for natural direct conversations", () => {
+    const input = {
+      ...naturalAvatarInput,
+      voiceConfig: { ...naturalAvatarInput.voiceConfig, conversationModel: "gpt-5.4" },
+    } satisfies AvatarAgentProviderSyncInput;
+    const payload = createElevenLabsAgentPayload(input, config);
+
+    expect(payload.conversation_config.agent.prompt).toMatchObject({
+      llm: "gpt-5.4",
+      reasoning_effort: "none",
+      temperature: 0.4,
+      max_tokens: 512,
+    });
+    expect(payload.conversation_config.tts).toMatchObject({
+      model_id: "eleven_v3_conversational",
+      expressive_mode: true,
+    });
+    const legacy = createElevenLabsAgentPayload(avatarInput, config);
+    expect(legacy.conversation_config.agent.prompt.llm).toBe("gpt-4o-mini");
+    expect(legacy.conversation_config.agent.prompt).not.toHaveProperty("reasoning_effort");
+    expect(
+      createElevenLabsAgentPayload(naturalAvatarInput, config).conversation_config.agent.prompt.llm
+    ).toBe("gpt-4o-mini");
+  });
+
+  it("ignores the avatar conversation model and profile in group payloads and fingerprints", () => {
+    const groupInput = { ...avatarInput, sessionMode: "group" as const };
+    const newAvatarGroup = {
+      ...groupInput,
+      voiceConfig: {
+        ...groupInput.voiceConfig,
+        conversationProfile: "natural" as const,
+        conversationModel: "gpt-5.4",
+      },
+    } satisfies AvatarAgentProviderSyncInput;
+
+    expect(createElevenLabsAgentPayload(newAvatarGroup, config)).toEqual(
+      createElevenLabsAgentPayload(groupInput, config)
+    );
+    expect(expectedSyncFingerprint(newAvatarGroup)).toBe(expectedSyncFingerprint(groupInput));
+    const globallyConfiguredGroup = createElevenLabsAgentPayload(newAvatarGroup, {
+      ...config,
+      agentLlmModel: "gpt-5.4",
+    });
+    expect(globallyConfiguredGroup.conversation_config.agent.prompt.llm).toBe("gpt-5.4");
+    expect(globallyConfiguredGroup.conversation_config.agent.prompt).not.toHaveProperty("reasoning_effort");
+  });
+
+  it("fingerprints the effective per-avatar LLM independently of an unused global model", () => {
+    const input = {
+      ...naturalAvatarInput,
+      voiceConfig: { ...naturalAvatarInput.voiceConfig, conversationModel: "gpt-5.4" },
+    } satisfies AvatarAgentProviderSyncInput;
+    expect(createProviderSyncFingerprint(input, { agentLlmModel: "gpt-4o-mini" })).toBe(
+      createProviderSyncFingerprint(input, { agentLlmModel: "another-global-model" })
+    );
+    expect(createProviderSyncFingerprint(input)).not.toBe(createProviderSyncFingerprint(naturalAvatarInput));
+    expect(createProviderSyncFingerprint(input)).not.toBe(
+      createProviderSyncFingerprint({
+        ...input,
+        voiceConfig: { ...input.voiceConfig, conversationModel: "gpt-5.4-mini" },
+      })
+    );
+  });
+
+  it("updates an existing natural agent when its conversation model changes and caches the effective model", async () => {
+    const input = {
+      ...naturalAvatarInput,
+      voiceConfig: { ...naturalAvatarInput.voiceConfig, conversationModel: "gpt-5.4" },
+      providerAgentId: "agent-1",
+      providerSyncFingerprint: expectedSyncFingerprint(naturalAvatarInput),
+    } satisfies AvatarAgentProviderSyncInput;
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({ agent_id: "agent-1" }))
+      .mockResolvedValueOnce(agentVoiceResponse())
+      .mockResolvedValueOnce(agentVoiceResponse());
+    const provider = new ElevenLabsAgentProvider({ config, fetch: fetcher });
+
+    const result = await provider.syncAvatarAgent(input);
+    expect(fetcher.mock.calls.map(([, init]) => init?.method)).toEqual(["PATCH", "GET"]);
+    expect(
+      JSON.parse(String(fetcher.mock.calls[0]?.[1]?.body)).conversation_config.agent.prompt
+    ).toMatchObject({
+      llm: "gpt-5.4",
+      reasoning_effort: "none",
+    });
+    expect(result.providerSyncFingerprint).toBe(expectedSyncFingerprint(input));
+    expect(result.providerSyncFingerprint).not.toBe(input.providerSyncFingerprint);
+
+    const cached = await provider.syncAvatarAgent({
+      ...input,
+      providerSyncFingerprint: result.providerSyncFingerprint,
+    });
+    expect(cached.synced).toBe(false);
+    expect(fetcher.mock.calls.map(([, init]) => init?.method)).toEqual(["PATCH", "GET", "GET"]);
+  });
+
+  it("excludes retry and verification controls from the effective payload fingerprint", () => {
+    expect(expectedSyncFingerprint({ ...naturalAvatarInput, retryExpressive: true, verifyVoice: true })).toBe(
+      expectedSyncFingerprint(naturalAvatarInput)
+    );
+  });
+
+  it("verifies actual voice settings after syncing a natural agent", async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({ agent_id: "agent-1" }))
+      .mockResolvedValueOnce(agentVoiceResponse());
+    const provider = new ElevenLabsAgentProvider({ config, fetch: fetcher });
+
+    const result = await provider.syncAvatarAgent(naturalAvatarInput);
+
+    expect(result).toEqual({
+      providerAgentId: "agent-1",
+      providerSyncFingerprint: expectedSyncFingerprint(naturalAvatarInput),
+      synced: true,
+      voiceState: {
+        requestedModel: "eleven_v3_conversational",
+        effectiveModel: "eleven_v3_conversational",
+        expressiveMode: true,
+        fallbackReason: null,
+        verifiedAt: expect.any(String),
+        profile: "natural",
+      },
+    });
+    expect(fetcher).toHaveBeenNthCalledWith(
+      2,
+      new URL("https://api.elevenlabs.test/v1/convai/agents/agent-1"),
+      expect.objectContaining({ method: "GET" })
+    );
+  });
+
+  it("verifies cached natural agents instead of trusting a fingerprint as proof of provider state", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(agentVoiceResponse());
+    const provider = new ElevenLabsAgentProvider({ config, fetch: fetcher });
+
+    const result = await provider.syncAvatarAgent({
+      ...naturalAvatarInput,
+      providerAgentId: "agent-1",
+      providerSyncFingerprint: expectedSyncFingerprint(naturalAvatarInput),
+    });
+
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fetcher.mock.calls[0]?.[1]?.method).toBe("GET");
+    expect(result.synced).toBe(false);
+    expect(result.voiceState?.expressiveMode).toBe(true);
+  });
+
+  it("allows an explicit readback for standard agents without changing their payload", async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(agentVoiceResponse(ELEVENLABS_EXPRESSIVE_TTS_MODEL));
+    const provider = new ElevenLabsAgentProvider({ config, fetch: fetcher });
+    const result = await provider.syncAvatarAgent({
+      ...avatarInput,
+      providerAgentId: "agent-1",
+      providerSyncFingerprint: expectedSyncFingerprint(avatarInput),
+      verifyVoice: true,
+    });
+    expect(result.voiceState).toMatchObject({ profile: "standard", effectiveModel: "eleven_v3" });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fetcher.mock.calls[0]?.[1]?.method).toBe("GET");
+  });
+
+  it("keeps a known natural fallback cached until an expressive retry is requested", async () => {
+    const fingerprint = expectedSyncFingerprint(naturalAvatarInput, ELEVENLABS_EXPRESSIVE_TTS_FALLBACK_MODEL);
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(agentVoiceResponse(ELEVENLABS_EXPRESSIVE_TTS_FALLBACK_MODEL, false))
+      .mockResolvedValueOnce(jsonResponse({ agent_id: "agent-1" }))
+      .mockResolvedValueOnce(agentVoiceResponse());
+    const provider = new ElevenLabsAgentProvider({ config, fetch: fetcher });
+    const input = { ...naturalAvatarInput, providerAgentId: "agent-1", providerSyncFingerprint: fingerprint };
+
+    const cached = await provider.syncAvatarAgent(input);
+    expect(cached).toMatchObject({
+      synced: false,
+      providerSyncFingerprint: fingerprint,
+      voiceState: {
+        effectiveModel: "eleven_flash_v2_5",
+        expressiveMode: false,
+        fallbackReason: "cached_fallback",
+      },
+    });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fetcher.mock.calls[0]?.[1]?.method).toBe("GET");
+
+    const retried = await provider.syncAvatarAgent({ ...input, retryExpressive: true });
+    expect(fetcher).toHaveBeenCalledTimes(3);
+    expect(fetcher.mock.calls[1]?.[1]?.method).toBe("PATCH");
+    expect(JSON.parse(String(fetcher.mock.calls[1]?.[1]?.body)).conversation_config.tts).toMatchObject({
+      model_id: "eleven_v3_conversational",
+      expressive_mode: true,
+    });
+    expect(retried.providerSyncFingerprint).toBe(expectedSyncFingerprint(naturalAvatarInput));
+    expect(retried.voiceState).toMatchObject({
+      effectiveModel: "eleven_v3_conversational",
+      expressiveMode: true,
+      fallbackReason: null,
+    });
+  });
+
+  it("records verified Flash fallback without claiming that Expressive Mode is active", async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        jsonResponse({ detail: { status: "expressive_tts_not_allowed" } }, { status: 400 })
+      )
+      .mockResolvedValueOnce(jsonResponse({ agent_id: "agent-1" }))
+      .mockResolvedValueOnce(agentVoiceResponse(ELEVENLABS_EXPRESSIVE_TTS_FALLBACK_MODEL, false));
+    const provider = new ElevenLabsAgentProvider({ config, fetch: fetcher });
+
+    const result = await provider.syncAvatarAgent(naturalAvatarInput);
+
+    expect(result.voiceState).toMatchObject({
+      requestedModel: "eleven_v3_conversational",
+      effectiveModel: "eleven_flash_v2_5",
+      expressiveMode: false,
+      fallbackReason: "expressive_tts_not_allowed",
+      profile: "natural",
+    });
+    expect(result.providerSyncFingerprint).toBe(
+      expectedSyncFingerprint(naturalAvatarInput, "eleven_flash_v2_5")
+    );
+    const fallbackPayload = JSON.parse(String(fetcher.mock.calls[1]?.[1]?.body));
+    expect(fallbackPayload.conversation_config.tts.expressive_mode).toBe(false);
+    expect(fallbackPayload.conversation_config.agent.prompt.prompt).toContain("sin escribir tags expresivos");
+  });
+
+  it.each([
+    { actualModel: "eleven_flash_v2_5", expressiveMode: false, reason: "provider_model_differs" },
+    { actualModel: "eleven_v3_conversational", expressiveMode: false, reason: "expressive_mode_disabled" },
+    { actualModel: "eleven_v3_conversational", expressiveMode: null, reason: "expressive_mode_unverified" },
+  ])(
+    "does not return a successful desired fingerprint when readback reports $reason",
+    async ({ actualModel, expressiveMode, reason }) => {
+      const fetcher = vi
+        .fn<typeof fetch>()
+        .mockResolvedValueOnce(jsonResponse({ agent_id: "agent-1" }))
+        .mockResolvedValueOnce(agentVoiceResponse(actualModel, expressiveMode));
+      const provider = new ElevenLabsAgentProvider({ config, fetch: fetcher });
+
+      const error = await provider.syncAvatarAgent(naturalAvatarInput).catch((error: unknown) => error);
+
+      expect(error).toBeInstanceOf(ElevenLabsVoiceVerificationError);
+      expect(error).toMatchObject({
+        providerAgentId: "agent-1",
+        voiceState: {
+          requestedModel: "eleven_v3_conversational",
+          effectiveModel: actualModel,
+          expressiveMode,
+          fallbackReason: reason,
+        },
+      });
+    }
+  );
+
+  it("retains a newly created agent after failed verification so retry updates it instead of creating a duplicate", async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({ agent_id: "agent-created" }))
+      .mockResolvedValueOnce(jsonResponse({ message: "temporarily unavailable" }, { status: 503 }))
+      .mockResolvedValueOnce(jsonResponse({ agent_id: "agent-created" }))
+      .mockResolvedValueOnce(agentVoiceResponse());
+    const provider = new ElevenLabsAgentProvider({ config, fetch: fetcher });
+
+    const error = await provider.syncAvatarAgent(naturalAvatarInput).catch((error: unknown) => error);
+
+    expect(error).toBeInstanceOf(ElevenLabsVoiceVerificationError);
+    if (!(error instanceof ElevenLabsVoiceVerificationError))
+      throw new Error("Expected verification failure");
+    expect(error).toMatchObject({
+      providerAgentId: "agent-created",
+      statusCode: 503,
+      cause: { statusCode: 503 },
+      voiceState: {
+        requestedModel: "eleven_v3_conversational",
+        effectiveModel: "unknown",
+        expressiveMode: null,
+        verifiedAt: null,
+        fallbackReason: "voice_verification_failed",
+        profile: "natural",
+      },
+    });
+    expect(isTransientElevenLabsError(error)).toBe(true);
+
+    const retried = await provider.syncAvatarAgent({
+      ...naturalAvatarInput,
+      providerAgentId: error.providerAgentId ?? null,
+    });
+
+    expect(retried.providerAgentId).toBe("agent-created");
+    expect(fetcher.mock.calls.map(([, init]) => init?.method)).toEqual(["POST", "GET", "PATCH", "GET"]);
+    expect(fetcher.mock.calls[2]?.[0]).toEqual(
+      new URL("https://api.elevenlabs.test/v1/convai/agents/agent-created")
+    );
+  });
+
+  it("retains the cached agent identity and timeout retry classification when readback times out", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockRejectedValueOnce(new DOMException("Timed out", "AbortError"));
+    const provider = new ElevenLabsAgentProvider({ config, fetch: fetcher });
+
+    const error = await provider
+      .syncAvatarAgent({
+        ...naturalAvatarInput,
+        providerAgentId: "agent-cached",
+        providerSyncFingerprint: expectedSyncFingerprint(naturalAvatarInput),
+      })
+      .catch((error: unknown) => error);
+
+    expect(error).toMatchObject({
+      providerAgentId: "agent-cached",
+      voiceState: {
+        effectiveModel: "unknown",
+        verifiedAt: null,
+        fallbackReason: "voice_verification_failed",
+      },
+    });
+    expect(isTransientElevenLabsError(error)).toBe(true);
+    expect(fetcher.mock.calls.map(([, init]) => init?.method)).toEqual(["GET"]);
+  });
+
+  it.each([
+    { response: () => new Response("invalid JSON", { status: 200 }), effectiveModel: "unknown" },
+    {
+      response: () =>
+        jsonResponse({
+          conversation_config: { tts: { model_id: "eleven_v3_conversational", expressive_mode: "invalid" } },
+        }),
+      effectiveModel: "eleven_v3_conversational",
+    },
+  ])(
+    "retains the created id and known model when voice response parsing fails ($effectiveModel)",
+    async ({ response, effectiveModel }) => {
+      const fetcher = vi
+        .fn<typeof fetch>()
+        .mockResolvedValueOnce(jsonResponse({ agent_id: "agent-created" }))
+        .mockResolvedValueOnce(response());
+      const provider = new ElevenLabsAgentProvider({ config, fetch: fetcher });
+
+      await expect(provider.syncAvatarAgent(naturalAvatarInput)).rejects.toMatchObject({
+        providerAgentId: "agent-created",
+        voiceState: {
+          requestedModel: "eleven_v3_conversational",
+          effectiveModel,
+          expressiveMode: null,
+          verifiedAt: null,
+          fallbackReason: "voice_verification_failed",
+          profile: "natural",
+        },
+      });
+    }
+  );
+
+  it("detects provider drift on a cached fingerprint without silently accepting a fallback", async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(agentVoiceResponse(ELEVENLABS_EXPRESSIVE_TTS_FALLBACK_MODEL, false));
+    const provider = new ElevenLabsAgentProvider({ config, fetch: fetcher });
+
+    await expect(
+      provider.syncAvatarAgent({
+        ...naturalAvatarInput,
+        providerAgentId: "agent-1",
+        providerSyncFingerprint: expectedSyncFingerprint(naturalAvatarInput),
+      })
+    ).rejects.toMatchObject({ voiceState: { fallbackReason: "provider_model_differs" } });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
+  it("repairs provider drift when an explicit retry bypasses the desired fingerprint cache", async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({ agent_id: "agent-1" }))
+      .mockResolvedValueOnce(agentVoiceResponse());
+    const provider = new ElevenLabsAgentProvider({ config, fetch: fetcher });
+
+    const result = await provider.syncAvatarAgent({
+      ...naturalAvatarInput,
+      providerAgentId: "agent-1",
+      providerSyncFingerprint: expectedSyncFingerprint(naturalAvatarInput),
+      retryExpressive: true,
+    });
+
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(fetcher.mock.calls[0]?.[1]?.method).toBe("PATCH");
+    expect(result.synced).toBe(true);
+    expect(result.voiceState).toMatchObject({
+      effectiveModel: "eleven_v3_conversational",
+      expressiveMode: true,
+    });
+  });
+
+  it("rejects a fallback whose provider settings still have Expressive Mode enabled", async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(agentVoiceResponse(ELEVENLABS_EXPRESSIVE_TTS_FALLBACK_MODEL, true));
+    const provider = new ElevenLabsAgentProvider({ config, fetch: fetcher });
+
+    await expect(
+      provider.syncAvatarAgent({
+        ...naturalAvatarInput,
+        providerAgentId: "agent-1",
+        providerSyncFingerprint: expectedSyncFingerprint(
+          naturalAvatarInput,
+          ELEVENLABS_EXPRESSIVE_TTS_FALLBACK_MODEL
+        ),
+      })
+    ).rejects.toMatchObject({
+      voiceState: {
+        effectiveModel: "eleven_flash_v2_5",
+        expressiveMode: true,
+        fallbackReason: "expressive_mode_unexpected",
+      },
+    });
+  });
+
+  it("returns only inspected voice diagnostics, preserving false and unknown expressive states", async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          agent_id: "agent/private",
+          platform_settings: { auth: { shareable_token: "private-token" } },
+          conversation_config: {
+            agent: { prompt: { prompt: "private prompt" } },
+            tts: { model_id: "eleven_v3", expressive_mode: false },
+          },
+        })
+      )
+      .mockResolvedValueOnce(jsonResponse({ conversation_config: { tts: { model_id: "eleven_v3" } } }));
+    const provider = new ElevenLabsAgentProvider({ config, fetch: fetcher });
+
+    const result = await provider.inspectAgentVoice("agent/private", "eleven_v3", "natural");
+    expect(result).toEqual({
+      requestedModel: "eleven_v3",
+      effectiveModel: "eleven_v3",
+      expressiveMode: false,
+      fallbackReason: null,
+      verifiedAt: expect.any(String),
+      profile: "natural",
+    });
+    expect(fetcher.mock.calls[0]?.[0]).toEqual(
+      new URL("https://api.elevenlabs.test/v1/convai/agents/agent%2Fprivate")
+    );
+    await expect(provider.inspectAgentVoice("agent-1", "eleven_v3")).resolves.toMatchObject({
+      expressiveMode: null,
+    });
+  });
+
+  it.each([
+    {},
+    { conversation_config: { tts: { model_id: "" } } },
+    { conversation_config: { tts: { model_id: 123 } } },
+    { conversation_config: { tts: { model_id: "eleven_v3", expressive_mode: "true" } } },
+  ])("rejects malformed voice inspection responses", async (body) => {
+    const provider = new ElevenLabsAgentProvider({
+      config,
+      fetch: vi.fn<typeof fetch>().mockResolvedValueOnce(jsonResponse(body)),
+    });
+    await expect(provider.inspectAgentVoice("agent-1", "eleven_v3")).rejects.toThrow(
+      "ElevenLabs voice verification failed"
+    );
   });
 
   it("keeps LiveAvatar connector-safe audio formats and client events", () => {

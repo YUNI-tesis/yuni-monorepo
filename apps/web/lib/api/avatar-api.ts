@@ -14,6 +14,8 @@ export type ApiVoiceConfig = {
   displayName?: string;
   description?: string;
   speakingRate: number;
+  conversationProfile?: "standard" | "natural";
+  conversationModel?: string;
 };
 
 export type ApiAvatarLiveAvatarConfig = {
@@ -132,6 +134,7 @@ export type ApiVoiceSession = {
   realtimeSessionId: string;
   sessionToken: string;
   expiresAt: string | null;
+  conversationProfile?: "standard" | "natural";
 };
 
 export type EndedApiVoiceSession = {

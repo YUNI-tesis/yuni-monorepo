@@ -1,7 +1,7 @@
 import type { PrismaClientInstance } from "@yuni/db";
 import { AvatarProviderError } from "@yuni/avatars";
 import type { ObjectStorage } from "@yuni/storage";
-import { ElevenLabsProviderError } from "@yuni/voice";
+import { ElevenLabsProviderError, ElevenLabsVoiceVerificationError } from "@yuni/voice";
 import { describe, expect, it, vi } from "vitest";
 import { createKnowledgeBaseWorker, type KnowledgeBaseWorkerDependencies } from "./knowledge-base-worker";
 
@@ -198,7 +198,8 @@ function createDocumentDependencies(options: {
 }
 
 function createContextDependencies(
-  syncAvatarAgent: KnowledgeBaseWorkerDependencies["provider"]["syncAvatarAgent"]
+  syncAvatarAgent: KnowledgeBaseWorkerDependencies["provider"]["syncAvatarAgent"],
+  documents: unknown[] = []
 ) {
   const avatar: MutableAvatar = {
     id: "avatar-1",
@@ -231,7 +232,7 @@ function createContextDependencies(
   );
   const db = {
     avatarAgent: {
-      findUnique: vi.fn(async () => ({ ...avatar, documents: [] })),
+      findUnique: vi.fn(async () => ({ ...avatar, documents })),
       update: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
         Object.assign(avatar, data);
         return avatar;
@@ -265,6 +266,107 @@ function createContextDependencies(
     dependencies: { db, storage, provider, workerId: "worker-1" } satisfies KnowledgeBaseWorkerDependencies,
   };
 }
+
+describe("verified direct-call voice synchronization", () => {
+  const voiceState = {
+    requestedModel: "eleven_v3_conversational",
+    effectiveModel: "eleven_v3_conversational",
+    expressiveMode: true,
+    fallbackReason: null,
+    verifiedAt: "2026-09-13T12:00:00.000Z",
+    profile: "natural" as const,
+  };
+
+  it("retries expressive voice through the full context and file knowledge base", async () => {
+    const syncAvatarAgent = vi.fn(async () => ({
+      providerAgentId: "agent-1",
+      providerSyncFingerprint: "natural-fingerprint",
+      synced: true,
+      voiceState,
+    }));
+    const setup = createContextDependencies(syncAvatarAgent, [
+      {
+        id: "file-1",
+        fileName: "facts.txt",
+        providerSync: { status: "synced", providerDocumentId: "provider-file-1" },
+      },
+      {
+        id: "file-pending",
+        fileName: "pending.txt",
+        providerSync: { status: "pending", providerDocumentId: "provider-pending" },
+      },
+    ]);
+    setup.avatar.voiceConfig = {
+      provider: "elevenlabs",
+      voiceId: "voice-1",
+      speakingRate: 1,
+      conversationProfile: "natural",
+    };
+    setup.avatar.providerContextDocumentId = "provider-context-1";
+    setup.avatar.providerContextSyncStatus = "synced";
+
+    await createKnowledgeBaseWorker(setup.dependencies).syncAgent("avatar-1", {
+      retryExpressive: true,
+      verifyVoice: true,
+    });
+
+    expect(syncAvatarAgent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        retryExpressive: true,
+        verifyVoice: true,
+        includeInlineContext: false,
+        voiceConfig: expect.objectContaining({ conversationProfile: "natural" }),
+        knowledgeBase: [
+          expect.objectContaining({ id: "provider-context-1", type: "text", usage_mode: "prompt" }),
+          expect.objectContaining({ id: "provider-file-1", type: "file", usage_mode: "auto" }),
+        ],
+      })
+    );
+    expect(setup.avatar).toMatchObject({ providerSyncStatus: "synced", providerVoiceState: voiceState });
+    expect(setup.avatar.providerLastUsableAt).toBeInstanceOf(Date);
+  });
+
+  it("verifies a standard resync after a previously verified natural profile", async () => {
+    const syncAvatarAgent = vi.fn(async () => ({
+      providerAgentId: "agent-1",
+      providerSyncFingerprint: "standard-fingerprint",
+      synced: true,
+      voiceState: { ...voiceState, profile: "standard" as const },
+    }));
+    const setup = createContextDependencies(syncAvatarAgent);
+    setup.avatar.providerVoiceState = voiceState;
+    await createKnowledgeBaseWorker(setup.dependencies).syncAgent("avatar-1");
+    expect(syncAvatarAgent).toHaveBeenCalledWith(expect.objectContaining({ verifyVoice: true }));
+    expect(setup.avatar.providerVoiceState).toMatchObject({ profile: "standard" });
+  });
+
+  it("retains a newly created agent and disables usability after verification fails", async () => {
+    const unverifiedState = {
+      ...voiceState,
+      effectiveModel: "unknown",
+      expressiveMode: null,
+      fallbackReason: "voice_verification_failed",
+      verifiedAt: null,
+    };
+    const failure = new ElevenLabsVoiceVerificationError(
+      "Voice verification failed",
+      unverifiedState,
+      "new-agent-id",
+      new ElevenLabsProviderError("unavailable", undefined, 503)
+    );
+    const setup = createContextDependencies(async () => {
+      throw failure;
+    });
+    setup.avatar.providerLastUsableAt = new Date();
+    await expect(createKnowledgeBaseWorker(setup.dependencies).syncAgent("avatar-1")).rejects.toBe(failure);
+    expect(setup.avatar).toMatchObject({
+      providerAgentId: "new-agent-id",
+      providerVoiceState: unverifiedState,
+      providerLastUsableAt: null,
+      providerSyncStatus: "failed",
+    });
+  });
+});
 
 describe("knowledge base cleanup", () => {
   it("deletes direct and group agents, unique provider documents, and storage objects in order", async () => {

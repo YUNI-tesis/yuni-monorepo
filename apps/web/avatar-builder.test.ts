@@ -79,6 +79,8 @@ describe("avatar builder", () => {
         displayName: "Agustin",
         description: "Relaxed, warm and approachable.",
         speakingRate: 1,
+        conversationProfile: "natural",
+        conversationModel: "gpt-5.4",
       },
     });
     expect(payload).not.toHaveProperty("ownerId");
@@ -96,6 +98,24 @@ describe("avatar builder", () => {
       displayName: "Agustin",
       description: "Relaxed, warm and approachable.",
       speakingRate: 1,
+    });
+  });
+
+  it("uses natural conversation with GPT-5.4 when creating without catalog metadata", () => {
+    const payload = buildCreateAvatarRequest({
+      ...createInitialAvatarBuilderState(),
+      name: "YUNI Demo",
+      liveAvatarId: "demo-guide",
+      voiceId: "saved-voice-id",
+      instructions: "Responde claro.",
+    });
+
+    expect(payload.voiceConfig).toEqual({
+      provider: "elevenlabs",
+      voiceId: "saved-voice-id",
+      speakingRate: 1,
+      conversationProfile: "natural",
+      conversationModel: "gpt-5.4",
     });
   });
 
@@ -141,6 +161,10 @@ describe("avatar builder", () => {
         credentials: "include",
       })
     );
+    expect(JSON.parse(fetchMock.mock.calls[0]![1].body).voiceConfig).toMatchObject({
+      conversationProfile: "natural",
+      conversationModel: "gpt-5.4",
+    });
   });
 
   it("fetches live avatar options with credentials included", async () => {

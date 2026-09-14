@@ -13,6 +13,7 @@ import type {
   CreateAvatarAgentInput,
   LiveAvatarConfig,
   ProviderSyncStatus,
+  ProviderVoiceState,
   UpdateAvatarAgentInput,
   VoiceConfig,
 } from "@yuni/domain";
@@ -33,6 +34,7 @@ export type AvatarAgentRecord = {
   providerSyncError: string | null;
   providerSyncedAt: Date | null;
   providerSyncFingerprint: string | null;
+  providerVoiceState?: unknown;
   providerLastUsableAt?: Date | null;
   providerContextDocumentId?: string | null;
   providerContextSyncStatus?: "pending" | "syncing" | "synced" | "failed" | "deleting";
@@ -121,6 +123,7 @@ export type AvatarsRepository = {
       providerSyncError?: string | null;
       providerSyncedAt?: Date | null;
       providerSyncFingerprint?: string | null;
+      providerVoiceState?: ProviderVoiceState;
       providerLastUsableAt?: Date | null;
     }
   ): Promise<AvatarAgentRecord>;

@@ -6,6 +6,7 @@ import { MAX_DOCUMENT_SIZE_BYTES, VoiceConfigSchema } from "@yuni/domain";
 import { ObjectNotFoundError, ObjectTooLargeError, type ObjectStorage } from "@yuni/storage";
 import {
   ElevenLabsProviderError,
+  ElevenLabsVoiceVerificationError,
   isTransientElevenLabsError,
   type ElevenLabsAgentProvider,
   type ElevenLabsKnowledgeBaseReference,
@@ -37,6 +38,8 @@ class AvatarProjectionBusyError extends Error {
 type SyncAgentOptions = {
   includeDocumentId?: string;
   contextDocumentId?: string;
+  retryExpressive?: boolean;
+  verifyVoice?: boolean;
 };
 
 export type KnowledgeBaseWorkerDependencies = {
@@ -130,18 +133,37 @@ export function createKnowledgeBaseWorker(dependencies: KnowledgeBaseWorkerDepen
       where: { id: avatarId },
       data: { providerSyncStatus: "syncing", providerSyncError: null },
     });
-    const result = await dependencies.provider.syncAvatarAgent({
-      id: avatar.id,
-      name: avatar.name,
-      description: avatar.description,
-      instructions: avatar.instructions,
-      context: avatar.context,
-      voiceConfig: voice.data,
-      providerAgentId: avatar.providerAgentId,
-      providerSyncFingerprint: avatar.providerSyncFingerprint,
-      knowledgeBase,
-      includeInlineContext: !textReady,
-    });
+    let result;
+    try {
+      result = await dependencies.provider.syncAvatarAgent({
+        id: avatar.id,
+        name: avatar.name,
+        description: avatar.description,
+        instructions: avatar.instructions,
+        context: avatar.context,
+        voiceConfig: voice.data,
+        providerAgentId: avatar.providerAgentId,
+        providerSyncFingerprint: avatar.providerSyncFingerprint,
+        knowledgeBase,
+        includeInlineContext: !textReady,
+        ...(options.retryExpressive ? { retryExpressive: true } : {}),
+        ...(options.verifyVoice || avatar.providerVoiceState ? { verifyVoice: true } : {}),
+      });
+    } catch (error) {
+      if (error instanceof ElevenLabsVoiceVerificationError) {
+        await dependencies.db.avatarAgent.update({
+          where: { id: avatarId },
+          data: {
+            ...(error.providerAgentId ? { providerAgentId: error.providerAgentId } : {}),
+            providerVoiceState: error.voiceState,
+            providerSyncStatus: "failed",
+            providerSyncError: error.message,
+            providerLastUsableAt: null,
+          },
+        });
+      }
+      throw error;
+    }
     const usableAt = now();
     await dependencies.db.avatarAgent.update({
       where: { id: avatarId },
@@ -152,6 +174,7 @@ export function createKnowledgeBaseWorker(dependencies: KnowledgeBaseWorkerDepen
         providerSyncError: null,
         providerSyncedAt: result.synced ? usableAt : avatar.providerSyncedAt,
         providerLastUsableAt: usableAt,
+        ...(result.voiceState ? { providerVoiceState: result.voiceState } : {}),
       },
     });
   }
@@ -540,7 +563,12 @@ export function createKnowledgeBaseWorker(dependencies: KnowledgeBaseWorkerDepen
         if (documentId) await syncDocument(documentId);
         return;
       case "agent_provider_sync":
-        if (avatarId) await syncAgent(avatarId);
+        if (avatarId) {
+          await syncAgent(avatarId, {
+            retryExpressive: payload.retryExpressive === true,
+            verifyVoice: payload.verifyVoice === true,
+          });
+        }
         return;
       case "group_agent_provider_sync":
         if (avatarId) {

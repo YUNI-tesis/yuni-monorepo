@@ -1,4 +1,5 @@
 import {
+  getVerifiedConversationProfile,
   EndPublicSessionInputSchema,
   LiveAvatarConfigSchema,
   NotFoundError,
@@ -172,6 +173,9 @@ export function createPublicSessionsService(dependencies: PublicSessionsServiceD
             realtimeSessionId: records.realtimeSession.id,
             sessionToken: providerSession.sessionToken,
             expiresAt: expiresAt.toISOString(),
+            ...(getVerifiedConversationProfile(link.avatarAgent.providerVoiceState) === "natural"
+              ? { conversationProfile: "natural" as const }
+              : {}),
           },
         };
       } catch (error) {

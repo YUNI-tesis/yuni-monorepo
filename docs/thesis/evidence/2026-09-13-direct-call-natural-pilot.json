@@ -1,0 +1,87 @@
+{
+  "version": 1,
+  "date": "2026-09-13",
+  "timeZone": "America/Argentina/Buenos_Aires",
+  "environment": "local yuni_dev database and linked remote ElevenLabs agent",
+  "avatar": {
+    "name": "Tomy",
+    "id": "cmtay26rk00kr8y6gfvmg847i"
+  },
+  "status": "natural_profile_applied_and_remote_voice_verified",
+  "before": {
+    "observedAt": "2026-09-14T01:10:28.147Z",
+    "ttsModel": "eleven_flash_v2_5",
+    "expressiveMode": false,
+    "voiceIdentityFingerprint": "3198d2b162bc6bbf4f99640b5f7842c0d23b7005de1d4ba439f15abb1aee925e",
+    "turnEagerness": "patient",
+    "llm": "gpt-4o-mini",
+    "temperature": 0.4,
+    "maxTokens": 220,
+    "remoteKnowledgeBase": {
+      "referenceCount": 0,
+      "referenceFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "promptFingerprint": "608f3e09534fce21db88c2910d4fed522574d2a42ec4bee52f40897ed2209a4a",
+    "interruptionsEnabled": true
+  },
+  "legacyModelAttempt": {
+    "requestedModel": "eleven_v3",
+    "effectiveModel": "eleven_flash_v2_5",
+    "expressiveMode": false,
+    "fallbackReason": "expressive_tts_not_allowed",
+    "verifiedAt": "2026-09-14T01:11:08.138Z"
+  },
+  "appliedVoice": {
+    "requestedModel": "eleven_v3_conversational",
+    "effectiveModel": "eleven_v3_conversational",
+    "expressiveMode": true,
+    "fallbackReason": null,
+    "verifiedAt": "2026-09-14T01:15:44.777Z",
+    "profile": "natural"
+  },
+  "after": {
+    "observedAt": "2026-09-14T01:16:22.848Z",
+    "ttsModel": "eleven_v3_conversational",
+    "expressiveMode": true,
+    "voiceIdentityFingerprint": "3198d2b162bc6bbf4f99640b5f7842c0d23b7005de1d4ba439f15abb1aee925e",
+    "turnEagerness": "normal",
+    "llm": "gpt-4o-mini",
+    "temperature": 0.4,
+    "maxTokens": 512,
+    "remoteKnowledgeBase": {
+      "referenceCount": 0,
+      "referenceFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "promptFingerprint": "b49187c2521eee4015e6b8a74d19fc3b0c0770e3c37e86d1721a19fe7156957f",
+    "interruptionsEnabled": true
+  },
+  "checks": {
+    "activeOrConnectingSessionsBeforeApply": 0,
+    "localKnowledgeBaseReferencesUnchanged": true,
+    "remoteKnowledgeBaseReferencesUnchanged": true,
+    "voiceIdentityUnchanged": true,
+    "llmAndTemperatureUnchanged": true
+  },
+  "automatedValidation": {
+    "apiPassed": 317,
+    "webPassed": 488,
+    "voicePassed": 61,
+    "workerUnitPassed": 23,
+    "domainProfilePassed": 2,
+    "pilotCliPassed": 19,
+    "skippedDatabaseIntegrationTests": 7
+  },
+  "limitations": [
+    "No live voice call or acoustic latency measurement was performed.",
+    "Tomy had zero remote knowledge-base references before and after. Preservation of non-empty text/file references is covered by simulated worker tests, not this remote probe.",
+    "Event timeline measures browser receipt of provider events, not audible speech timing.",
+    "Voice identity fingerprint proves the same configured voice ID, not identical acoustic characteristics across TTS models.",
+    "Only Tomy was activated. Standard avatars and group provider payloads were not migrated."
+  ],
+  "sources": [
+    "https://elevenlabs.io/docs/eleven-agents/customization/voice/expressive-mode",
+    "https://elevenlabs.io/docs/changelog/2026/2/9",
+    "https://raw.githubusercontent.com/elevenlabs/elevenlabs-python/main/src/elevenlabs/types/tts_conversational_model.py",
+    "https://docs.liveavatar.com/docs/lite-mode/connectors/elevenlabs-agent"
+  ]
+}

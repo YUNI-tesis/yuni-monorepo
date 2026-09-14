@@ -16,6 +16,12 @@ import {
 } from "../lib/api/avatar-api";
 import { ApiClientError } from "../lib/api/http-client";
 import { formatRetryAfter } from "../lib/avatar-sharing";
+import { createLiveAvatarTranscript } from "../lib/live-avatar-transcript";
+import {
+  createLiveAvatarEventTrace,
+  type LiveAvatarEventObservation,
+  type LiveAvatarTraceEvent,
+} from "../lib/live-avatar-event-trace";
 
 export type LiveAvatarSessionStatus = "idle" | "starting" | "active" | "ending" | "ended" | "error";
 
@@ -27,7 +33,7 @@ export type LiveAvatarTranscriptEntry = VoiceSessionTranscriptEntry & {
 
 export type LiveAvatarVoiceSession = Pick<
   ApiVoiceSession,
-  "conversationId" | "realtimeSessionId" | "sessionToken" | "expiresAt"
+  "conversationId" | "realtimeSessionId" | "sessionToken" | "expiresAt" | "conversationProfile"
 >;
 
 export type LiveAvatarDiagnostics = {
@@ -39,6 +45,7 @@ export type LiveAvatarDiagnostics = {
   elevenLabsConversationId: string | null;
   textProbeStatus: "idle" | "sending" | "sent" | "error";
   textProbeError: string | null;
+  eventTimeline?: LiveAvatarEventObservation[];
 };
 
 export type LiveAvatarSessionState = {
@@ -100,7 +107,7 @@ export function useLiveAvatarSession(avatarId: string, options: UseLiveAvatarSes
   const voiceSessionRef = useRef<LiveAvatarVoiceSession | null>(null);
   const optionsRef = useRef(options);
   const transcriptRef = useRef<LiveAvatarTranscriptEntry[]>([]);
-  const eventIdsRef = useRef(new Set<string>());
+  const transcriptTrackerRef = useRef(createLiveAvatarTranscript());
   const startingRef = useRef(false);
   const endingRef = useRef(false);
   const lifecycleActiveRef = useRef(true);
@@ -192,12 +199,16 @@ export function useLiveAvatarSession(avatarId: string, options: UseLiveAvatarSes
   }, []);
 
   const appendTranscript = useCallback((entry: LiveAvatarTranscriptEntry) => {
-    if (eventIdsRef.current.has(entry.id)) {
-      return;
-    }
+    const transcript = transcriptTrackerRef.current.append(entry);
+    if (!transcript) return;
+    transcriptRef.current = transcript;
+    setState((current) => ({ ...current, transcript: transcriptRef.current }));
+  }, []);
 
-    eventIdsRef.current.add(entry.id);
-    transcriptRef.current = [...transcriptRef.current, entry];
+  const observeElevenLabsTranscript = useCallback((eventType: string, data: Record<string, unknown>) => {
+    const transcript = transcriptTrackerRef.current.observeElevenLabs(eventType, data);
+    if (!transcript) return;
+    transcriptRef.current = transcript;
     setState((current) => ({ ...current, transcript: transcriptRef.current }));
   }, []);
 
@@ -220,7 +231,10 @@ export function useLiveAvatarSession(avatarId: string, options: UseLiveAvatarSes
     interruptionResetTimeoutRef.current = window.setTimeout(() => {
       setState((current) => ({
         ...current,
-        conversationState: current.status === "active" ? "listening" : current.conversationState,
+        conversationState:
+          current.status === "active" && current.conversationState === "interrupted"
+            ? "listening"
+            : current.conversationState,
       }));
       interruptionResetTimeoutRef.current = null;
     }, 1400);
@@ -271,7 +285,7 @@ export function useLiveAvatarSession(avatarId: string, options: UseLiveAvatarSes
     startingRef.current = true;
     const lifecycleEpoch = lifecycleEpochRef.current;
     transcriptRef.current = [];
-    eventIdsRef.current = new Set<string>();
+    transcriptTrackerRef.current = createLiveAvatarTranscript();
     endingRef.current = false;
     startConfirmedRef.current = false;
     stoppedBeforeStartConfirmationRef.current = false;
@@ -305,6 +319,8 @@ export function useLiveAvatarSession(avatarId: string, options: UseLiveAvatarSes
       sessionRef.current = session;
       registerSessionEvents(session, {
         appendTranscript,
+        observeElevenLabsTranscript,
+        conversationProfile: voiceSession.conversationProfile ?? "standard",
         attachCurrentMediaElement: () => {
           if (mediaElementRef.current) {
             session.attach(mediaElementRef.current);
@@ -448,6 +464,7 @@ export function useLiveAvatarSession(avatarId: string, options: UseLiveAvatarSes
     closeCurrentSessionOnUnload,
     end,
     markInterrupted,
+    observeElevenLabsTranscript,
     state.status,
   ]);
 
@@ -690,6 +707,8 @@ async function stopLiveAvatarSessionSafely(session: Pick<LiveAvatarSession, "sto
 
 type RegisterSessionEventsOptions = {
   appendTranscript: (entry: LiveAvatarTranscriptEntry) => void;
+  observeElevenLabsTranscript: (eventType: string, data: Record<string, unknown>) => void;
+  conversationProfile?: "standard" | "natural";
   attachCurrentMediaElement: () => void;
   end: () => Promise<void>;
   hasConfirmedStart: () => boolean;
@@ -701,6 +720,16 @@ type RegisterSessionEventsOptions = {
 };
 
 function registerSessionEvents(session: LiveAvatarSession, options: RegisterSessionEventsOptions) {
+  const recordTrace = createLiveAvatarEventTrace();
+  const trace = (event: LiveAvatarTraceEvent) => {
+    if (options.conversationProfile !== "natural") return;
+    const eventTimeline = recordTrace(event);
+    options.setState((current) => ({
+      ...current,
+      diagnostics: { ...current.diagnostics, eventTimeline },
+    }));
+  };
+
   session.voiceChat.on(VoiceChatEvent.STATE_CHANGED, (voiceChatState) => {
     if (!options.isCurrentSession()) return;
     options.setState((current) => ({
@@ -726,30 +755,35 @@ function registerSessionEvents(session: LiveAvatarSession, options: RegisterSess
   session.on(SessionEvent.SESSION_STREAM_READY, () => {
     if (!options.isCurrentSession()) return;
     markEvent(options, SessionEvent.SESSION_STREAM_READY);
+    trace("stream_ready");
     options.attachCurrentMediaElement();
   });
 
   session.on(AgentEventsEnum.USER_SPEAK_STARTED, () => {
     if (!options.isCurrentSession()) return;
     markEvent(options, AgentEventsEnum.USER_SPEAK_STARTED);
+    trace("user_speech_started");
     options.setState((current) => ({ ...current, isUserSpeaking: true, conversationState: "listening" }));
   });
 
   session.on(AgentEventsEnum.USER_SPEAK_ENDED, () => {
     if (!options.isCurrentSession()) return;
     markEvent(options, AgentEventsEnum.USER_SPEAK_ENDED);
+    trace("user_speech_ended");
     options.setState((current) => ({ ...current, isUserSpeaking: false, conversationState: "thinking" }));
   });
 
   session.on(AgentEventsEnum.AVATAR_SPEAK_STARTED, () => {
     if (!options.isCurrentSession()) return;
     markEvent(options, AgentEventsEnum.AVATAR_SPEAK_STARTED);
+    trace("avatar_speech_started");
     options.setState((current) => ({ ...current, isAvatarSpeaking: true, conversationState: "speaking" }));
   });
 
   session.on(AgentEventsEnum.AVATAR_SPEAK_ENDED, () => {
     if (!options.isCurrentSession()) return;
     markEvent(options, AgentEventsEnum.AVATAR_SPEAK_ENDED);
+    trace("avatar_speech_ended");
     options.setState((current) => ({ ...current, isAvatarSpeaking: false, conversationState: "listening" }));
   });
 
@@ -781,19 +815,30 @@ function registerSessionEvents(session: LiveAvatarSession, options: RegisterSess
       lastElevenLabsEventType: event.elevenlabs_event_type,
       elevenLabsConversationId: readElevenLabsConversationId(event.data),
     });
+    options.observeElevenLabsTranscript(event.elevenlabs_event_type, event.data);
+    if (
+      event.elevenlabs_event_type === "agent_response" ||
+      event.elevenlabs_event_type === "agent_response_correction"
+    ) {
+      trace(event.elevenlabs_event_type);
+    }
 
     if (event.elevenlabs_event_type === "interruption") {
+      trace("interruption");
       options.markInterrupted();
-      void sendElevenLabsContextualUpdate(
-        session,
-        "El usuario interrumpio mientras el avatar hablaba. En el proximo turno, prioriza el nuevo pedido y no repitas la respuesta anterior."
-      ).catch(() => undefined);
+      if (options.conversationProfile !== "natural") {
+        void sendElevenLabsContextualUpdate(
+          session,
+          "El usuario interrumpio mientras el avatar hablaba. En el proximo turno, prioriza el nuevo pedido y no repitas la respuesta anterior."
+        ).catch(() => undefined);
+      }
     }
   });
 
   session.on(AgentEventsEnum.SESSION_STOPPED, (event) => {
     if (!options.isCurrentSession()) return;
     markEvent(options, event.event_type);
+    trace("session_stopped");
     if (!options.hasConfirmedStart()) {
       options.markStoppedBeforeStartConfirmation();
       return;

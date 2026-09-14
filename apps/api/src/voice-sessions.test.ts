@@ -1,10 +1,19 @@
 import { describe, expect, it, vi } from "vitest";
 import { AvatarProviderError, type AvatarOption } from "@yuni/avatars";
-import type { CreateAvatarAgentInput } from "@yuni/domain";
-import { ElevenLabsProviderError } from "@yuni/voice";
+import type { CreateAvatarAgentInput, ProviderVoiceState } from "@yuni/domain";
+import { ElevenLabsProviderError, ElevenLabsVoiceVerificationError } from "@yuni/voice";
 import type { PublicUser, UserWithPassword } from "./domains/auth/repository";
 import type { AvatarAgentRecord } from "./domains/avatars/repository";
 import { createApp, type AppDependencies } from "./app";
+
+const verifiedNaturalVoiceState: ProviderVoiceState = {
+  profile: "natural",
+  requestedModel: "eleven_v3_conversational",
+  effectiveModel: "eleven_v3_conversational",
+  expressiveMode: true,
+  fallbackReason: null,
+  verifiedAt: "2026-09-13T14:00:00.000Z",
+};
 
 function createUser(overrides: Partial<UserWithPassword> = {}): UserWithPassword {
   const now = new Date("2026-06-08T00:00:00.000Z");
@@ -78,6 +87,7 @@ function createTestDependencies(
     titleError?: Error;
     finalizeFailures?: number;
     activationError?: Error;
+    syncedVoiceState?: ProviderVoiceState;
   } = {}
 ) {
   const users = new Map((options.users ?? [createUser()]).map((user) => [user.email, user]));
@@ -426,6 +436,7 @@ function createTestDependencies(
             providerAgentId: "agent-1",
             providerSyncFingerprint: "fingerprint",
             synced: true,
+            ...(options.syncedVoiceState ? { voiceState: options.syncedVoiceState } : {}),
           };
         },
       },
@@ -661,6 +672,156 @@ describe("@yuni/api voice sessions", () => {
       headers: { Cookie: cookie },
     });
     expect(repeatedConfirmation.status).toBe(200);
+  });
+
+  it.each([
+    ["verified natural provider", verifiedNaturalVoiceState, "natural"],
+    ["verified standard provider", { ...verifiedNaturalVoiceState, profile: "standard" }, undefined],
+    ["unverified requested profile", { ...verifiedNaturalVoiceState, verifiedAt: null }, undefined],
+    ["malformed provider state", { profile: "natural" }, undefined],
+    ["legacy provider without state", undefined, undefined],
+  ] as const)(
+    "uses the effective private runtime profile for %s",
+    async (_case, providerVoiceState, expected) => {
+      const state = createTestDependencies();
+      const avatar = state.avatars.get("avatar-1")!;
+      state.avatars.set(avatar.id, {
+        ...avatar,
+        voiceConfig: {
+          ...avatarInput().voiceConfig,
+          conversationProfile: expected === "natural" ? "standard" : "natural",
+        },
+        providerAgentId: "agent-1",
+        providerSyncStatus: "synced",
+        providerVoiceState,
+      });
+      state.dependencies.voiceSessions!.backgroundSyncEnabled = true;
+      const app = createApp(state.dependencies);
+      const cookie = await login(app);
+      const response = await app.request("/avatars/avatar-1/voice-sessions", {
+        method: "POST",
+        headers: { Cookie: cookie },
+      });
+      const body = await response.json();
+
+      expect(response.status).toBe(201);
+      expect(body.voiceSession.conversationProfile).toBe(expected);
+      if (!expected) expect(body.voiceSession).not.toHaveProperty("conversationProfile");
+      expect(JSON.stringify(body)).not.toMatch(/providerVoiceState|requestedModel|effectiveModel|verifiedAt/);
+      expect(state.providerSyncCalls).toEqual([]);
+    }
+  );
+
+  it.each(["standard", "natural"] as const)(
+    "uses and persists the newly verified %s profile after a synchronous refresh",
+    async (profile) => {
+      const voiceState = { ...verifiedNaturalVoiceState, profile };
+      const state = createTestDependencies({ syncedVoiceState: voiceState });
+      const avatar = state.avatars.get("avatar-1")!;
+      state.avatars.set(avatar.id, {
+        ...avatar,
+        providerAgentId: "agent-1",
+        providerSyncStatus: "synced",
+        providerVoiceState: {
+          ...verifiedNaturalVoiceState,
+          profile: profile === "standard" ? "natural" : "standard",
+        },
+      });
+      const sync = vi.spyOn(state.dependencies.voiceSessions!.elevenLabsAgentProvider, "syncAvatarAgent");
+      const app = createApp(state.dependencies);
+      const cookie = await login(app);
+      const response = await app.request("/avatars/avatar-1/voice-sessions", {
+        method: "POST",
+        headers: { Cookie: cookie },
+      });
+      const body = await response.json();
+
+      expect(response.status).toBe(201);
+      expect(body.voiceSession.conversationProfile).toBe(profile === "natural" ? "natural" : undefined);
+      expect(state.avatars.get(avatar.id)?.providerVoiceState).toEqual(voiceState);
+      expect(sync).toHaveBeenCalledWith(expect.objectContaining({ verifyVoice: true }));
+    }
+  );
+
+  it.each([
+    ["syncing", "requested"],
+    ["syncing", "verified"],
+    ["failed", "requested"],
+    ["failed", "verified"],
+  ] as const)(
+    "blocks a %s private %s natural profile despite an older usable version",
+    async (status, source) => {
+      const state = createTestDependencies();
+      const avatar = state.avatars.get("avatar-1")!;
+      state.avatars.set(avatar.id, {
+        ...avatar,
+        voiceConfig: {
+          ...avatarInput().voiceConfig,
+          conversationProfile: source === "requested" ? "natural" : "standard",
+        },
+        providerAgentId: "agent-previous",
+        providerSyncStatus: status,
+        providerLastUsableAt: new Date("2026-06-08T00:00:00.000Z"),
+        ...(source === "verified" ? { providerVoiceState: verifiedNaturalVoiceState } : {}),
+      });
+      state.dependencies.voiceSessions!.backgroundSyncEnabled = true;
+      const createToken = vi.spyOn(
+        state.dependencies.voiceSessions!.liveAvatarProvider,
+        "createLiteSessionToken"
+      );
+      const app = createApp(state.dependencies);
+      const cookie = await login(app);
+      const response = await app.request("/avatars/avatar-1/voice-sessions", {
+        method: "POST",
+        headers: { Cookie: cookie },
+      });
+
+      expect(response.status).toBe(503);
+      expect(createToken).not.toHaveBeenCalled();
+      expect(state.conversations.size).toBe(0);
+      expect(state.realtimeSessions.size).toBe(0);
+    }
+  );
+
+  it("keeps the recoverable provider ID and clears usable state after voice verification fails", async () => {
+    const unverified = { ...verifiedNaturalVoiceState, verifiedAt: null };
+    const state = createTestDependencies({
+      providerError: new ElevenLabsVoiceVerificationError(
+        "provider readback failed",
+        unverified,
+        "agent-created"
+      ),
+    });
+    const avatar = state.avatars.get("avatar-1")!;
+    state.avatars.set(avatar.id, {
+      ...avatar,
+      voiceConfig: { ...avatarInput().voiceConfig, conversationProfile: "natural" },
+      providerAgentId: "agent-old",
+      providerSyncStatus: "synced",
+      providerLastUsableAt: new Date("2026-06-08T00:00:00.000Z"),
+      providerVoiceState: verifiedNaturalVoiceState,
+    });
+    const createToken = vi.spyOn(
+      state.dependencies.voiceSessions!.liveAvatarProvider,
+      "createLiteSessionToken"
+    );
+    const app = createApp(state.dependencies);
+    const cookie = await login(app);
+    const response = await app.request("/avatars/avatar-1/voice-sessions", {
+      method: "POST",
+      headers: { Cookie: cookie },
+    });
+
+    expect(response.status).toBe(502);
+    expect(state.avatars.get(avatar.id)).toMatchObject({
+      providerAgentId: "agent-created",
+      providerSyncStatus: "failed",
+      providerLastUsableAt: null,
+      providerVoiceState: unverified,
+    });
+    expect(createToken).not.toHaveBeenCalled();
+    expect(state.conversations.size).toBe(0);
+    expect(JSON.stringify(await response.json())).not.toMatch(/agent-created|provider readback failed/);
   });
 
   it("records a client SDK startup failure as an error instead of a normal end", async () => {
