@@ -1,4 +1,5 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
+import { newAvatarConversationConfig, type NewAvatarConversationConfig } from "@yuni/config";
 import type {
   AgentProvider,
   CreateAvatarAgentInput,
@@ -10,7 +11,10 @@ import { applyNewAvatarConversationDefaults, OwnershipError } from "@yuni/domain
 
 type Db = PrismaClient | Prisma.TransactionClient;
 
-export function createAvatarAgentRepository(db: Db) {
+export function createAvatarAgentRepository(
+  db: Db,
+  conversationDefaults: NewAvatarConversationConfig = newAvatarConversationConfig
+) {
   return {
     create(ownerId: string, input: CreateAvatarAgentInput) {
       return db.avatarAgent.create({
@@ -20,7 +24,7 @@ export function createAvatarAgentRepository(db: Db) {
           description: input.description,
           instructions: input.instructions,
           context: input.context,
-          voiceConfig: applyNewAvatarConversationDefaults(input.voiceConfig),
+          voiceConfig: applyNewAvatarConversationDefaults(input.voiceConfig, conversationDefaults),
           liveAvatarConfig: input.liveAvatarConfig,
           status: input.status,
         },

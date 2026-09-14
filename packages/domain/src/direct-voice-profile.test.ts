@@ -15,19 +15,26 @@ describe("direct voice profile", () => {
     );
   });
 
-  it("defaults new avatars to natural GPT-5.4 without overwriting their voice or explicit choices", () => {
+  it("applies the supplied defaults without overwriting the voice or explicit choices", () => {
+    const defaults = { conversationProfile: "standard" as const, conversationModel: "another-model" };
     const voice = VoiceConfigSchema.parse({
       provider: "elevenlabs",
       voiceId: "chosen-voice",
       speakingRate: 1.1,
     });
-    expect(applyNewAvatarConversationDefaults(voice)).toEqual({
+    expect(applyNewAvatarConversationDefaults(voice, defaults)).toEqual({
       ...voice,
-      conversationProfile: "natural",
-      conversationModel: "gpt-5.4",
+      ...defaults,
     });
-    const explicit = { ...voice, conversationProfile: "standard" as const, conversationModel: "gpt-4o-mini" };
-    expect(applyNewAvatarConversationDefaults(explicit)).toEqual(explicit);
+    const explicit = { ...voice, conversationProfile: "natural" as const, conversationModel: "gpt-5.4" };
+    expect(applyNewAvatarConversationDefaults(explicit, defaults)).toEqual(explicit);
+    expect(
+      applyNewAvatarConversationDefaults({ ...voice, conversationModel: "chosen-model" }, defaults)
+    ).toEqual({
+      ...voice,
+      conversationProfile: "standard",
+      conversationModel: "chosen-model",
+    });
     expect(voice).not.toHaveProperty("conversationProfile");
     expect(voice).not.toHaveProperty("conversationModel");
   });

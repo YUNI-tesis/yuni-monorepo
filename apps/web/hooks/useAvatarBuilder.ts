@@ -101,8 +101,6 @@ export function buildCreateAvatarRequest(
     voiceConfig: createVoiceConfig({
       voiceId: state.voiceId,
       selectedVoice: selectedVoice ?? null,
-      conversationProfile: "natural",
-      conversationModel: "gpt-5.4",
     }),
     liveAvatarConfig: createLiveAvatarConfig({
       avatarId: state.liveAvatarId,

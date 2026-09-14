@@ -16,18 +16,20 @@ export const VoiceConfigSchema = z.strictObject({
 
 export type VoiceConfig = z.infer<typeof VoiceConfigSchema>;
 
-export const DEFAULT_NEW_AVATAR_CONVERSATION = {
-  conversationProfile: "natural",
-  conversationModel: "gpt-5.4",
-} as const;
+export type NewAvatarConversationDefaults = Required<
+  Pick<VoiceConfig, "conversationProfile" | "conversationModel">
+>;
 
 // Apply at creation boundaries only. Reading or editing legacy avatars must not
 // silently change their conversation model or profile.
-export function applyNewAvatarConversationDefaults(voice: VoiceConfig): VoiceConfig {
+export function applyNewAvatarConversationDefaults(
+  voice: VoiceConfig,
+  defaults: NewAvatarConversationDefaults
+): VoiceConfig {
   return {
     ...voice,
-    conversationProfile: voice.conversationProfile ?? DEFAULT_NEW_AVATAR_CONVERSATION.conversationProfile,
-    conversationModel: voice.conversationModel ?? DEFAULT_NEW_AVATAR_CONVERSATION.conversationModel,
+    conversationProfile: voice.conversationProfile ?? defaults.conversationProfile,
+    conversationModel: voice.conversationModel ?? defaults.conversationModel,
   };
 }
 

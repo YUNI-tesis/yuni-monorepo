@@ -7,6 +7,7 @@ import { createElevenLabsConfig, requireElevenLabsConfig, requireElevenLabsDefau
 import { createFeatureConfig } from "./features";
 import { parseRawEnv, requireProductionServerEnv } from "./env";
 import { createLiveAvatarConfig, requireLiveAvatarElevenLabsConnectorConfig } from "./live-avatar";
+import { createNewAvatarConversationConfig } from "./new-avatar-conversation";
 import { createOpenAiConfig, requireOpenAiConfig } from "./openai";
 import { createPricingConfig } from "./pricing";
 import { createRateLimitConfig } from "./rate-limits";
@@ -52,6 +53,37 @@ describe("@yuni/config", () => {
     expect(env.APP_ENV).toBe("production");
     expect(env.OPENAI_API_KEY).toBe("openai-key");
   });
+
+  it("defaults new avatars to natural GPT-5.4 independently of legacy agents", () => {
+    const env = parseRawEnv({});
+
+    expect(createNewAvatarConversationConfig(env)).toEqual({
+      conversationModel: "gpt-5.4",
+      conversationProfile: "natural",
+    });
+    expect(createElevenLabsConfig(env).agentLlmModel).toBe("gpt-4o-mini");
+  });
+
+  it("accepts environment defaults for new avatars without changing legacy agents", () => {
+    const env = parseRawEnv({
+      AVATAR_DEFAULT_CONVERSATION_MODEL: " another-model ",
+      AVATAR_DEFAULT_CONVERSATION_PROFILE: "standard",
+      ELEVENLABS_AGENT_LLM_MODEL: "legacy-model",
+    });
+
+    expect(createNewAvatarConversationConfig(env)).toEqual({
+      conversationModel: "another-model",
+      conversationProfile: "standard",
+    });
+    expect(createElevenLabsConfig(env).agentLlmModel).toBe("legacy-model");
+  });
+
+  it.each([{ AVATAR_DEFAULT_CONVERSATION_MODEL: "   " }, { AVATAR_DEFAULT_CONVERSATION_PROFILE: "invalid" }])(
+    "rejects invalid new-avatar defaults: %j",
+    (input) => {
+      expect(() => parseRawEnv(input)).toThrow(ConfigError);
+    }
+  );
 
   it("allows the web client to parse production env without server secrets", () => {
     const env = parseRawEnv({

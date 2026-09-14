@@ -1,6 +1,6 @@
 # Piloto natural de llamadas individuales
 
-Desde el 14/09/2026, el perfil natural también se aplica automáticamente a los avatares nuevos, con GPT-5.4. Consultá la [configuración de nuevos avatares](new-avatar-conversation-defaults.md). Esta guía conserva la operación por avatar y la evidencia histórica del piloto.
+Desde el 14/09/2026, el perfil natural con GPT-5.4 es el default de los avatares nuevos, configurable por entorno. Consultá la [configuración de nuevos avatares](new-avatar-conversation-defaults.md). Esta guía conserva la operación por avatar y la evidencia histórica del piloto.
 
 El perfil `voiceConfig.conversationProfile: "natural"` se activa por avatar. Sin ese campo se conserva `standard`; los agentes grupales mantienen su configuración habitual.
 

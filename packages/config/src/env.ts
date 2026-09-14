@@ -32,6 +32,9 @@ const RawEnvSchema = z.object({
   OPENAI_GROUP_ROUTER_TIMEOUT_MS: z.coerce.number().int().positive().default(3000),
   OPENAI_EMBEDDINGS_MODEL: z.string().min(1).default("text-embedding-3-small"),
 
+  AVATAR_DEFAULT_CONVERSATION_MODEL: z.string().trim().min(1).default("gpt-5.4"),
+  AVATAR_DEFAULT_CONVERSATION_PROFILE: z.enum(["standard", "natural"]).default("natural"),
+
   ELEVENLABS_API_KEY: z.string().optional(),
   ELEVENLABS_BASE_URL: z.url().default("https://api.elevenlabs.io"),
   ELEVENLABS_DEFAULT_VOICE_ID: z.string().optional(),

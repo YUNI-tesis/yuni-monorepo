@@ -7,7 +7,11 @@ import {
   type UpdateAvatarAgentInput,
 } from "@yuni/domain";
 import { NotFoundError, OwnershipError } from "@yuni/domain";
-import type { LiveAvatarConfig } from "@yuni/config";
+import {
+  newAvatarConversationConfig,
+  type LiveAvatarConfig,
+  type NewAvatarConversationConfig,
+} from "@yuni/config";
 import type { AvatarProvider } from "@yuni/avatars";
 import {
   ElevenLabsProviderError,
@@ -41,6 +45,7 @@ export class AvatarVoiceNotFoundError extends Error {
 export type AvatarsServiceDependencies = {
   repository: AvatarsRepository;
   liveAvatarConfig: Pick<LiveAvatarConfig, "mode" | "sandbox">;
+  newAvatarConversationDefaults?: NewAvatarConversationConfig;
   avatarProvider?: Pick<AvatarProvider, "listAvatars">;
   elevenLabsVoiceProvider?: Pick<ElevenLabsAgentProvider, "listVoices">;
   elevenLabsAgentProvider?: Pick<ElevenLabsAgentProvider, "syncAvatarAgent">;
@@ -54,7 +59,10 @@ export function createAvatarsService(dependencies: AvatarsServiceDependencies) {
     async createAvatar(ownerId: string, input: CreateAvatarAgentInput): Promise<AvatarAgentDto> {
       const inputWithDefaults = {
         ...input,
-        voiceConfig: applyNewAvatarConversationDefaults(input.voiceConfig),
+        voiceConfig: applyNewAvatarConversationDefaults(
+          input.voiceConfig,
+          dependencies.newAvatarConversationDefaults ?? newAvatarConversationConfig
+        ),
       };
       const effectiveInput = await withEffectiveVoiceConfig(
         await withEffectiveLiveAvatarConfig(inputWithDefaults, liveAvatarConfig, avatarProvider),

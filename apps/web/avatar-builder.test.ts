@@ -79,11 +79,11 @@ describe("avatar builder", () => {
         displayName: "Agustin",
         description: "Relaxed, warm and approachable.",
         speakingRate: 1,
-        conversationProfile: "natural",
-        conversationModel: "gpt-5.4",
       },
     });
     expect(payload).not.toHaveProperty("ownerId");
+    expect(payload.voiceConfig).not.toHaveProperty("conversationProfile");
+    expect(payload.voiceConfig).not.toHaveProperty("conversationModel");
   });
 
   it("creates voice config with catalog metadata", () => {
@@ -101,7 +101,7 @@ describe("avatar builder", () => {
     });
   });
 
-  it("uses natural conversation with GPT-5.4 when creating without catalog metadata", () => {
+  it("lets the server choose conversation defaults when creating without catalog metadata", () => {
     const payload = buildCreateAvatarRequest({
       ...createInitialAvatarBuilderState(),
       name: "YUNI Demo",
@@ -114,8 +114,6 @@ describe("avatar builder", () => {
       provider: "elevenlabs",
       voiceId: "saved-voice-id",
       speakingRate: 1,
-      conversationProfile: "natural",
-      conversationModel: "gpt-5.4",
     });
   });
 
@@ -161,10 +159,9 @@ describe("avatar builder", () => {
         credentials: "include",
       })
     );
-    expect(JSON.parse(fetchMock.mock.calls[0]![1].body).voiceConfig).toMatchObject({
-      conversationProfile: "natural",
-      conversationModel: "gpt-5.4",
-    });
+    const sentVoice = JSON.parse(fetchMock.mock.calls[0]![1].body).voiceConfig;
+    expect(sentVoice).not.toHaveProperty("conversationProfile");
+    expect(sentVoice).not.toHaveProperty("conversationModel");
   });
 
   it("fetches live avatar options with credentials included", async () => {

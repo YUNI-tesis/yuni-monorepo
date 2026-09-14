@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { createNewAvatarConversationConfig, parseRawEnv } from "@yuni/config";
 import { OwnershipError, type CreateAvatarAgentInput, type UpdateAvatarAgentInput } from "@yuni/domain";
 import type { AvatarOption } from "@yuni/avatars";
 import {
@@ -470,39 +471,70 @@ describe("@yuni/api avatars", () => {
     expect(body.avatar).not.toHaveProperty("providerSyncError");
   });
 
-  it("defaults new API avatars to natural conversation and exact GPT-5.4 before provider sync", async () => {
-    const syncInputs: AvatarAgentProviderSyncInput[] = [];
-    const dependencies = createTestDependencies([createUser()], undefined, [], {
-      elevenLabsVoices: [elevenLabsVoice()],
-      syncInputs,
-    });
-    const app = createApp(dependencies);
-    const cookie = await login(app);
-    const response = await app.request("/avatars", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Cookie: cookie },
-      body: JSON.stringify(
-        avatarInput({
-          voiceConfig: { provider: "elevenlabs", voiceId: "voice-1", speakingRate: 1 },
+  it.each([
+    { conversationProfile: "natural", conversationModel: "gpt-5.4" },
+    { conversationProfile: "standard", conversationModel: "gpt-4o-mini" },
+  ] as const)(
+    "applies environment defaults $conversationProfile/$conversationModel before provider sync",
+    async (defaults) => {
+      const syncInputs: AvatarAgentProviderSyncInput[] = [];
+      const dependencies = createTestDependencies([createUser()], undefined, [], {
+        elevenLabsVoices: [elevenLabsVoice()],
+        syncInputs,
+      });
+      dependencies.avatars.newAvatarConversationDefaults = createNewAvatarConversationConfig(
+        parseRawEnv({
+          AVATAR_DEFAULT_CONVERSATION_PROFILE: defaults.conversationProfile,
+          AVATAR_DEFAULT_CONVERSATION_MODEL: defaults.conversationModel,
         })
-      ),
-    });
-    const body = (await response.json()) as { avatar: { id: string; voiceConfig: unknown } };
-    expect(response.status).toBe(201);
-    const expectedVoice = {
-      conversationProfile: "natural",
-      conversationModel: "gpt-5.4",
-      displayName: "Agustin",
-    };
-    expect(body.avatar.voiceConfig).toMatchObject(expectedVoice);
-    expect(syncInputs[0]?.voiceConfig).toMatchObject(expectedVoice);
-    expect(await dependencies.avatars.repository.findByIdForOwner("user-1", body.avatar.id)).toMatchObject({
-      voiceConfig: expectedVoice,
-    });
-  });
+      );
+      const app = createApp(dependencies);
+      const cookie = await login(app);
+      const response = await app.request("/avatars", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: cookie },
+        body: JSON.stringify(
+          avatarInput({
+            voiceConfig: { provider: "elevenlabs", voiceId: "voice-1", speakingRate: 1 },
+          })
+        ),
+      });
+      const body = (await response.json()) as { avatar: { id: string; voiceConfig: unknown } };
+      expect(response.status).toBe(201);
+      const expectedVoice = {
+        ...defaults,
+        displayName: "Agustin",
+      };
+      expect(body.avatar.voiceConfig).toMatchObject(expectedVoice);
+      expect(syncInputs[0]?.voiceConfig).toMatchObject(expectedVoice);
+      expect(await dependencies.avatars.repository.findByIdForOwner("user-1", body.avatar.id)).toMatchObject({
+        voiceConfig: expectedVoice,
+      });
+
+      const serviceWithChangedDefaults = createAvatarsService({
+        ...dependencies.avatars,
+        newAvatarConversationDefaults: createNewAvatarConversationConfig(
+          parseRawEnv({
+            AVATAR_DEFAULT_CONVERSATION_PROFILE: "natural",
+            AVATAR_DEFAULT_CONVERSATION_MODEL: "another-deployment-model",
+          })
+        ),
+      });
+      const edited = await serviceWithChangedDefaults.updateAvatar("user-1", body.avatar.id, {
+        voiceConfig: { provider: "elevenlabs", voiceId: "voice-1", speakingRate: 1 },
+      });
+      expect(edited.voiceConfig).toMatchObject(expectedVoice);
+    }
+  );
 
   it("applies creation defaults to internal service callers and the queued creation path", async () => {
     const dependencies = createTestDependencies([createUser()]);
+    dependencies.avatars.newAvatarConversationDefaults = createNewAvatarConversationConfig(
+      parseRawEnv({
+        AVATAR_DEFAULT_CONVERSATION_PROFILE: "standard",
+        AVATAR_DEFAULT_CONVERSATION_MODEL: "gpt-4o-mini",
+      })
+    );
     let queuedInput: CreateAvatarAgentInput | undefined;
     dependencies.avatars.jobs = { async enqueue() {} };
     dependencies.avatars.repository.createWithProviderJobs = async (ownerId, input) => {
@@ -511,12 +543,12 @@ describe("@yuni/api avatars", () => {
     };
     const avatar = await createAvatarsService(dependencies.avatars).createAvatar("user-1", avatarInput());
     expect(queuedInput?.voiceConfig).toMatchObject({
-      conversationProfile: "natural",
-      conversationModel: "gpt-5.4",
+      conversationProfile: "standard",
+      conversationModel: "gpt-4o-mini",
     });
     expect(avatar.voiceConfig).toMatchObject({
-      conversationProfile: "natural",
-      conversationModel: "gpt-5.4",
+      conversationProfile: "standard",
+      conversationModel: "gpt-4o-mini",
     });
   });
 
