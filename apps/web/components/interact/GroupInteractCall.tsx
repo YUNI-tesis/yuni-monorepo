@@ -2016,6 +2016,11 @@ export function GroupInteractCall({
             episode.replacements.set(avatarId, replacement);
           }
           if (!replacement.sessionToken || !replacement.participantAttemptId) {
+            if (replacement.participantAttemptId)
+              episode.failedAttempts.set(avatarId, replacement.participantAttemptId);
+            // Provider preparation can return an errored participant with no
+            // token. A manual retry must request a new attempt, not replay it.
+            episode.replacements.delete(avatarId);
             throw new Error("No pudimos preparar una conexión limpia para el avatar.");
           }
           setParticipants((current) => {

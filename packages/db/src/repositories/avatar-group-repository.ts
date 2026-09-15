@@ -1125,11 +1125,19 @@ export function createAvatarGroupRepository(db: Db) {
             id: input.interruptedTurnId,
             avatarAgentId: avatarId,
             roundId: receipt.roundId,
-            round: { groupVoiceSessionId: sessionId, status: "cancelled" },
+            round: { groupVoiceSessionId: sessionId, status: { in: ["cancelled", "completed"] } },
           },
           include: { round: true },
         });
         if (!turn) return stale;
+        // The last natural end may win the race with the human capture. Keep
+        // that completed round/transcript intact, but let its terminal evidence
+        // resolve the receipt's quarantine before admitting the next question.
+        if (
+          turn.round.status === "completed" &&
+          (turn.status !== "completed" || input.evidence.type !== "speak_ended")
+        )
+          return stale;
         const laterRound = await tx.groupVoiceRound.findFirst({
           where: {
             groupVoiceSessionId: sessionId,

@@ -736,6 +736,109 @@ integration("group floor repository integration", () => {
     ).toEqual([expect.objectContaining({ content: "A terminó su respuesta" })]);
   });
 
+  it("reuses a naturally completed final turn without blocking the next human round", async () => {
+    const fixture = await createFixture("completed-human-capture", 2);
+    const queued = await createQueuedRound(fixture, [fixture.avatarIds[0]!]);
+    const event = { turnId: queued.turn.id, avatarId: queued.turn.avatarAgentId };
+    await fixture.repository.recordProviderEvent(fixture.userId, fixture.sessionId, {
+      ...event,
+      sourceEventId: "natural:start",
+      type: "speak_started",
+    });
+    await fixture.repository.recordProviderEvent(fixture.userId, fixture.sessionId, {
+      ...event,
+      sourceEventId: "natural:end",
+      type: "speak_ended",
+      content: "Respuesta terminada",
+    });
+    const completedRound = await db!.groupVoiceRound.findUnique({ where: { id: queued.turn.roundId } });
+    const completedTurn = await db!.groupPlannedTurn.findUnique({ where: { id: event.turnId } });
+    const messages = await db!.message.findMany({ where: { conversationId: fixture.conversationId } });
+    expect(completedRound?.status).toBe("completed");
+    const cut = { ...event, sourceEventId: "human:after-natural-end" };
+    await expect(
+      fixture.repository.interruptRound(fixture.userId, fixture.sessionId, cut)
+    ).resolves.toMatchObject({
+      interruption: { status: "cancelled", avatarIds: [event.avatarId] },
+    });
+    const readyInput = {
+      interruptionSourceEventId: cut.sourceEventId,
+      participantAttemptId: fixture.participantAttemptIds[0]!,
+      interruptedTurnId: event.turnId,
+      evidence: {
+        type: "speak_ended" as const,
+        eventId: "natural:end",
+        speechSourceEventId: "natural:speech",
+      },
+    };
+    await expect(
+      fixture.repository.markParticipantInterruptionReady(fixture.userId, fixture.sessionId, event.avatarId, {
+        ...readyInput,
+        evidence: { type: "not_dispatched" },
+      })
+    ).resolves.toMatchObject({ kind: "stale" });
+    await expect(
+      fixture.repository.beginRound(fixture.userId, fixture.sessionId, {
+        sourceEventId: "human:still-quarantined",
+        content: "Todavía falta confirmar la reutilización",
+      })
+    ).resolves.toMatchObject({ kind: "busy" });
+    for (const kind of ["ready", "duplicate"]) {
+      await expect(
+        fixture.repository.markParticipantInterruptionReady(
+          fixture.userId,
+          fixture.sessionId,
+          event.avatarId,
+          readyInput
+        )
+      ).resolves.toMatchObject({ kind });
+    }
+    await expect(
+      fixture.repository.interruptRound(fixture.userId, fixture.sessionId, cut)
+    ).resolves.toMatchObject({ replayed: true, session: { orchestrationPhase: "listening" } });
+    await expect(db!.groupVoiceRound.findUnique({ where: { id: queued.turn.roundId } })).resolves.toEqual(
+      completedRound
+    );
+    await expect(db!.groupPlannedTurn.findUnique({ where: { id: event.turnId } })).resolves.toEqual(
+      completedTurn
+    );
+    await expect(
+      db!.message.findMany({ where: { conversationId: fixture.conversationId } })
+    ).resolves.toEqual(messages);
+    await expect(
+      db!.groupVoiceInterruptedTurn.findUnique({ where: { turnId: event.turnId } })
+    ).resolves.toBeNull();
+    await expect(
+      db!.realtimeSession.count({ where: { conversationId: fixture.conversationId } })
+    ).resolves.toBe(2);
+    const next = await createQueuedRound(fixture, [event.avatarId]);
+    for (const type of ["speak_started", "speak_ended"] as const) {
+      await fixture.repository.recordProviderEvent(fixture.userId, fixture.sessionId, {
+        sourceEventId: `next:${type}`,
+        turnId: next.turn.id,
+        avatarId: event.avatarId,
+        type,
+      });
+    }
+    // Even while listening again, the old receipt cannot authorize this later round.
+    await expect(
+      fixture.repository.markParticipantInterruptionReady(
+        fixture.userId,
+        fixture.sessionId,
+        event.avatarId,
+        readyInput
+      )
+    ).resolves.toMatchObject({ kind: "stale" });
+    await expect(
+      fixture.repository.beginParticipantRetry(
+        fixture.userId,
+        fixture.sessionId,
+        event.avatarId,
+        cut.sourceEventId
+      )
+    ).resolves.toBeNull();
+  });
+
   it("records stale human commands durably without modifying a subsequent round", async () => {
     const fixture = await createFixture("stale-human", 2);
     const queued = await createQueuedRound(fixture, [fixture.avatarIds[0]!]);
