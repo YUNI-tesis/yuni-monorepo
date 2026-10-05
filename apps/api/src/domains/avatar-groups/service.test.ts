@@ -1,4 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
+import { Hono } from "hono";
+import { createAvatarGroupsController } from "./controller";
+import { createCreatorSessionMiddleware, type CreatorSessionEnv } from "../auth/middleware";
+import { createSessionToken, SESSION_COOKIE_NAME } from "../auth/session";
 import { createAvatarGroupsService, type AvatarGroupsServiceDependencies } from "./service";
 
 function avatar(id: string) {
@@ -1054,7 +1058,7 @@ describe("avatar group voice service", () => {
       })
     ).resolves.toEqual({
       phase: "listening",
-      directive: { action: "listen", reason: "interrupted" },
+      directive: null,
       floor: null,
     });
   });
@@ -1227,12 +1231,15 @@ describe("avatar group voice service", () => {
       reason: "user",
       expectedAvatarId: "avatar-old",
       expectedTurnId: "turn-old",
+      trigger: "voice",
+      sourceEventId: "scribe:interruption-old",
     });
 
     expect(result).toEqual({ phase: "speaking", directive: null, floor: null });
     expect(interruptRound).toHaveBeenCalledWith("user-1", "session-1", {
       avatarId: "avatar-old",
       turnId: "turn-old",
+      sourceEventId: "scribe:interruption-old",
     });
   });
 
@@ -1474,6 +1481,378 @@ describe("avatar group voice service", () => {
     ).rejects.toThrow("Intento de participante no encontrado");
   });
 
+  it("passes interrupted drafts and provider fragments separately to routing and the next avatar", async () => {
+    const queued = queuedDirectiveState("two");
+    const interruptedTurns = [
+      {
+        turnId: "old-turn",
+        avatarAgentId: "one",
+        generatedText: "BORRADOR_PENDIENTE",
+        reportedFragment: "FRAGMENTO_INFORMADO",
+        fragmentSource: "agent_response_correction",
+      },
+    ];
+    const session = {
+      ...queued.session,
+      id: "session-1",
+      conversationId: "conversation-1",
+      status: "active",
+      activatedAt: new Date("2030-01-01"),
+      expiresAt: new Date("2030-01-02"),
+      rollingSummary: "",
+      interruptionEvents: [{ sourceEventId: "scribe:cut", interruptedTurns }],
+      participants: ["one", "two"].map((id) => ({
+        avatarAgentId: id,
+        status: "active",
+        avatarAgent: avatar(id),
+      })),
+    };
+    const planRound = vi.fn().mockResolvedValue({
+      intent: "normal",
+      instructions: [{ avatarId: "two", instruction: "Respondé la nueva pregunta" }],
+      routing: { strategy: "model", model: "test", fallbackReason: null },
+    });
+    const dependencies = {
+      repository: {
+        findVoiceSessionForOwner: vi.fn().mockResolvedValue(session),
+        beginRound: vi.fn().mockResolvedValue({
+          kind: "created",
+          round: { id: "round-new", userMessageId: "human-new", contextVersion: 2 },
+        }),
+        queueRound: vi.fn().mockResolvedValue(queued),
+        currentDirectiveState: vi.fn().mockResolvedValue(queued),
+      },
+      messagesRepository: {
+        listByConversation: vi.fn().mockResolvedValue([
+          { id: "human-old", role: "user", content: "Pregunta anterior" },
+          { id: "fragment", role: "assistant", content: "FRAGMENTO_INFORMADO", speakerAvatarId: "one" },
+          { id: "human-new", role: "user", content: "Ahora preguntale al otro" },
+        ]),
+      },
+      orchestrator: { planRound },
+    } as unknown as AvatarGroupsServiceDependencies;
+    const result = await createAvatarGroupsService(dependencies).turn("user-1", "session-1", {
+      sourceEventId: "human-new",
+      content: "Ahora preguntale al otro",
+    });
+    expect(planRound).toHaveBeenCalledWith(
+      expect.objectContaining({
+        interruptions: [
+          {
+            sourceEventId: "scribe:cut",
+            turnId: "old-turn",
+            avatarId: "one",
+            generatedDraft: "BORRADOR_PENDIENTE",
+            reportedFragment: "FRAGMENTO_INFORMADO",
+            fragmentSource: "agent_response_correction",
+            heardCertainty: "unknown",
+          },
+        ],
+      })
+    );
+    const input = planRound.mock.calls[0]?.[0] as { transcript: Array<{ content: string }> };
+    expect(input.transcript.some((message) => message.content.includes("BORRADOR_PENDIENTE"))).toBe(false);
+    expect(result.directive).toMatchObject({
+      action: "speak",
+      context: expect.stringContaining("NO confirmado como pronunciado"),
+    });
+    expect(result.directive).toMatchObject({ context: expect.stringContaining("BORRADOR_PENDIENTE") });
+    expect(result.directive).toMatchObject({ context: expect.stringContaining("FRAGMENTO_INFORMADO") });
+  });
+
+  it("bounds long multibyte interruption names and retains the current human request within 9000 bytes", async () => {
+    const queued = queuedDirectiveState("two");
+    const participants = ["one", "two", "three"].map((id) => ({
+      avatarAgentId: id,
+      status: "active",
+      avatarAgent: { ...avatar(id), name: "ñ".repeat(20_000), description: "d".repeat(5_000) },
+    }));
+    const interruptionEvents = [1, 2, 3].map((id) => ({
+      sourceEventId: `cut:${id}`,
+      interruptedTurns: [
+        {
+          turnId: `old-${id}`,
+          avatarAgentId: "one",
+          generatedText: "ñ".repeat(8_000),
+          reportedFragment: "ñ".repeat(8_000),
+          fragmentSource: "agent_response_correction",
+        },
+      ],
+    }));
+    const session = {
+      ...queued.session,
+      id: "session-1",
+      conversationId: "conversation-1",
+      status: "active",
+      activatedAt: new Date("2030-01-01"),
+      expiresAt: new Date("2030-01-02"),
+      participants,
+      interruptionEvents,
+    };
+    const dependencies = {
+      repository: {
+        findVoiceSessionForOwner: vi.fn().mockResolvedValue(session),
+        recordProviderEvent: vi.fn().mockResolvedValue({ kind: "next", next: queued.turn }),
+        currentDirectiveState: vi.fn().mockResolvedValue(queued),
+      },
+      messagesRepository: {
+        listByConversation: vi
+          .fn()
+          .mockResolvedValue([{ role: "user", content: "PEDIDO_ACTUAL_CONSERVADO" }]),
+      },
+    } as unknown as AvatarGroupsServiceDependencies;
+    const result = await createAvatarGroupsService(dependencies).providerEvent("user-1", "session-1", {
+      sourceEventId: "old:end",
+      avatarId: "one",
+      turnId: "old-turn",
+      type: "speak_ended",
+    });
+    expect(result.directive).toMatchObject({
+      action: "speak",
+      context: expect.stringContaining("PEDIDO_ACTUAL_CONSERVADO"),
+    });
+    if (result.directive?.action !== "speak") throw new Error("Expected speak directive");
+    expect(new TextEncoder().encode(result.directive.context).byteLength).toBeLessThanOrEqual(9_000);
+  });
+
+  it.each(["stale", "duplicate"])(
+    "does not end a two-avatar call for a %s old failure during replacement",
+    async (kind) => {
+      const participant = {
+        avatarAgentId: "one",
+        realtimeSessionId: "replacement-one",
+        status: "connecting",
+        errorMessage: null,
+      };
+      const session = {
+        id: "session-1",
+        status: "active",
+        activatedAt: new Date("2030-01-01"),
+        expiresAt: new Date("2030-01-02"),
+        orchestrationPhase: "listening",
+        participants: [
+          participant,
+          { avatarAgentId: "two", realtimeSessionId: "attempt-two", status: "active" },
+        ],
+      };
+      const endSession = vi.fn();
+      const dependencies = {
+        repository: {
+          findVoiceSessionForOwner: vi.fn().mockResolvedValue(session),
+          failParticipant: vi.fn().mockResolvedValue({ kind, session, participant, next: null }),
+          currentDirectiveState: vi.fn().mockResolvedValue({ session, turn: null }),
+          endSession,
+        },
+      } as unknown as AvatarGroupsServiceDependencies;
+      await expect(
+        createAvatarGroupsService(dependencies).participantFailure("user-1", "session-1", "one", {
+          sourceEventId: "old-failure",
+          participantAttemptId: "attempt-one",
+          reason: "session_stopped",
+        })
+      ).resolves.toMatchObject({ phase: "listening" });
+      expect(endSession).not.toHaveBeenCalled();
+    }
+  );
+
+  it("counts human receipt-owned connecting replacements when another participant fails", async () => {
+    const failed = {
+      avatarAgentId: "three",
+      realtimeSessionId: "attempt-three",
+      status: "errored",
+      errorMessage: "stopped",
+    };
+    const session = {
+      id: "session-1",
+      status: "active",
+      activatedAt: new Date("2030-01-01"),
+      expiresAt: new Date("2030-01-02"),
+      orchestrationPhase: "listening",
+      participants: ["one", "two"]
+        .map((id) => ({ avatarAgentId: id, realtimeSessionId: `replacement-${id}`, status: "connecting" }))
+        .concat([failed]),
+      interruptionEvents: [
+        {
+          affectedParticipants: [
+            { replacementAttemptId: "replacement-one" },
+            { replacementAttemptId: "replacement-two" },
+          ],
+        },
+      ],
+    };
+    const endSession = vi.fn();
+    const dependencies = {
+      repository: {
+        findVoiceSessionForOwner: vi.fn().mockResolvedValue(session),
+        failParticipant: vi
+          .fn()
+          .mockResolvedValue({ kind: "completed", session, participant: failed, next: null }),
+        endSession,
+      },
+    } as unknown as AvatarGroupsServiceDependencies;
+    await expect(
+      createAvatarGroupsService(dependencies).participantFailure("user-1", "session-1", "three", {
+        sourceEventId: "current-failure",
+        participantAttemptId: "attempt-three",
+        reason: "session_stopped",
+      })
+    ).resolves.toMatchObject({ phase: "listening" });
+    expect(endSession).not.toHaveBeenCalled();
+  });
+
+  it("replays a prepared replacement token without allocating another provider session", async () => {
+    const prepared = {
+      id: "participant",
+      avatarAgentId: "one",
+      realtimeSessionId: "replacement",
+      status: "active",
+      avatarAgent: avatar("one"),
+      realtimeSession: {
+        providerSessionTokenCiphertext: "encrypted-token",
+        providerSessionId: "provider-session",
+      },
+      retryAlreadyPrepared: true,
+    };
+    const beginParticipantRetry = vi.fn().mockResolvedValue(prepared);
+    const createLiteSessionToken = vi.fn();
+    const dependencies = {
+      repository: {
+        findVoiceSessionForOwner: vi.fn().mockResolvedValue({
+          id: "session-1",
+          status: "active",
+          activatedAt: new Date("2030-01-01"),
+          expiresAt: new Date("2030-01-02"),
+          participants: [prepared],
+        }),
+        beginParticipantRetry,
+      },
+      liveAvatarProvider: { createLiteSessionToken },
+      providerTokenProtector: { decrypt: vi.fn().mockReturnValue("recovered-token") },
+    } as unknown as AvatarGroupsServiceDependencies;
+    await expect(
+      createAvatarGroupsService(dependencies).retry("user-1", "session-1", "one", {
+        interruptionSourceEventId: "human-cut",
+        failedParticipantAttemptId: "old-replacement",
+      })
+    ).resolves.toMatchObject({ participantAttemptId: "replacement", sessionToken: "recovered-token" });
+    expect(createLiteSessionToken).not.toHaveBeenCalled();
+    expect(beginParticipantRetry).toHaveBeenCalledWith(
+      "user-1",
+      "session-1",
+      "one",
+      "human-cut",
+      "old-replacement"
+    );
+  });
+
+  it("replayed human cancellation reports the current floor without dispatching a stale interrupt", async () => {
+    const queued = queuedDirectiveState("two");
+    const interruption = {
+      sourceEventId: "human-cut",
+      status: "cancelled",
+      turnId: "old-turn",
+      avatarIds: ["one"],
+    };
+    const dependencies = {
+      repository: {
+        findVoiceSessionForOwner: vi.fn().mockResolvedValue({
+          ...queued.session,
+          status: "active",
+          activatedAt: new Date("2030-01-01"),
+          expiresAt: new Date("2030-01-02"),
+        }),
+        interruptRound: vi.fn().mockResolvedValue({
+          kind: "interrupted",
+          session: queued.session,
+          avatarId: null,
+          replayed: true,
+          interruption,
+        }),
+      },
+    } as unknown as AvatarGroupsServiceDependencies;
+    await expect(
+      createAvatarGroupsService(dependencies).interrupt("user-1", "session-1", {
+        reason: "user",
+        trigger: "voice",
+        sourceEventId: "human-cut",
+        expectedTurnId: "old-turn",
+        expectedAvatarId: "one",
+      })
+    ).resolves.toMatchObject({
+      phase: "queued",
+      directive: null,
+      floor: { turnId: queued.turn.id, avatarId: "two" },
+      interruption,
+    });
+  });
+
+  it.each(["ready", "duplicate"])(
+    "acknowledges %s interruption reuse without touching providers",
+    async (kind) => {
+      const state = listeningDirectiveState();
+      const markParticipantInterruptionReady = vi.fn().mockResolvedValue({ kind, ...state, participant: {} });
+      const beginParticipantRetry = vi.fn();
+      const stopSession = vi.fn();
+      const dependencies = {
+        repository: {
+          findVoiceSessionForOwner: vi.fn().mockResolvedValue({
+            ...state.session,
+            status: "active",
+            activatedAt: new Date("2030-01-01"),
+            expiresAt: new Date("2030-01-02"),
+          }),
+          markParticipantInterruptionReady,
+          beginParticipantRetry,
+        },
+        liveAvatarProvider: { stopSession },
+      } as unknown as AvatarGroupsServiceDependencies;
+      const input = interruptionReadyInput();
+
+      await expect(
+        createAvatarGroupsService(dependencies).confirmParticipantInterruptionReady(
+          "user-1",
+          "session-1",
+          "one",
+          input
+        )
+      ).resolves.toEqual({ applied: true, phase: "listening", directive: null, floor: null });
+      expect(markParticipantInterruptionReady).toHaveBeenCalledWith("user-1", "session-1", "one", input);
+      expect(beginParticipantRetry).not.toHaveBeenCalled();
+      expect(stopSession).not.toHaveBeenCalled();
+    }
+  );
+
+  it("reports a stale reuse acknowledgement with the newer floor and no dispatch", async () => {
+    const queued = queuedDirectiveState("two");
+    const dependencies = {
+      repository: {
+        findVoiceSessionForOwner: vi.fn().mockResolvedValue({
+          ...queued.session,
+          status: "active",
+          activatedAt: new Date("2030-01-01"),
+          expiresAt: new Date("2030-01-02"),
+        }),
+        markParticipantInterruptionReady: vi
+          .fn()
+          .mockResolvedValue({ kind: "stale", ...queued, participant: null }),
+      },
+    } as unknown as AvatarGroupsServiceDependencies;
+
+    await expect(
+      createAvatarGroupsService(dependencies).confirmParticipantInterruptionReady(
+        "user-1",
+        "session-1",
+        "one",
+        interruptionReadyInput()
+      )
+    ).resolves.toMatchObject({
+      applied: false,
+      phase: "queued",
+      directive: null,
+      floor: { turnId: queued.turn.id, avatarId: "two" },
+    });
+  });
+
   it("recovers stale deliberations before cleaning floor leases", async () => {
     const recoverStaleDeliberatingRounds = vi.fn().mockResolvedValue(1);
     const dependencies = {
@@ -1488,5 +1867,122 @@ describe("avatar group voice service", () => {
 
     await expect(createAvatarGroupsService(dependencies).cleanupExpired(now)).resolves.toBe(0);
     expect(recoverStaleDeliberatingRounds).toHaveBeenCalledWith(new Date("2030-01-01T00:00:15.000Z"));
+  });
+});
+
+function interruptionReadyInput() {
+  return {
+    interruptionSourceEventId: "human-cut",
+    participantAttemptId: "attempt-one",
+    interruptedTurnId: "turn-one",
+    evidence: { type: "speak_ended" as const, eventId: "terminal-one", speechSourceEventId: "speech-one" },
+  };
+}
+
+describe("authenticated group interruption readiness controller", () => {
+  async function controllerFixture() {
+    const state = listeningDirectiveState();
+    const markParticipantInterruptionReady = vi
+      .fn()
+      .mockResolvedValue({ kind: "ready", ...state, participant: {} });
+    const findVoiceSessionForOwner = vi.fn(async (principalId: string, sessionId: string) =>
+      ["owner-1", "shared-participant-1"].includes(principalId) && sessionId === "session-1"
+        ? {
+            ...state.session,
+            status: "active",
+            activatedAt: new Date("2030-01-01"),
+            expiresAt: new Date("2030-01-02"),
+          }
+        : null
+    );
+    const dependencies = {
+      repository: { findVoiceSessionForOwner, markParticipantInterruptionReady },
+    } as unknown as AvatarGroupsServiceDependencies;
+    const app = new Hono<CreatorSessionEnv>();
+    app.use(
+      "*",
+      createCreatorSessionMiddleware({
+        async findPublicById(id) {
+          return {
+            id,
+            name: "Participant",
+            email: `${id}@example.com`,
+            imageUrl: null,
+            createdAt: new Date("2030-01-01"),
+            updatedAt: new Date("2030-01-01"),
+          };
+        },
+      })
+    );
+    app.route("/", createAvatarGroupsController(dependencies));
+    async function request(principalId?: string, body: unknown = interruptionReadyInput()) {
+      const token = principalId
+        ? await createSessionToken({
+            id: principalId,
+            name: "Participant",
+            email: `${principalId}@example.com`,
+          })
+        : null;
+      return app.request("/group-voice-sessions/session-1/participants/one/interruption-ready", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Cookie: `${SESSION_COOKIE_NAME}=${token}` } : {}),
+        },
+        body: JSON.stringify(body),
+      });
+    }
+    return { request, findVoiceSessionForOwner, markParticipantInterruptionReady };
+  }
+
+  it.each(["owner-1", "shared-participant-1"])(
+    "uses the current %s principal for a reuse acknowledgement",
+    async (principalId) => {
+      const { request, findVoiceSessionForOwner, markParticipantInterruptionReady } =
+        await controllerFixture();
+      const response = await request(principalId);
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({
+        applied: true,
+        phase: "listening",
+        directive: null,
+        floor: null,
+      });
+      expect(findVoiceSessionForOwner).toHaveBeenCalledWith(principalId, "session-1");
+      expect(markParticipantInterruptionReady).toHaveBeenCalledWith(
+        principalId,
+        "session-1",
+        "one",
+        interruptionReadyInput()
+      );
+    }
+  );
+
+  it("requires a session and rejects inaccessible calls before acknowledging reuse", async () => {
+    const { request, markParticipantInterruptionReady } = await controllerFixture();
+    expect((await request()).status).toBe(401);
+    expect((await request("unrelated-user")).status).toBe(404);
+    expect(markParticipantInterruptionReady).not.toHaveBeenCalled();
+  });
+
+  it("requires correlated terminal evidence or an explicit not-dispatched acknowledgement", async () => {
+    const { request, markParticipantInterruptionReady } = await controllerFixture();
+    expect(
+      (
+        await request("owner-1", {
+          ...interruptionReadyInput(),
+          evidence: { type: "speak_ended", eventId: "terminal-one" },
+        })
+      ).status
+    ).toBe(400);
+    expect(markParticipantInterruptionReady).not.toHaveBeenCalled();
+    expect(
+      (
+        await request("owner-1", {
+          ...interruptionReadyInput(),
+          evidence: { type: "not_dispatched" },
+        })
+      ).status
+    ).toBe(200);
   });
 });

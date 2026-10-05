@@ -1,6 +1,8 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
 import {
   GroupSharingIneligibleError,
+  GroupVoiceParticipantInterruptionEvidenceSchema,
+  type GroupVoiceParticipantInterruptionReadyInput,
   groupConsentScopeId,
   LiveAvatarConfigSchema,
   NotFoundError,
@@ -803,6 +805,12 @@ export function createAvatarGroupRepository(db: Db) {
             },
             orderBy: { createdAt: "asc" },
           },
+          interruptionEvents: {
+            where: { status: "cancelled" },
+            include: { interruptedTurns: { orderBy: { createdAt: "asc" } } },
+            orderBy: { createdAt: "desc" },
+            take: 8,
+          },
         },
       });
       if (!session) return null;
@@ -1061,7 +1069,119 @@ export function createAvatarGroupRepository(db: Db) {
       });
     },
 
-    async beginParticipantRetry(ownerId: string, sessionId: string, avatarId: string) {
+    async markParticipantInterruptionReady(
+      ownerId: string,
+      sessionId: string,
+      avatarId: string,
+      input: GroupVoiceParticipantInterruptionReadyInput
+    ) {
+      return db.$transaction(async (tx) => {
+        await lockGroupVoiceSessions(tx, [sessionId]);
+        const session = await tx.groupVoiceSession.findFirst({
+          where: { id: sessionId, ...sessionPrincipalWhere(ownerId) },
+        });
+        if (!session) throw new NotFoundError("Llamada grupal no encontrada");
+        const participant = await tx.groupVoiceParticipant.findFirst({
+          where: { groupVoiceSessionId: sessionId, avatarAgentId: avatarId },
+          include: { realtimeSession: true },
+        });
+        if (!participant) throw new NotFoundError("Participante no encontrado");
+        const stale = { kind: "stale" as const, session, participant };
+        if (
+          session.status !== "active" ||
+          session.expiresAt <= new Date() ||
+          session.orchestrationPhase !== "listening" ||
+          session.floorTurnId !== null ||
+          session.floorOwnerAvatarId !== null ||
+          session.floorLeaseExpiresAt !== null ||
+          participant.status !== "active" ||
+          participant.realtimeSessionId !== input.participantAttemptId ||
+          participant.realtimeSession?.status !== "active" ||
+          !participant.realtimeSession.activatedAt
+        )
+          return stale;
+        const receipt = await tx.groupVoiceInterruptionEvent.findUnique({
+          where: {
+            groupVoiceSessionId_sourceEventId: {
+              groupVoiceSessionId: sessionId,
+              sourceEventId: input.interruptionSourceEventId,
+            },
+          },
+        });
+        if (receipt?.status !== "cancelled" || !receipt.roundId) return stale;
+        const affected = readAffectedParticipants(receipt.affectedParticipants);
+        const target = affected.find((item) => item.avatarId === avatarId);
+        const interruptedTurnId =
+          target?.interruptedTurnId ?? (receipt.avatarAgentId === avatarId ? receipt.turnId : null);
+        if (
+          !target ||
+          target.participantAttemptId !== input.participantAttemptId ||
+          target.replacementAttemptId ||
+          interruptedTurnId !== input.interruptedTurnId
+        )
+          return stale;
+        const turn = await tx.groupPlannedTurn.findFirst({
+          where: {
+            id: input.interruptedTurnId,
+            avatarAgentId: avatarId,
+            roundId: receipt.roundId,
+            round: { groupVoiceSessionId: sessionId, status: { in: ["cancelled", "completed"] } },
+          },
+          include: { round: true },
+        });
+        if (!turn) return stale;
+        // The last natural end may win the race with the human capture. Keep
+        // that completed round/transcript intact, but let its terminal evidence
+        // resolve the receipt's quarantine before admitting the next question.
+        if (
+          turn.round.status === "completed" &&
+          (turn.status !== "completed" || input.evidence.type !== "speak_ended")
+        )
+          return stale;
+        const laterRound = await tx.groupVoiceRound.findFirst({
+          where: {
+            groupVoiceSessionId: sessionId,
+            contextVersion: { gt: turn.round.contextVersion },
+          },
+          select: { id: true },
+        });
+        // Validate before replaying: an old ACK cannot authorize this attempt in a later round.
+        if (laterRound) return stale;
+        if (target.reuseConfirmed) {
+          return {
+            kind:
+              target.reuseConfirmed.interruptedTurnId === input.interruptedTurnId &&
+              sameInterruptionEvidence(target.reuseConfirmed.evidence, input.evidence)
+                ? ("duplicate" as const)
+                : ("stale" as const),
+            session,
+            participant,
+          };
+        }
+        if (input.evidence.type === "not_dispatched") {
+          const providerEvent = await tx.groupVoiceProviderEvent.findFirst({
+            where: { groupVoiceSessionId: sessionId, turnId: turn.id, avatarAgentId: avatarId },
+            select: { id: true },
+          });
+          if (providerEvent) return stale;
+        }
+        // This is client-reported terminal evidence, not a provider delivery or audio guarantee.
+        target.reuseConfirmed = { interruptedTurnId: input.interruptedTurnId, evidence: input.evidence };
+        await tx.groupVoiceInterruptionEvent.update({
+          where: { id: receipt.id },
+          data: { affectedParticipants: affected },
+        });
+        return { kind: "ready" as const, session, participant };
+      });
+    },
+
+    async beginParticipantRetry(
+      ownerId: string,
+      sessionId: string,
+      avatarId: string,
+      interruptionSourceEventId?: string,
+      failedParticipantAttemptId?: string
+    ) {
       return db.$transaction(async (tx) => {
         await lockGroupVoiceSessions(tx, [sessionId]);
         const current = await tx.groupVoiceParticipant.findFirst({
@@ -1073,13 +1193,75 @@ export function createAvatarGroupRepository(db: Db) {
               status: { in: ["connecting", "active"] },
             },
           },
-          include: { realtimeSession: true, groupVoiceSession: true },
+          include: {
+            realtimeSession: true,
+            groupVoiceSession: true,
+            avatarAgent: { include: avatarWithKnowledgeInclude },
+          },
         });
         if (!current) throw new NotFoundError("Participante no encontrado");
+        const receipt = interruptionSourceEventId
+          ? await tx.groupVoiceInterruptionEvent.findUnique({
+              where: {
+                groupVoiceSessionId_sourceEventId: {
+                  groupVoiceSessionId: sessionId,
+                  sourceEventId: interruptionSourceEventId,
+                },
+              },
+            })
+          : null;
+        const affected = readAffectedParticipants(receipt?.affectedParticipants);
+        const affectedParticipant = affected.find((item) => item.avatarId === avatarId);
+        if (interruptionSourceEventId) {
+          if (
+            receipt?.status !== "cancelled" ||
+            !affectedParticipant ||
+            current.groupVoiceSession.orchestrationPhase !== "listening"
+          )
+            return null;
+          const interruptedRound = receipt.roundId
+            ? await tx.groupVoiceRound.findUnique({ where: { id: receipt.roundId } })
+            : null;
+          const laterRound = interruptedRound
+            ? await tx.groupVoiceRound.findFirst({
+                where: {
+                  groupVoiceSessionId: sessionId,
+                  contextVersion: { gt: interruptedRound.contextVersion },
+                },
+              })
+            : null;
+          // A replacement attempt can later participate in a completed round.
+          // The old receipt must not become authority to replace that healthy session.
+          if (!interruptedRound || laterRound) return null;
+          const original = affectedParticipant.participantAttemptId === current.realtimeSessionId;
+          if (
+            original &&
+            affectedParticipant.reuseConfirmed &&
+            (failedParticipantAttemptId !== current.realtimeSessionId ||
+              current.status !== "errored" ||
+              current.realtimeSession?.status !== "errored")
+          )
+            return null;
+          // A lost reuse ACK can be followed by a real connector failure. Only
+          // the persisted failure of this exact attempt authorizes recovery;
+          // a delayed retry body cannot retire an active reused connection.
+          if (
+            affectedParticipant.replacementAttemptId === current.realtimeSessionId &&
+            failedParticipantAttemptId !== current.realtimeSessionId &&
+            current.status === "active" &&
+            current.realtimeSession?.providerSessionTokenCiphertext
+          ) {
+            return { ...current, retryAlreadyPrepared: true };
+          }
+          const failedReplacement =
+            affectedParticipant.replacementAttemptId === current.realtimeSessionId &&
+            (current.status === "errored" || failedParticipantAttemptId === current.realtimeSessionId);
+          if (!original && !failedReplacement) return null;
+        }
         const claimed = await tx.groupVoiceParticipant.updateMany({
           where: {
             id: current.id,
-            status: "errored",
+            status: interruptionSourceEventId ? { in: ["active", "errored"] } : "errored",
             realtimeSessionId: current.realtimeSessionId,
             groupVoiceSession: {
               ...sessionPrincipalWhere(ownerId),
@@ -1108,13 +1290,21 @@ export function createAvatarGroupRepository(db: Db) {
           where: { id: current.id },
           data: { realtimeSessionId: realtime.id },
         });
-        return tx.groupVoiceParticipant.findUniqueOrThrow({
+        if (receipt && affectedParticipant) {
+          affectedParticipant.replacementAttemptId = realtime.id;
+          await tx.groupVoiceInterruptionEvent.update({
+            where: { id: receipt.id },
+            data: { affectedParticipants: affected },
+          });
+        }
+        const prepared = await tx.groupVoiceParticipant.findUniqueOrThrow({
           where: { id: current.id },
           include: {
             avatarAgent: { include: avatarWithKnowledgeInclude },
             realtimeSession: true,
           },
         });
+        return { ...prepared, retryAlreadyPrepared: false };
       });
     },
 
@@ -1160,6 +1350,21 @@ export function createAvatarGroupRepository(db: Db) {
           });
           if (participant.realtimeSessionId !== input.participantAttemptId) {
             return { kind: "stale" as const, session, participant, next: null };
+          }
+          if (input.reason === "stream_error" && input.expectedTurnId) {
+            const receipts = await tx.groupVoiceInterruptionEvent.findMany({
+              where: { groupVoiceSessionId: sessionId, status: "cancelled" },
+              select: { affectedParticipants: true },
+            });
+            const reusedInterruptedTurn = receipts.some((receipt) =>
+              readAffectedParticipants(receipt.affectedParticipants).some(
+                (affected) =>
+                  affected.avatarId === avatarId &&
+                  affected.participantAttemptId === input.participantAttemptId &&
+                  affected.reuseConfirmed?.interruptedTurnId === input.expectedTurnId
+              )
+            );
+            if (reusedInterruptedTurn) return { kind: "stale" as const, session, participant, next: null };
           }
           if (participant.status === "errored" || participant.status === "ended") {
             return { kind: "duplicate" as const, session, participant, next: null };
@@ -1415,6 +1620,9 @@ export function createAvatarGroupRepository(db: Db) {
             include: { plannedTurns: { orderBy: { position: "asc" } } },
           });
           if (existing) return { kind: "duplicate" as const, round: existing };
+          if (await hasPendingInterruptionReplacement(tx, sessionId)) {
+            return { kind: "busy" as const, session };
+          }
           const claimed = await tx.groupVoiceSession.updateMany({
             where: {
               id: sessionId,
@@ -1426,6 +1634,10 @@ export function createAvatarGroupRepository(db: Db) {
           });
           if (claimed.count !== 1) return { kind: "busy" as const, session };
 
+          const latestInterruption = await tx.groupVoiceInterruptionEvent.findFirst({
+            where: { groupVoiceSessionId: sessionId, status: "cancelled" },
+            orderBy: { createdAt: "desc" },
+          });
           const message = await tx.message.create({
             data: {
               conversationId: session.conversationId,
@@ -1433,6 +1645,9 @@ export function createAvatarGroupRepository(db: Db) {
               content: input.content,
               sourceEventId: input.sourceEventId,
               metadata: { source: "scribe", final: true },
+              ...(latestInterruption
+                ? { createdAt: new Date(Math.max(Date.now(), latestInterruption.createdAt.getTime() + 1)) }
+                : {}),
             },
           });
           await tx.conversation.update({
@@ -1635,6 +1850,7 @@ export function createAvatarGroupRepository(db: Db) {
           | "speak_ended"
           | "interruption";
         content?: string;
+        generatedText?: string;
       },
       leaseMs = 75_000
     ) {
@@ -1682,11 +1898,76 @@ export function createAvatarGroupRepository(db: Db) {
                 avatarAgentId: input.avatarId,
                 turnId: turn.id,
                 type: input.type,
-                ...(input.content ? { payload: { content: input.content } } : {}),
+                ...(input.content !== undefined || input.generatedText !== undefined
+                  ? {
+                      payload: {
+                        ...(input.content !== undefined ? { content: input.content } : {}),
+                        ...(input.generatedText !== undefined ? { generatedText: input.generatedText } : {}),
+                      },
+                    }
+                  : {}),
               },
             });
 
           if (input.type === "agent_response" || input.type === "agent_response_correction") {
+            const interrupted = await tx.groupVoiceInterruptedTurn.findUnique({
+              where: { turnId: turn.id },
+              include: { interruptionEvent: true },
+            });
+            if (interrupted?.interruptionEvent.groupVoiceSessionId === sessionId) {
+              await persistAuthorizedEvent();
+              if (input.type === "agent_response_correction") {
+                const message = responseText
+                  ? await upsertAssistantTurnMessage(
+                      tx,
+                      session.conversationId,
+                      turn,
+                      responseText,
+                      {
+                        interrupted: true,
+                        fragmentSource: "agent_response_correction",
+                        heardCertainty: "unknown",
+                      },
+                      interrupted.createdAt
+                    )
+                  : null;
+                // Empty corrections are meaningful: do not preserve a previous guessed fragment.
+                if (!responseText && interrupted.messageId) {
+                  await tx.message.updateMany({
+                    where: { id: interrupted.messageId },
+                    data: {
+                      content: "",
+                      metadata: {
+                        interrupted: true,
+                        fragmentSource: "agent_response_correction",
+                        heardCertainty: "unknown",
+                      },
+                    },
+                  });
+                }
+                await tx.groupVoiceInterruptedTurn.update({
+                  where: { id: interrupted.id },
+                  data: {
+                    reportedFragment: responseText,
+                    fragmentSource: "agent_response_correction",
+                    ...(message ? { messageId: message.id } : {}),
+                    ...(!interrupted.generatedText && input.generatedText?.trim()
+                      ? { generatedText: input.generatedText.trim() }
+                      : {}),
+                  },
+                });
+                await tx.groupPlannedTurn.updateMany({
+                  where: { id: turn.id, status: "interrupted" },
+                  data: { responseText },
+                });
+              } else if (responseText && !interrupted.generatedText) {
+                await tx.groupVoiceInterruptedTurn.update({
+                  where: { id: interrupted.id },
+                  data: { generatedText: responseText },
+                });
+              }
+              return { kind: "late_updated" as const, session, next: null };
+            }
             if (turn.status === "completed") {
               await persistAuthorizedEvent();
               if (responseText) {
@@ -1727,7 +2008,7 @@ export function createAvatarGroupRepository(db: Db) {
                 status: { in: ["claimed", "speaking"] },
                 ...(input.type === "agent_response" ? { responseText: null } : {}),
               },
-              data: { ...(responseText ? { responseText } : {}) },
+              data: { responseText },
             });
             if (responseUpdate.count !== 1) {
               return {
@@ -1797,30 +2078,10 @@ export function createAvatarGroupRepository(db: Db) {
           }
 
           if (input.type === "interruption") {
-            if (!ownsFloor || turn.status !== "speaking" || session.orchestrationPhase !== "speaking") {
-              return {
-                kind: "unauthorized" as const,
-                reason: "invalid_turn_state" as const,
-                session,
-                next: null,
-              };
-            }
-            const interrupted = await cancelRoundTransaction(tx, sessionId, turn.roundId, {
-              principalId: ownerId,
-              avatarId: input.avatarId,
-              turnId: turn.id,
-              phases: ["speaking"],
-              leaseAfter: now,
-            });
-            if (interrupted) await persistAuthorizedEvent();
-            return interrupted
-              ? { kind: "interrupted" as const, session, next: null }
-              : {
-                  kind: "unauthorized" as const,
-                  reason: "invalid_turn_state" as const,
-                  session,
-                  next: null,
-                };
+            // Provider events confirm transport activity; only the authenticated
+            // human command endpoint is allowed to preempt a conversational round.
+            await persistAuthorizedEvent();
+            return { kind: "accepted" as const, session, next: null };
           }
 
           if (!ownsFloor || turn.status !== "speaking" || session.orchestrationPhase !== "speaking") {
@@ -1963,7 +2224,14 @@ export function createAvatarGroupRepository(db: Db) {
     async interruptRound(
       ownerId: string,
       sessionId: string,
-      expected: { avatarId?: string; turnId?: string } = {}
+      expected: {
+        avatarId?: string;
+        turnId?: string;
+        sourceEventId?: string;
+        generatedText?: string;
+        spokenFragment?: string;
+        spokenFragmentSource?: "agent_response_correction";
+      } = {}
     ) {
       return db.$transaction(async (tx) => {
         await lockGroupVoiceSessions(tx, [sessionId]);
@@ -1971,6 +2239,203 @@ export function createAvatarGroupRepository(db: Db) {
           where: { id: sessionId, ...sessionPrincipalWhere(ownerId) },
         });
         if (!session) throw new NotFoundError("Llamada grupal no encontrada");
+        if (expected.sourceEventId && expected.turnId && expected.avatarId) {
+          const sourceEventId = expected.sourceEventId;
+          const existing = await tx.groupVoiceInterruptionEvent.findUnique({
+            where: {
+              groupVoiceSessionId_sourceEventId: { groupVoiceSessionId: sessionId, sourceEventId },
+            },
+          });
+          if (existing)
+            return {
+              kind: existing.status === "cancelled" ? ("interrupted" as const) : ("stale" as const),
+              session,
+              avatarId: null,
+              replayed: true,
+              interruption: {
+                sourceEventId,
+                status: existing.status as "cancelled" | "stale",
+                turnId: existing.turnId,
+                avatarIds: readAffectedParticipants(existing.affectedParticipants).map(
+                  (item) => item.avatarId
+                ),
+                affectedParticipants: readAffectedParticipants(existing.affectedParticipants),
+              },
+            };
+          const captured = await tx.groupPlannedTurn.findFirst({
+            where: {
+              id: expected.turnId,
+              avatarAgentId: expected.avatarId,
+              round: { groupVoiceSessionId: sessionId },
+            },
+            include: { round: true },
+          });
+          const laterRound = captured
+            ? await tx.groupVoiceRound.findFirst({
+                where: {
+                  groupVoiceSessionId: sessionId,
+                  contextVersion: { gt: captured.round.contextVersion },
+                },
+              })
+            : null;
+          const stale =
+            !captured ||
+            laterRound !== null ||
+            session.status !== "active" ||
+            session.expiresAt <= new Date();
+          const currentTurn =
+            !stale && session.floorTurnId
+              ? await tx.groupPlannedTurn.findUnique({ where: { id: session.floorTurnId } })
+              : null;
+          const sameRound = !currentTurn || currentTurn.roundId === captured?.roundId;
+          const status = stale || !sameRound ? ("stale" as const) : ("cancelled" as const);
+          const avatarIds =
+            status === "cancelled"
+              ? [...new Set([expected.avatarId, ...(currentTurn ? [currentTurn.avatarAgentId] : [])])]
+              : [];
+          const participants = avatarIds.length
+            ? await tx.groupVoiceParticipant.findMany({
+                where: {
+                  groupVoiceSessionId: sessionId,
+                  avatarAgentId: { in: avatarIds },
+                  status: { in: ["active", "errored"] },
+                },
+              })
+            : [];
+          const affectedParticipants = participants.flatMap((participant) =>
+            participant.realtimeSessionId
+              ? [
+                  {
+                    avatarId: participant.avatarAgentId,
+                    participantAttemptId: participant.realtimeSessionId,
+                    interruptedTurnId:
+                      participant.avatarAgentId === expected.avatarId ? expected.turnId : currentTurn!.id,
+                  },
+                ]
+              : []
+          );
+          const receipt = await tx.groupVoiceInterruptionEvent.create({
+            data: {
+              groupVoiceSessionId: sessionId,
+              sourceEventId,
+              roundId: captured?.roundId ?? null,
+              turnId: expected.turnId,
+              avatarAgentId: expected.avatarId,
+              status,
+              affectedParticipants,
+            },
+          });
+          if (status === "cancelled" && captured) {
+            const pending = await tx.groupPlannedTurn.findMany({
+              where: {
+                roundId: captured.roundId,
+                status: { in: ["claimed", "speaking"] },
+              },
+            });
+            for (const interruptedTurn of pending) {
+              const correction = await tx.groupVoiceProviderEvent.findFirst({
+                where: {
+                  groupVoiceSessionId: sessionId,
+                  turnId: interruptedTurn.id,
+                  type: "agent_response_correction",
+                },
+                orderBy: { createdAt: "desc" },
+              });
+              const reportedFragment = correction
+                ? readProviderEventContent(correction.payload)
+                : interruptedTurn.id === captured.id
+                  ? expected.spokenFragment?.trim() || null
+                  : null;
+              const generated = await tx.groupVoiceProviderEvent.findFirst({
+                where: {
+                  groupVoiceSessionId: sessionId,
+                  turnId: interruptedTurn.id,
+                  type: "agent_response",
+                },
+                orderBy: { createdAt: "desc" },
+              });
+              const correctionPayload = correction?.payload;
+              const correctionDraft =
+                correctionPayload &&
+                typeof correctionPayload === "object" &&
+                !Array.isArray(correctionPayload) &&
+                typeof correctionPayload.generatedText === "string"
+                  ? correctionPayload.generatedText
+                  : null;
+              const generatedText =
+                correctionDraft ??
+                readProviderEventContent(generated?.payload) ??
+                interruptedTurn.responseText;
+              const draft =
+                interruptedTurn.id === captured.id
+                  ? expected.generatedText?.trim() || generatedText
+                  : generatedText;
+              const context = await tx.groupVoiceInterruptedTurn.create({
+                data: {
+                  interruptionEventId: receipt.id,
+                  turnId: interruptedTurn.id,
+                  avatarAgentId: interruptedTurn.avatarAgentId,
+                  generatedText: draft,
+                  reportedFragment,
+                  fragmentSource:
+                    correction || expected.spokenFragmentSource ? "agent_response_correction" : null,
+                  createdAt: receipt.createdAt,
+                },
+              });
+              if (reportedFragment) {
+                const message = await upsertAssistantTurnMessage(
+                  tx,
+                  session.conversationId,
+                  interruptedTurn,
+                  reportedFragment,
+                  {
+                    interrupted: true,
+                    fragmentSource: "agent_response_correction",
+                    heardCertainty: "unknown",
+                  },
+                  receipt.createdAt
+                );
+                await tx.groupVoiceInterruptedTurn.update({
+                  where: { id: context.id },
+                  data: { messageId: message.id },
+                });
+              }
+              await tx.groupPlannedTurn.update({
+                where: { id: interruptedTurn.id },
+                data: { responseText: reportedFragment },
+              });
+            }
+            await tx.groupVoiceRound.updateMany({
+              where: { id: captured.roundId, status: { in: ["deliberating", "queued", "speaking"] } },
+              data: { status: "cancelled", completedAt: receipt.createdAt },
+            });
+            await tx.groupPlannedTurn.updateMany({
+              where: { roundId: captured.roundId, status: { in: ["queued", "claimed", "speaking"] } },
+              data: { status: "interrupted", completedAt: receipt.createdAt },
+            });
+            await tx.groupVoiceSession.update({
+              where: { id: sessionId },
+              data: {
+                orchestrationPhase: "listening",
+                floorOwnerAvatarId: null,
+                floorTurnId: null,
+                floorLeaseExpiresAt: null,
+              },
+            });
+          }
+          return {
+            kind: status === "cancelled" ? ("interrupted" as const) : ("stale" as const),
+            session,
+            avatarId: currentTurn?.avatarAgentId ?? null,
+            interruption: {
+              sourceEventId,
+              status,
+              turnId: expected.turnId,
+              avatarIds: affectedParticipants.map((item) => item.avatarId),
+              affectedParticipants,
+            },
+          };
+        }
         if (
           (expected.avatarId !== undefined && session.floorOwnerAvatarId !== expected.avatarId) ||
           (expected.turnId !== undefined && session.floorTurnId !== expected.turnId)
@@ -2533,7 +2998,9 @@ async function upsertAssistantTurnMessage(
   tx: Prisma.TransactionClient,
   conversationId: string,
   turn: { id: string; avatarAgentId: string; instructionText: string },
-  content: string
+  content: string,
+  extraMetadata: Record<string, string | boolean> = {},
+  createdAt?: Date
 ) {
   const participantSnapshot = await tx.groupConversationParticipantSnapshot.findUnique({
     where: {
@@ -2558,13 +3025,14 @@ async function upsertAssistantTurnMessage(
       speakerAvatarId: turn.avatarAgentId,
       groupParticipantSnapshotId: participantSnapshot?.id ?? null,
       sourceEventId: `group-turn:${turn.id}`,
-      metadata: { source: "elevenlabs_agent", instruction: turn.instructionText },
+      metadata: { source: "elevenlabs_agent", instruction: turn.instructionText, ...extraMetadata },
+      ...(createdAt ? { createdAt } : {}),
     },
     update: {
       content,
       speakerAvatarId: turn.avatarAgentId,
       groupParticipantSnapshotId: participantSnapshot?.id ?? null,
-      metadata: { source: "elevenlabs_agent", instruction: turn.instructionText },
+      metadata: { source: "elevenlabs_agent", instruction: turn.instructionText, ...extraMetadata },
     },
   });
   await tx.conversation.updateMany({
@@ -2575,6 +3043,80 @@ async function upsertAssistantTurnMessage(
     data: { lastMessageAt: message.createdAt },
   });
   return message;
+}
+
+type AffectedInterruptionParticipant = {
+  avatarId: string;
+  participantAttemptId: string;
+  interruptedTurnId?: string;
+  replacementAttemptId?: string;
+  reuseConfirmed?: {
+    interruptedTurnId: string;
+    evidence: GroupVoiceParticipantInterruptionReadyInput["evidence"];
+  };
+};
+
+function sameInterruptionEvidence(
+  left: GroupVoiceParticipantInterruptionReadyInput["evidence"],
+  right: GroupVoiceParticipantInterruptionReadyInput["evidence"]
+) {
+  return (
+    left.type === right.type &&
+    (left.type === "not_dispatched" ||
+      (right.type === "speak_ended" &&
+        left.eventId === right.eventId &&
+        left.speechSourceEventId === right.speechSourceEventId))
+  );
+}
+
+function readAffectedParticipants(value: unknown): AffectedInterruptionParticipant[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item: unknown) => {
+    if (!item || typeof item !== "object") return [];
+    const record = item as Record<string, unknown>;
+    if (typeof record.avatarId !== "string" || typeof record.participantAttemptId !== "string") return [];
+    const { interruptedTurnId, replacementAttemptId, reuseConfirmed: reuse, ...extra } = record;
+    const reuseRecord = reuse && typeof reuse === "object" ? (reuse as Record<string, unknown>) : null;
+    const evidence = GroupVoiceParticipantInterruptionEvidenceSchema.safeParse(reuseRecord?.evidence);
+    return [
+      {
+        ...extra,
+        avatarId: record.avatarId,
+        participantAttemptId: record.participantAttemptId,
+        ...(typeof interruptedTurnId === "string" ? { interruptedTurnId } : {}),
+        ...(typeof replacementAttemptId === "string" ? { replacementAttemptId } : {}),
+        ...(typeof reuseRecord?.interruptedTurnId === "string" && evidence.success
+          ? { reuseConfirmed: { interruptedTurnId: reuseRecord.interruptedTurnId, evidence: evidence.data } }
+          : {}),
+      },
+    ];
+  });
+}
+
+async function hasPendingInterruptionReplacement(tx: Prisma.TransactionClient, sessionId: string) {
+  const receipts = await tx.groupVoiceInterruptionEvent.findMany({
+    where: { groupVoiceSessionId: sessionId, status: "cancelled" },
+    select: { affectedParticipants: true },
+  });
+  if (!receipts.length) return false;
+  const participants = await tx.groupVoiceParticipant.findMany({
+    where: { groupVoiceSessionId: sessionId },
+    include: { realtimeSession: true },
+  });
+  return receipts.some((receipt) =>
+    readAffectedParticipants(receipt.affectedParticipants).some((affected) => {
+      const current = participants.find((participant) => participant.avatarAgentId === affected.avatarId);
+      if (!current) return false;
+      if (current.realtimeSessionId === affected.participantAttemptId)
+        return (
+          current.status !== "ended" &&
+          !(affected.reuseConfirmed && current.status === "active" && current.realtimeSession?.activatedAt)
+        );
+      if (current.realtimeSessionId === affected.replacementAttemptId)
+        return current.status !== "active" || !current.realtimeSession?.activatedAt;
+      return false;
+    })
+  );
 }
 
 async function buildCanonicalRollingSummary(tx: Prisma.TransactionClient, sessionId: string) {

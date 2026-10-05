@@ -4,7 +4,9 @@ import {
   EndGroupVoiceSessionInputSchema,
   GroupProviderEventInputSchema,
   GroupVoiceParticipantFailureInputSchema,
+  GroupVoiceParticipantInterruptionReadyInputSchema,
   GroupVoiceParticipantStartedInputSchema,
+  GroupVoiceParticipantRetryInputSchema,
   GroupVoiceTurnInputSchema,
   InterruptGroupVoiceSessionInputSchema,
   GroupSharingIneligibleError,
@@ -153,14 +155,42 @@ export function createAvatarGroupsController(dependencies: AvatarGroupsControlle
     }
   });
 
+  controller.post(
+    "/group-voice-sessions/:sessionId/participants/:avatarId/interruption-ready",
+    async (context) => {
+      const currentUser = context.get("currentUser");
+      const parsed = GroupVoiceParticipantInterruptionReadyInputSchema.safeParse(
+        await context.req.json().catch(() => ({}))
+      );
+      if (!parsed.success) return context.json(validationError(parsed.error.issues), 400);
+      try {
+        return context.json(
+          await service.confirmParticipantInterruptionReady(
+            currentUser.id,
+            context.req.param("sessionId"),
+            context.req.param("avatarId"),
+            parsed.data
+          )
+        );
+      } catch (error) {
+        return groupError(context, error);
+      }
+    }
+  );
+
   controller.post("/group-voice-sessions/:sessionId/participants/:avatarId/retry", async (context) => {
     const currentUser = context.get("currentUser");
+    const parsed = GroupVoiceParticipantRetryInputSchema.safeParse(
+      await context.req.json().catch(() => ({}))
+    );
+    if (!parsed.success) return context.json(validationError(parsed.error.issues), 400);
     try {
       return context.json({
         participant: await service.retry(
           currentUser.id,
           context.req.param("sessionId"),
-          context.req.param("avatarId")
+          context.req.param("avatarId"),
+          parsed.data
         ),
       });
     } catch (error) {

@@ -328,6 +328,42 @@ describe("semantic group router", () => {
     expect(String(body)).not.toContain("SECRET_CHUNK_BODY");
   });
 
+  it("bounds interrupted drafts separately and explicitly treats hearing as unknown", async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(responsePlan([{ avatarId: "juana", instruction: "Respondé al nuevo pedido." }]));
+    await createOpenAiGroupOrchestrator({ config, fetchImpl }).planRound(
+      input({
+        currentRequest: "Ahora cambiemos de tema",
+        interruptions: [
+          {
+            sourceEventId: "human:cut",
+            turnId: "old-turn",
+            avatarId: "juana",
+            generatedDraft: "D".repeat(8_000),
+            reportedFragment: "F".repeat(8_000),
+            fragmentSource: "agent_response_correction",
+            heardCertainty: "unknown",
+          },
+        ],
+      })
+    );
+    const modelInput = JSON.parse(String(requestBody(fetchImpl).input)) as {
+      interruptions: Array<{
+        generatedDraft: string;
+        reportedFragment: string;
+        heardCertainty: string;
+        interpretation: string;
+      }>;
+    };
+    expect(modelInput.interruptions[0]).toMatchObject({
+      heardCertainty: "unknown",
+      interpretation: expect.stringContaining("no está confirmado como pronunciado"),
+    });
+    expect(modelInput.interruptions[0]?.generatedDraft).toHaveLength(1_500);
+    expect(modelInput.interruptions[0]?.reportedFragment).toHaveLength(1_000);
+  });
+
   it("falls back to exactly one weighted expert when OpenAI is unavailable", async () => {
     const fetchImpl = vi.fn<typeof fetch>();
     const plan = await createOpenAiGroupOrchestrator({

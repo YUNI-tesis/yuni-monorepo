@@ -44,6 +44,15 @@ export type GroupRoundPlan = {
 };
 
 export type GroupOrchestratorInput = {
+  interruptions?: Array<{
+    sourceEventId: string;
+    turnId: string;
+    avatarId: string;
+    generatedDraft: string | null;
+    reportedFragment: string | null;
+    fragmentSource: string | null;
+    heardCertainty: "unknown";
+  }>;
   transcript: GroupOrchestrationMessage[];
   rollingSummary: string;
   currentRequest: string;
@@ -398,6 +407,15 @@ function createBoundedModelContext(input: GroupOrchestratorInput, intentHint: Se
       speakerAvatarId: message.speakerAvatarId ?? null,
     })),
     rollingSummary: truncateEnd(input.rollingSummary, maxRollingSummaryChars),
+    interruptions: (input.interruptions ?? []).slice(-3).map((interruption) => ({
+      ...interruption,
+      generatedDraft: interruption.generatedDraft ? truncateStart(interruption.generatedDraft, 1_500) : null,
+      reportedFragment: interruption.reportedFragment
+        ? truncateStart(interruption.reportedFragment, 1_000)
+        : null,
+      interpretation:
+        "El borrador no está confirmado como pronunciado. El fragmento es informado por el proveedor; lo oído en el navegador es desconocido. La nueva intervención humana tiene prioridad; no retomar automáticamente la respuesta anterior.",
+    })),
     lastSpeakerAvatarId: findLastSpeakerAvatarId(previousMessages, input.roster),
   };
 }

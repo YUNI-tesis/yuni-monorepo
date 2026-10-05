@@ -39,6 +39,14 @@ function createAvatarRecord(overrides: Partial<AvatarAgentRecord> = {}): AvatarA
 }
 
 describe("avatar list DTO", () => {
+  it("only exposes the context issue count to the owner without blocking a usable avatar", () => {
+    const avatar = createAvatarRecord({ contextIssueCount: 3 });
+    const owner = toAvatarListItemDto(avatar, "owner");
+    expect(owner.contextIssueCount).toBe(3);
+    expect(owner.interactionAvailability).toBe("ready");
+    expect(toAvatarListItemDto(avatar, "shared")).not.toHaveProperty("contextIssueCount");
+  });
+
   it("exposes only a validated http(s) thumbnail", () => {
     const dto = toAvatarListItemDto(createAvatarRecord(), "owner");
 

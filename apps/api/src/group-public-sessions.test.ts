@@ -75,6 +75,16 @@ function fixture(
       : null
   );
   const heartbeat = vi.fn(async () => ({ count: 1 }));
+  const markParticipantInterruptionReady = vi.fn(async () => ({
+    kind: "ready",
+    session: {
+      orchestrationPhase: "listening",
+      floorOwnerAvatarId: null,
+      floorTurnId: null,
+      floorLeaseExpiresAt: null,
+    },
+    participant: {},
+  }));
   const endSession = vi.fn(async () => ({ count: 1 }));
   const rateLimiter = {
     consume: vi.fn((_rules: RateLimitRule[]) => options.fastRateLimitResult ?? ({ allowed: true } as const)),
@@ -87,7 +97,7 @@ function fixture(
   const dependencies = {
     repository: { resolveEnabledShareLink },
     avatarGroups: {
-      repository: { findVoiceSessionForOwner, heartbeat, endSession },
+      repository: { findVoiceSessionForOwner, heartbeat, endSession, markParticipantInterruptionReady },
     },
     tokenService: {
       createIdentityToken: vi.fn(async () => ({
@@ -137,6 +147,7 @@ function fixture(
     resolveEnabledShareLink,
     findVoiceSessionForOwner,
     heartbeat,
+    markParticipantInterruptionReady,
     endSession,
     rateLimiter,
     durableRateLimiter,
@@ -521,9 +532,24 @@ describe("@yuni/api public group sessions", () => {
       },
       {
         path: "/public/group-voice-sessions/voice-session-1/interrupt",
-        body: { reason: "user" },
+        body: {
+          reason: "user",
+          trigger: "voice",
+          sourceEventId: "scribe:cut",
+          expectedAvatarId: "avatar-1",
+          expectedTurnId: "turn-1",
+        },
       },
       { path: "/public/group-voice-sessions/voice-session-1/participants/avatar-1/retry" },
+      {
+        path: "/public/group-voice-sessions/voice-session-1/participants/avatar-1/interruption-ready",
+        body: {
+          interruptionSourceEventId: "human-cut",
+          participantAttemptId: "attempt-1",
+          interruptedTurnId: "turn-1",
+          evidence: { type: "speak_ended", eventId: "terminal-1", speechSourceEventId: "speech-1" },
+        },
+      },
       {
         path: "/public/group-voice-sessions/voice-session-1/participants/avatar-1/started",
         body: { participantAttemptId: "attempt-1" },
@@ -581,6 +607,87 @@ describe("@yuni/api public group sessions", () => {
 
     expect(response.status).toBe(413);
     expect(resolveEnabledShareLink).not.toHaveBeenCalled();
+  });
+
+  it("confirms interruption reuse using only the session token principal", async () => {
+    const { app, findVoiceSessionForOwner, markParticipantInterruptionReady } = fixture();
+    const input = {
+      interruptionSourceEventId: "human-cut",
+      participantAttemptId: "attempt-1",
+      interruptedTurnId: "turn-1",
+      evidence: { type: "speak_ended", eventId: "terminal-1", speechSourceEventId: "speech-1" },
+    };
+    const response = await app.request(
+      "/public/group-voice-sessions/voice-session-1/participants/avatar-1/interruption-ready",
+      {
+        method: "POST",
+        headers: { Authorization: "Bearer runtime-token", "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+      }
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      applied: true,
+      phase: "listening",
+      directive: null,
+      floor: null,
+    });
+    expect(findVoiceSessionForOwner).toHaveBeenCalledWith("group-public:public-session-1", "voice-session-1");
+    expect(markParticipantInterruptionReady).toHaveBeenCalledWith(
+      "group-public:public-session-1",
+      "voice-session-1",
+      "avatar-1",
+      input
+    );
+  });
+
+  it.each([undefined, "identity-token", "cross-token"])(
+    "rejects interruption reuse with an invalid or cross-session token (%s)",
+    async (token) => {
+      const { app, markParticipantInterruptionReady } = fixture();
+      const response = await app.request(
+        "/public/group-voice-sessions/voice-session-1/participants/avatar-1/interruption-ready",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({
+            interruptionSourceEventId: "human-cut",
+            participantAttemptId: "attempt-1",
+            interruptedTurnId: "turn-1",
+            evidence: { type: "not_dispatched" },
+          }),
+        }
+      );
+      expect(response.status).toBe(401);
+      expect(markParticipantInterruptionReady).not.toHaveBeenCalled();
+    }
+  );
+
+  it("rejects uncorrelated or oversized public interruption readiness evidence", async () => {
+    const { app, markParticipantInterruptionReady } = fixture();
+    for (const [eventId, expectedStatus] of [
+      ["terminal-1", 400],
+      ["x".repeat(33_000), 413],
+    ] as const) {
+      const response = await app.request(
+        "/public/group-voice-sessions/voice-session-1/participants/avatar-1/interruption-ready",
+        {
+          method: "POST",
+          headers: { Authorization: "Bearer runtime-token", "Content-Type": "application/json" },
+          body: JSON.stringify({
+            interruptionSourceEventId: "human-cut",
+            participantAttemptId: "attempt-1",
+            interruptedTurnId: "turn-1",
+            evidence: { type: "speak_ended", eventId },
+          }),
+        }
+      );
+      expect(response.status).toBe(expectedStatus);
+    }
+    expect(markParticipantInterruptionReady).not.toHaveBeenCalled();
   });
 
   it("cryptographically separates group identity and runtime tokens", async () => {

@@ -1,0 +1,3508 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-09-12",
+  "branch": "lucaslovaglio/group-user-barge-in-v2",
+  "baseCommit": "e52211c",
+  "workingTreeUncommitted": true,
+  "scope": "Provider sandbox with injected Scribe; physical QA not accepted",
+  "sampleColumns": [
+    "atMs",
+    "name",
+    "rms",
+    "muted",
+    "volume",
+    "paused",
+    "readyState",
+    "speaking",
+    "turnOwner",
+    "status"
+  ],
+  "sampleSelection": "All RMS > 0.001 samples and initial or changed state per participant; quiet unchanged samples omitted. Text and credentials excluded.",
+  "runs": [
+    {
+      "sourceReport": "full-app-report-1789246655309.json",
+      "sourceSha256": "c9ac86c9f35df3ec6c49915493117490a74913badcd5bb35d082594e820e2840",
+      "createdAt": "2026-09-12T20:56:20.020Z",
+      "sessionId": "cmtyv84v5000nulmf8ywqf5km",
+      "groupId": "cmtavsb2800b3uii7wxw1uh6d",
+      "scenario": "barge-in",
+      "bargeTarget": "other",
+      "oracleStatus": "experimental-not-accepted",
+      "layout": "desktop",
+      "outcome": "failed",
+      "error": {
+        "name": "QaDeadlineExceeded",
+        "stage": "full-app",
+        "timeoutMs": 45000
+      },
+      "bargeIn": {
+        "oldRoundId": "cmtyv8bqp001gulmfzdpu4lco",
+        "oldTurnId": "cmtyv8br8001iulmf3835if6h",
+        "ownerAvatarId": "cmtavpot900a8uii7a7wap2oy",
+        "ownerName": "Vera",
+        "ownerProviderSessionId": "90795bca-4d8f-4f0b-96de-e458aac34bcf",
+        "targetAvatarId": "cmtavomuk009puii7oqfc4p7p",
+        "targetName": "Bruno",
+        "firstAudibleSampleAtMs": 11302,
+        "partialAt": "2026-09-12T20:56:46.390Z",
+        "partialBrowserAtMs": 11353,
+        "partialLength": 4,
+        "committedLength": 43,
+        "committedAt": "2026-09-12T20:56:46.494Z"
+      },
+      "providerChecks": [
+        {
+          "name": "Bruno",
+          "conversationId": "conv_4401m2bpgwpye2t9mnr12w1aswny",
+          "status": "done",
+          "outcome": "passed",
+          "hasAudio": true,
+          "userMessageReceived": true,
+          "userMessages": 1,
+          "agentMessages": 2,
+          "generatedResponseAfterUser": true,
+          "responseLength": 12,
+          "transcriptEntryCount": 5
+        },
+        {
+          "name": "Vera",
+          "outcome": "skipped",
+          "reason": "not_expected_to_complete_in_interruption_scenario"
+        },
+        {
+          "name": "Benjita",
+          "outcome": "skipped",
+          "reason": "not_expected_to_complete_in_interruption_scenario"
+        }
+      ],
+      "cleanup": {
+        "status": 200
+      },
+      "ttsUnchanged": true,
+      "ttsProfile": {
+        "model_id": "eleven_flash_v2_5",
+        "agent_output_audio_format": "pcm_24000",
+        "optimize_streaming_latency": 3,
+        "stability": 0.45,
+        "speed": 0.98,
+        "similarity_boost": 0.78
+      },
+      "sandbox": {
+        "before": true,
+        "after": true,
+        "replacements": []
+      },
+      "api": [
+        {
+          "at": "2026-09-12T20:56:35.158Z",
+          "requestObservedAt": "2026-09-12T20:56:35.147Z",
+          "responseObservedAt": "2026-09-12T20:56:35.158Z",
+          "path": "/api/me",
+          "status": 200,
+          "method": "GET"
+        },
+        {
+          "at": "2026-09-12T20:56:35.212Z",
+          "requestObservedAt": "2026-09-12T20:56:35.191Z",
+          "responseObservedAt": "2026-09-12T20:56:35.212Z",
+          "path": "/api/avatar-groups/cmtavsb2800b3uii7wxw1uh6d",
+          "status": 200,
+          "method": "GET"
+        },
+        {
+          "at": "2026-09-12T20:56:35.212Z",
+          "requestObservedAt": "2026-09-12T20:56:35.192Z",
+          "responseObservedAt": "2026-09-12T20:56:35.212Z",
+          "path": "/api/avatar-groups/cmtavsb2800b3uii7wxw1uh6d",
+          "status": 200,
+          "method": "GET"
+        },
+        {
+          "at": "2026-09-12T20:56:36.837Z",
+          "requestObservedAt": "2026-09-12T20:56:35.430Z",
+          "responseObservedAt": "2026-09-12T20:56:36.837Z",
+          "path": "/api/avatar-groups/cmtavsb2800b3uii7wxw1uh6d/voice-sessions",
+          "status": 201,
+          "method": "POST"
+        },
+        {
+          "at": "2026-09-12T20:56:40.877Z",
+          "requestObservedAt": "2026-09-12T20:56:40.810Z",
+          "responseObservedAt": "2026-09-12T20:56:40.877Z",
+          "path": "/api/group-voice-sessions/cmtyv84v5000nulmf8ywqf5km/participants/cmtavpot900a8uii7a7wap2oy/started",
+          "status": 200,
+          "method": "POST",
+          "input": {
+            "participantAttemptId": "cmtyv84vu000yulmf43d9xoux"
+          }
+        },
+        {
+          "at": "2026-09-12T20:56:41.079Z",
+          "requestObservedAt": "2026-09-12T20:56:41.035Z",
+          "responseObservedAt": "2026-09-12T20:56:41.079Z",
+          "path": "/api/group-voice-sessions/cmtyv84v5000nulmf8ywqf5km/participants/cmtavnb4o0094uii72liceowv/started",
+          "status": 200,
+          "method": "POST",
+          "input": {
+            "participantAttemptId": "cmtyv84vu0010ulmf3lznc1g4"
+          }
+        },
+        {
+          "at": "2026-09-12T20:56:41.369Z",
+          "requestObservedAt": "2026-09-12T20:56:41.321Z",
+          "responseObservedAt": "2026-09-12T20:56:41.369Z",
+          "path": "/api/group-voice-sessions/cmtyv84v5000nulmf8ywqf5km/participants/cmtavomuk009puii7oqfc4p7p/started",
+          "status": 200,
+          "method": "POST",
+          "input": {
+            "participantAttemptId": "cmtyv84vu000wulmf6j486f6b"
+          }
+        },
+        {
+          "at": "2026-09-12T20:56:43.465Z",
+          "requestObservedAt": "2026-09-12T20:56:43.016Z",
+          "responseObservedAt": "2026-09-12T20:56:43.465Z",
+          "path": "/api/group-voice-sessions/cmtyv84v5000nulmf8ywqf5km/scribe-token",
+          "status": 200,
+          "method": "POST"
+        },
+        {
+          "at": "2026-09-12T20:56:44.436Z",
+          "requestObservedAt": "2026-09-12T20:56:44.381Z",
+          "responseObservedAt": "2026-09-12T20:56:44.436Z",
+          "path": "/api/group-voice-sessions/cmtyv84v5000nulmf8ywqf5km/turns",
+          "status": 200,
+          "method": "POST",
+          "phase": "queued",
+          "roundId": "cmtyv8bqp001gulmfzdpu4lco",
+          "directive": {
+            "action": "speak",
+            "avatarId": "cmtavpot900a8uii7a7wap2oy",
+            "turnId": "cmtyv8br8001iulmf3835if6h"
+          },
+          "input": {
+            "sourceEventId": "scribe:bd56fd2b-e14b-431f-a116-2099e5c6e9f8",
+            "contentLength": 173
+          }
+        },
+        {
+          "at": "2026-09-12T20:56:46.128Z",
+          "requestObservedAt": "2026-09-12T20:56:46.104Z",
+          "responseObservedAt": "2026-09-12T20:56:46.128Z",
+          "path": "/api/group-voice-sessions/cmtyv84v5000nulmf8ywqf5km/provider-events",
+          "status": 500,
+          "method": "POST",
+          "input": {
+            "type": "speak_started",
+            "sourceEventId": "speak_started:cmtavpot900a8uii7a7wap2oy:turn:cmtyv8br8001iulmf3835if6h",
+            "avatarId": "cmtavpot900a8uii7a7wap2oy",
+            "turnId": "cmtyv8br8001iulmf3835if6h"
+          }
+        },
+        {
+          "at": "2026-09-12T20:56:46.139Z",
+          "requestObservedAt": "2026-09-12T20:56:46.129Z",
+          "responseObservedAt": "2026-09-12T20:56:46.139Z",
+          "path": "/api/group-voice-sessions/cmtyv84v5000nulmf8ywqf5km/provider-events",
+          "status": 500,
+          "method": "POST",
+          "input": {
+            "type": "speak_started",
+            "sourceEventId": "speak_started:cmtavpot900a8uii7a7wap2oy:turn:cmtyv8br8001iulmf3835if6h",
+            "avatarId": "cmtavpot900a8uii7a7wap2oy",
+            "turnId": "cmtyv8br8001iulmf3835if6h"
+          }
+        },
+        {
+          "at": "2026-09-12T20:56:46.429Z",
+          "requestObservedAt": "2026-09-12T20:56:46.396Z",
+          "responseObservedAt": "2026-09-12T20:56:46.429Z",
+          "path": "/api/group-voice-sessions/cmtyv84v5000nulmf8ywqf5km/interrupt",
+          "status": 500,
+          "method": "POST",
+          "input": {
+            "sourceEventId": "barge:a36104b5-5366-480e-9d2d-f99dbc496374",
+            "reason": "user",
+            "trigger": "voice",
+            "expectedTurnId": "cmtyv8br8001iulmf3835if6h",
+            "expectedAvatarId": "cmtavpot900a8uii7a7wap2oy"
+          }
+        },
+        {
+          "at": "2026-09-12T20:56:46.435Z",
+          "requestObservedAt": "2026-09-12T20:56:46.430Z",
+          "responseObservedAt": "2026-09-12T20:56:46.435Z",
+          "path": "/api/group-voice-sessions/cmtyv84v5000nulmf8ywqf5km/interrupt",
+          "status": 500,
+          "method": "POST",
+          "input": {
+            "sourceEventId": "barge:a36104b5-5366-480e-9d2d-f99dbc496374",
+            "reason": "user",
+            "trigger": "voice",
+            "expectedTurnId": "cmtyv8br8001iulmf3835if6h",
+            "expectedAvatarId": "cmtavpot900a8uii7a7wap2oy"
+          }
+        },
+        {
+          "at": "2026-09-12T20:56:46.441Z",
+          "requestObservedAt": "2026-09-12T20:56:46.436Z",
+          "responseObservedAt": "2026-09-12T20:56:46.441Z",
+          "path": "/api/group-voice-sessions/cmtyv84v5000nulmf8ywqf5km/interrupt",
+          "status": 500,
+          "method": "POST",
+          "input": {
+            "sourceEventId": "barge:a36104b5-5366-480e-9d2d-f99dbc496374",
+            "reason": "user",
+            "trigger": "voice",
+            "expectedTurnId": "cmtyv8br8001iulmf3835if6h",
+            "expectedAvatarId": "cmtavpot900a8uii7a7wap2oy"
+          }
+        },
+        {
+          "at": "2026-09-12T20:56:46.502Z",
+          "requestObservedAt": "2026-09-12T20:56:46.496Z",
+          "responseObservedAt": "2026-09-12T20:56:46.502Z",
+          "path": "/api/group-voice-sessions/cmtyv84v5000nulmf8ywqf5km/interrupt",
+          "status": 500,
+          "method": "POST",
+          "input": {
+            "sourceEventId": "barge:a36104b5-5366-480e-9d2d-f99dbc496374",
+            "reason": "user",
+            "trigger": "voice",
+            "expectedTurnId": "cmtyv8br8001iulmf3835if6h",
+            "expectedAvatarId": "cmtavpot900a8uii7a7wap2oy"
+          }
+        },
+        {
+          "at": "2026-09-12T20:56:46.511Z",
+          "requestObservedAt": "2026-09-12T20:56:46.503Z",
+          "responseObservedAt": "2026-09-12T20:56:46.511Z",
+          "path": "/api/group-voice-sessions/cmtyv84v5000nulmf8ywqf5km/interrupt",
+          "status": 500,
+          "method": "POST",
+          "input": {
+            "sourceEventId": "barge:a36104b5-5366-480e-9d2d-f99dbc496374",
+            "reason": "user",
+            "trigger": "voice",
+            "expectedTurnId": "cmtyv8br8001iulmf3835if6h",
+            "expectedAvatarId": "cmtavpot900a8uii7a7wap2oy"
+          }
+        },
+        {
+          "at": "2026-09-12T20:56:46.532Z",
+          "requestObservedAt": "2026-09-12T20:56:46.512Z",
+          "responseObservedAt": "2026-09-12T20:56:46.532Z",
+          "path": "/api/group-voice-sessions/cmtyv84v5000nulmf8ywqf5km/interrupt",
+          "status": 500,
+          "method": "POST",
+          "input": {
+            "sourceEventId": "barge:a36104b5-5366-480e-9d2d-f99dbc496374",
+            "reason": "user",
+            "trigger": "voice",
+            "expectedTurnId": "cmtyv8br8001iulmf3835if6h",
+            "expectedAvatarId": "cmtavpot900a8uii7a7wap2oy"
+          }
+        },
+        {
+          "at": "2026-09-12T20:56:46.709Z",
+          "requestObservedAt": "2026-09-12T20:56:46.697Z",
+          "responseObservedAt": "2026-09-12T20:56:46.709Z",
+          "path": "/api/group-voice-sessions/cmtyv84v5000nulmf8ywqf5km/provider-events",
+          "status": 500,
+          "method": "POST",
+          "input": {
+            "type": "agent_response",
+            "sourceEventId": "agent_response:cmtavpot900a8uii7a7wap2oy:fa9e548f-7879-45a3-a91c-7f52832f6157",
+            "avatarId": "cmtavpot900a8uii7a7wap2oy",
+            "turnId": "cmtyv8br8001iulmf3835if6h",
+            "contentLength": 352
+          }
+        },
+        {
+          "at": "2026-09-12T20:56:46.719Z",
+          "requestObservedAt": "2026-09-12T20:56:46.713Z",
+          "responseObservedAt": "2026-09-12T20:56:46.719Z",
+          "path": "/api/group-voice-sessions/cmtyv84v5000nulmf8ywqf5km/provider-events",
+          "status": 500,
+          "method": "POST",
+          "input": {
+            "type": "agent_response",
+            "sourceEventId": "agent_response:cmtavpot900a8uii7a7wap2oy:fa9e548f-7879-45a3-a91c-7f52832f6157",
+            "avatarId": "cmtavpot900a8uii7a7wap2oy",
+            "turnId": "cmtyv8br8001iulmf3835if6h",
+            "contentLength": 352
+          }
+        },
+        {
+          "at": "2026-09-12T20:57:03.567Z",
+          "requestObservedAt": "2026-09-12T20:57:03.483Z",
+          "responseObservedAt": "2026-09-12T20:57:03.567Z",
+          "path": "/api/group-voice-sessions/cmtyv84v5000nulmf8ywqf5km/heartbeat",
+          "status": 200,
+          "method": "POST"
+        },
+        {
+          "at": "2026-09-12T20:57:15.926Z",
+          "requestObservedAt": "2026-09-12T20:57:15.880Z",
+          "responseObservedAt": "2026-09-12T20:57:15.926Z",
+          "path": "/api/group-voice-sessions/cmtyv84v5000nulmf8ywqf5km/provider-events",
+          "status": 200,
+          "method": "POST",
+          "phase": "queued",
+          "directive": {
+            "action": "suppress",
+            "avatarId": "cmtavomuk009puii7oqfc4p7p",
+            "reason": "unauthorized_audio"
+          },
+          "input": {
+            "type": "speak_started",
+            "sourceEventId": "speak_started:cmtavomuk009puii7oqfc4p7p:30e268ed-cab2-4acb-be12-5954dd63995c",
+            "avatarId": "cmtavomuk009puii7oqfc4p7p",
+            "turnId": null
+          }
+        },
+        {
+          "at": "2026-09-12T20:57:16.071Z",
+          "requestObservedAt": "2026-09-12T20:57:16.027Z",
+          "responseObservedAt": "2026-09-12T20:57:16.071Z",
+          "path": "/api/group-voice-sessions/cmtyv84v5000nulmf8ywqf5km/provider-events",
+          "status": 200,
+          "method": "POST",
+          "phase": "queued",
+          "directive": {
+            "action": "suppress",
+            "avatarId": "cmtavnb4o0094uii72liceowv",
+            "reason": "unauthorized_audio"
+          },
+          "input": {
+            "type": "speak_started",
+            "sourceEventId": "speak_started:cmtavnb4o0094uii72liceowv:1baccfcf-2fb1-405e-b486-b3f704a6f9ad",
+            "avatarId": "cmtavnb4o0094uii72liceowv",
+            "turnId": null
+          }
+        },
+        {
+          "at": "2026-09-12T20:57:16.415Z",
+          "requestObservedAt": "2026-09-12T20:57:16.365Z",
+          "responseObservedAt": "2026-09-12T20:57:16.415Z",
+          "path": "/api/group-voice-sessions/cmtyv84v5000nulmf8ywqf5km/provider-events",
+          "status": 200,
+          "method": "POST",
+          "phase": "queued",
+          "directive": {
+            "action": "suppress",
+            "avatarId": "cmtavomuk009puii7oqfc4p7p",
+            "reason": "unauthorized_audio"
+          },
+          "input": {
+            "type": "speak_started",
+            "sourceEventId": "speak_started:cmtavomuk009puii7oqfc4p7p:d98ac54b-836f-4722-9308-3a2c85942948",
+            "avatarId": "cmtavomuk009puii7oqfc4p7p",
+            "turnId": null
+          }
+        },
+        {
+          "at": "2026-09-12T20:57:16.606Z",
+          "requestObservedAt": "2026-09-12T20:57:16.553Z",
+          "responseObservedAt": "2026-09-12T20:57:16.606Z",
+          "path": "/api/group-voice-sessions/cmtyv84v5000nulmf8ywqf5km/provider-events",
+          "status": 200,
+          "method": "POST",
+          "phase": "queued",
+          "directive": {
+            "action": "suppress",
+            "avatarId": "cmtavnb4o0094uii72liceowv",
+            "reason": "unauthorized_audio"
+          },
+          "input": {
+            "type": "speak_started",
+            "sourceEventId": "speak_started:cmtavnb4o0094uii72liceowv:3683084d-c2af-4838-b4a5-0a3089e756e7",
+            "avatarId": "cmtavnb4o0094uii72liceowv",
+            "turnId": null
+          }
+        },
+        {
+          "at": "2026-09-12T20:57:23.627Z",
+          "requestObservedAt": "2026-09-12T20:57:23.580Z",
+          "responseObservedAt": "2026-09-12T20:57:23.627Z",
+          "path": "/api/group-voice-sessions/cmtyv84v5000nulmf8ywqf5km/heartbeat",
+          "status": 200,
+          "method": "POST"
+        }
+      ],
+      "media": {
+        "startedAt": 222.5,
+        "wallStartedAt": "2026-09-12T20:56:35.038Z",
+        "sampleIntervalMs": 20,
+        "maxUnmutedElements": 1,
+        "participants": {
+          "Vera": {
+            "samples": 2443,
+            "nonSilentUnmutedSamples": 5,
+            "peakRms": 0.4414138484646636,
+            "firstAudioAtMs": 11262,
+            "lastAudioAtMs": 11342,
+            "unmutedSamples": 98
+          },
+          "Benjita": {
+            "samples": 2428,
+            "nonSilentUnmutedSamples": 0,
+            "peakRms": 0.22382425631580005,
+            "firstAudioAtMs": null,
+            "lastAudioAtMs": null,
+            "unmutedSamples": 0
+          },
+          "Bruno": {
+            "samples": 2417,
+            "nonSilentUnmutedSamples": 0,
+            "peakRms": 0.31424551307351173,
+            "firstAudioAtMs": null,
+            "lastAudioAtMs": null,
+            "unmutedSamples": 0
+          }
+        },
+        "originalSampleCount": 7288,
+        "samples": [
+          [5503, "Vera", 0, true, 1, false, 0, "false", "false", "connecting"],
+          [5804, "Benjita", 0, true, 1, false, 0, "false", "false", "connecting"],
+          [5902, "Benjita", 0.0000030158750202407134, true, 1, false, 4, "false", "false", "connecting"],
+          [5924, "Benjita", 0.20127107819956114, true, 1, false, 4, "false", "false", "connecting"],
+          [5945, "Benjita", 0.20015059379120312, true, 1, false, 4, "false", "false", "connecting"],
+          [5961, "Benjita", 0.18633455635827698, true, 1, false, 4, "false", "false", "connecting"],
+          [5983, "Benjita", 0.15614862936384122, true, 1, false, 4, "false", "false", "connecting"],
+          [6003, "Benjita", 0.12443474982124765, true, 1, false, 4, "false", "false", "connecting"],
+          [6023, "Bruno", 0, true, 1, false, 0, "false", "false", "connecting"],
+          [6023, "Benjita", 0.10195119610141896, true, 1, false, 4, "false", "false", "connecting"],
+          [6041, "Benjita", 0.07422653184452609, true, 1, false, 4, "false", "false", "connecting"],
+          [6063, "Benjita", 0.07165231757042215, true, 1, false, 4, "false", "false", "connecting"],
+          [6083, "Vera", 0.3591163433447697, true, 1, false, 0, "false", "false", "connecting"],
+          [6083, "Benjita", 0.0737625897836182, true, 1, false, 4, "false", "false", "connecting"],
+          [6103, "Vera", 0.4414138484646636, true, 1, false, 4, "false", "false", "connecting"],
+          [6103, "Benjita", 0.0671055333358904, true, 1, false, 4, "false", "false", "connecting"],
+          [6124, "Vera", 0.36827515392877586, true, 1, false, 4, "false", "false", "connecting"],
+          [6124, "Benjita", 0.06626604584424263, true, 1, false, 4, "false", "false", "connecting"],
+          [6143, "Vera", 0.29260907728733637, true, 1, false, 4, "false", "false", "connecting"],
+          [6144, "Benjita", 0.058998850165763964, true, 1, false, 4, "false", "false", "connecting"],
+          [6163, "Vera", 0.23000561244056647, true, 1, false, 4, "false", "false", "connecting"],
+          [6163, "Benjita", 0.04451087339264941, true, 1, false, 4, "false", "false", "connecting"],
+          [6183, "Vera", 0.13445013420179727, true, 1, false, 4, "false", "false", "connecting"],
+          [6183, "Benjita", 0.030910177218886063, true, 1, false, 4, "false", "false", "connecting"],
+          [6202, "Vera", 0.15816308350174085, true, 1, false, 4, "false", "false", "connecting"],
+          [6202, "Benjita", 0.02133262631706491, true, 1, false, 4, "false", "false", "connecting"],
+          [6224, "Vera", 0.1214160830294912, true, 1, false, 4, "false", "false", "connecting"],
+          [6224, "Benjita", 0.016078376150270284, true, 1, false, 4, "false", "false", "connecting"],
+          [6244, "Vera", 0.12007105549851825, true, 1, false, 4, "false", "false", "connecting"],
+          [6244, "Benjita", 0.0036252679729716175, true, 1, false, 4, "false", "false", "connecting"],
+          [6265, "Vera", 0.09721576314929553, true, 1, false, 4, "false", "false", "connecting"],
+          [6282, "Vera", 0.0652096746060641, true, 1, false, 4, "false", "false", "connecting"],
+          [6304, "Vera", 0.061347921689325506, true, 1, false, 4, "false", "false", "connecting"],
+          [6325, "Vera", 0.019241095673607343, true, 1, false, 4, "false", "false", "connecting"],
+          [6342, "Vera", 0.005073150731821412, true, 1, false, 4, "false", "false", "connecting"],
+          [6423, "Bruno", 0.00000286111026071012, true, 1, false, 4, "false", "false", "connecting"],
+          [6525, "Bruno", 0.005792817909914706, true, 1, false, 4, "false", "false", "connecting"],
+          [6582, "Bruno", 0.0013536290557852422, true, 1, false, 4, "false", "false", "connecting"],
+          [6602, "Bruno", 0.19501584206329003, true, 1, false, 4, "false", "false", "connecting"],
+          [6622, "Bruno", 0.31424551307351173, true, 1, false, 4, "false", "false", "connecting"],
+          [6645, "Bruno", 0.26929396246636567, true, 1, false, 4, "false", "false", "connecting"],
+          [6664, "Bruno", 0.270882901565734, true, 1, false, 4, "false", "false", "connecting"],
+          [6683, "Bruno", 0.2512110863188578, true, 1, false, 4, "false", "false", "connecting"],
+          [6704, "Bruno", 0.21820189120186656, true, 1, false, 4, "false", "false", "connecting"],
+          [6722, "Bruno", 0.14981867756118145, true, 1, false, 4, "false", "false", "connecting"],
+          [6745, "Bruno", 0.11211561098452504, true, 1, false, 4, "false", "false", "connecting"],
+          [6762, "Bruno", 0.10170336660905216, true, 1, false, 4, "false", "false", "connecting"],
+          [6786, "Bruno", 0.08740432228176685, true, 1, false, 4, "false", "false", "connecting"],
+          [6806, "Bruno", 0.07065716025736764, true, 1, false, 4, "false", "false", "connecting"],
+          [6822, "Bruno", 0.0737420056738842, true, 1, false, 4, "false", "false", "connecting"],
+          [6843, "Bruno", 0.054212961570006164, true, 1, false, 4, "false", "false", "connecting"],
+          [6867, "Bruno", 0.02972112758362045, true, 1, false, 4, "false", "false", "connecting"],
+          [6882, "Bruno", 0.018104530320744997, true, 1, false, 4, "false", "false", "connecting"],
+          [6907, "Bruno", 0.006462066456586081, true, 1, false, 4, "false", "false", "connecting"],
+          [6925, "Bruno", 0.004962429440689682, true, 1, false, 4, "false", "false", "connecting"],
+          [6946, "Bruno", 0.00166657242439392, true, 1, false, 4, "false", "false", "connecting"],
+          [7042, "Bruno", 0.0010154109326588662, true, 1, false, 4, "false", "false", "connecting"],
+          [7085, "Bruno", 0.0018140080425458434, true, 1, false, 4, "false", "false", "connecting"],
+          [7102, "Bruno", 0.0020302067569645563, true, 1, false, 4, "false", "false", "connecting"],
+          [7363, "Benjita", 0.000017166396398025737, true, 1, false, 4, "false", "false", "active"],
+          [7445, "Vera", 0.000017377033390205856, true, 1, false, 4, "false", "false", "active"],
+          [7982, "Bruno", 0.000012138484448030099, true, 1, false, 4, "false", "false", "active"],
+          [9405, "Vera", 0.00000286111026071012, false, 1, false, 4, "false", "true", "active"],
+          [11082, "Vera", 0.00000286111026071012, false, 1, false, 4, "true", "true", "active"],
+          [11262, "Vera", 0.03138801073883702, false, 1, false, 4, "true", "true", "active"],
+          [11285, "Vera", 0.14383230059921548, false, 1, false, 4, "true", "true", "active"],
+          [11302, "Vera", 0.17026540214078012, false, 1, false, 4, "true", "true", "active"],
+          [11322, "Vera", 0.18585481705495427, false, 1, false, 4, "true", "true", "active"],
+          [11342, "Vera", 0.21609124183215325, false, 1, false, 4, "true", "true", "active"],
+          [11362, "Vera", 0.1775011322295838, true, 1, false, 4, "false", "false", "active"],
+          [11383, "Vera", 0.05018687805793997, true, 1, false, 4, "false", "false", "active"],
+          [11402, "Vera", 0.1146165730080343, true, 1, false, 4, "false", "false", "active"],
+          [11423, "Vera", 0.1442893115426227, true, 1, false, 4, "false", "false", "active"],
+          [11442, "Vera", 0.161465912772208, true, 1, false, 4, "false", "false", "active"],
+          [11461, "Vera", 0.22189473111113944, true, 1, false, 4, "false", "false", "active"],
+          [11482, "Vera", 0.12527629070218213, true, 1, false, 4, "false", "false", "active"],
+          [11502, "Vera", 0.11173468619072315, true, 1, false, 4, "false", "false", "active"],
+          [11523, "Vera", 0.13244232665281777, true, 1, false, 4, "false", "false", "active"],
+          [11543, "Vera", 0.1294126576268241, true, 1, false, 4, "false", "false", "active"],
+          [11564, "Vera", 0.1166914102794811, true, 1, false, 4, "false", "false", "active"],
+          [11583, "Vera", 0.12476544748050443, true, 1, false, 4, "false", "false", "active"],
+          [11603, "Vera", 0.1367663240339593, true, 1, false, 4, "false", "false", "active"],
+          [11624, "Vera", 0.06860576970852732, true, 1, false, 4, "false", "false", "active"],
+          [11645, "Vera", 0.02416872106086478, true, 1, false, 4, "false", "false", "active"],
+          [11662, "Vera", 0.18315339113798706, true, 1, false, 4, "false", "false", "active"],
+          [11681, "Vera", 0.22015045602641903, true, 1, false, 4, "false", "false", "active"],
+          [11703, "Vera", 0.12693884621138854, true, 1, false, 4, "false", "false", "active"],
+          [11722, "Vera", 0.12992331835827867, true, 1, false, 4, "false", "false", "active"],
+          [11745, "Vera", 0.20197686507453258, true, 1, false, 4, "false", "false", "active"],
+          [11762, "Vera", 0.1817525339476669, true, 1, false, 4, "false", "false", "active"],
+          [11784, "Vera", 0.16910217451165488, true, 1, false, 4, "false", "false", "active"],
+          [11803, "Vera", 0.14436356528875374, true, 1, false, 4, "false", "false", "active"],
+          [11822, "Vera", 0.06461606665166388, true, 1, false, 4, "false", "false", "active"],
+          [11843, "Vera", 0.020240138815047427, true, 1, false, 4, "false", "false", "active"],
+          [11866, "Vera", 0.004217703365672501, true, 1, false, 4, "false", "false", "active"],
+          [11886, "Vera", 0.1729552019146522, true, 1, false, 4, "false", "false", "active"],
+          [11903, "Vera", 0.18075014036681994, true, 1, false, 4, "false", "false", "active"],
+          [11922, "Vera", 0.11158992657635518, true, 1, false, 4, "false", "false", "active"],
+          [11942, "Vera", 0.15424902861921277, true, 1, false, 4, "false", "false", "active"],
+          [11962, "Vera", 0.17823391485137371, true, 1, false, 4, "false", "false", "active"],
+          [11982, "Vera", 0.14331981926735934, true, 1, false, 4, "false", "false", "active"],
+          [12003, "Vera", 0.025553074945162166, true, 1, false, 4, "false", "false", "active"],
+          [12022, "Vera", 0.05980516982073624, true, 1, false, 4, "false", "false", "active"],
+          [12045, "Vera", 0.08686878830373819, true, 1, false, 4, "false", "false", "active"],
+          [12063, "Vera", 0.11259429294220918, true, 1, false, 4, "false", "false", "active"],
+          [12085, "Vera", 0.06066268892081298, true, 1, false, 4, "false", "false", "active"],
+          [12102, "Vera", 0.03347871590855978, true, 1, false, 4, "false", "false", "active"],
+          [12122, "Vera", 0.006535019787538701, true, 1, false, 4, "false", "false", "active"],
+          [12142, "Vera", 0.008209017690368126, true, 1, false, 4, "false", "false", "active"],
+          [12163, "Vera", 0.011043183090287255, true, 1, false, 4, "false", "false", "active"],
+          [12186, "Vera", 0.010133980149416967, true, 1, false, 4, "false", "false", "active"],
+          [12203, "Vera", 0.006334131944029162, true, 1, false, 4, "false", "false", "active"],
+          [12225, "Vera", 0.04355442449333243, true, 1, false, 4, "false", "false", "active"],
+          [12245, "Vera", 0.05687179739655482, true, 1, false, 4, "false", "false", "active"],
+          [12262, "Vera", 0.048200404170562976, true, 1, false, 4, "false", "false", "active"],
+          [12283, "Vera", 0.042442625765404134, true, 1, false, 4, "false", "false", "active"],
+          [12302, "Vera", 0.03850126525295086, true, 1, false, 4, "false", "false", "active"],
+          [12322, "Vera", 0.04471844945196664, true, 1, false, 4, "false", "false", "active"],
+          [12342, "Vera", 0.04359777026591998, true, 1, false, 4, "false", "false", "active"],
+          [12362, "Vera", 0.039707104525908636, true, 1, false, 4, "false", "false", "active"],
+          [12386, "Vera", 0.02964512440221484, true, 1, false, 4, "false", "false", "active"],
+          [12402, "Vera", 0.0047134166990093805, true, 1, false, 4, "false", "false", "active"],
+          [12421, "Vera", 0.01438678559747901, true, 1, false, 4, "false", "false", "active"],
+          [12442, "Vera", 0.029867131351560994, true, 1, false, 4, "false", "false", "active"],
+          [12462, "Vera", 0.019234786472507495, true, 1, false, 4, "false", "false", "active"],
+          [12482, "Vera", 0.012898277561531397, true, 1, false, 4, "false", "false", "active"],
+          [12503, "Vera", 0.010460392582557486, true, 1, false, 4, "false", "false", "active"],
+          [12522, "Vera", 0.0049771196758570425, true, 1, false, 4, "false", "false", "active"],
+          [12541, "Vera", 0.003814586234190344, true, 1, false, 4, "false", "false", "active"],
+          [40922, "Bruno", 0.003483935427657123, true, 1, false, 4, "false", "false", "active"],
+          [40942, "Bruno", 0.009118520582518124, true, 1, false, 4, "false", "false", "active"],
+          [40964, "Bruno", 0.012810718461953509, true, 1, false, 4, "false", "false", "active"],
+          [40983, "Bruno", 0.016908894165700197, true, 1, false, 4, "false", "false", "active"],
+          [41003, "Bruno", 0.016814405351902838, true, 1, false, 4, "false", "false", "active"],
+          [41025, "Bruno", 0.016199561156103246, true, 1, false, 4, "false", "false", "active"],
+          [41044, "Bruno", 0.0714752265458127, true, 1, false, 4, "false", "false", "active"],
+          [41065, "Bruno", 0.07724270678408846, true, 1, false, 4, "false", "false", "active"],
+          [41085, "Bruno", 0.06334043231904676, true, 1, false, 4, "false", "false", "active"],
+          [41106, "Bruno", 0.07262668630285377, true, 1, false, 4, "false", "false", "active"],
+          [41123, "Bruno", 0.09681766232005141, true, 1, false, 4, "false", "false", "active"],
+          [41123, "Benjita", 0.0017857975140404521, true, 1, false, 4, "false", "false", "active"],
+          [41143, "Bruno", 0.10319744539962641, true, 1, false, 4, "false", "false", "active"],
+          [41143, "Benjita", 0.005531874936264068, true, 1, false, 4, "false", "false", "active"],
+          [41167, "Bruno", 0.09387724977085928, true, 1, false, 4, "false", "false", "active"],
+          [41167, "Benjita", 0.0018135595208706337, true, 1, false, 4, "false", "false", "active"],
+          [41183, "Bruno", 0.05019546310102927, true, 1, false, 4, "false", "false", "active"],
+          [41183, "Benjita", 0.08737338840427804, true, 1, false, 4, "false", "false", "active"],
+          [41204, "Bruno", 0.032553801648268, true, 1, false, 4, "false", "false", "active"],
+          [41204, "Benjita", 0.10950641921267111, true, 1, false, 4, "false", "false", "active"],
+          [41221, "Bruno", 0.04900897784959944, true, 1, false, 4, "false", "false", "active"],
+          [41221, "Benjita", 0.09591010692403167, true, 1, false, 4, "false", "false", "active"],
+          [41242, "Bruno", 0.047418827432098826, true, 1, false, 4, "false", "false", "active"],
+          [41242, "Benjita", 0.10661568514422923, true, 1, false, 4, "false", "false", "active"],
+          [41262, "Bruno", 0.026514472866655127, true, 1, false, 4, "false", "false", "active"],
+          [41262, "Benjita", 0.146378186959876, true, 1, false, 4, "false", "false", "active"],
+          [41282, "Bruno", 0.05454040594506564, true, 1, false, 4, "false", "false", "active"],
+          [41282, "Benjita", 0.16411060296799676, true, 1, false, 4, "false", "false", "active"],
+          [41305, "Benjita", 0.13016171800420512, true, 1, false, 4, "false", "false", "active"],
+          [41325, "Benjita", 0.10353572647619053, true, 1, false, 4, "false", "false", "active"],
+          [41346, "Benjita", 0.060640454250150286, true, 1, false, 4, "false", "false", "active"],
+          [41366, "Bruno", 0.02244073112042017, true, 1, false, 4, "false", "false", "active"],
+          [41366, "Benjita", 0.05642671371873683, true, 1, false, 4, "false", "false", "active"],
+          [41383, "Bruno", 0.07154998640418776, true, 1, false, 4, "false", "false", "active"],
+          [41383, "Benjita", 0.05277577442175835, true, 1, false, 4, "false", "false", "active"],
+          [41406, "Bruno", 0.08054121886262636, true, 1, false, 4, "false", "false", "active"],
+          [41406, "Benjita", 0.03287840582848404, true, 1, false, 4, "false", "false", "active"],
+          [41424, "Bruno", 0.08925995690686016, true, 1, false, 4, "false", "false", "active"],
+          [41442, "Bruno", 0.09511074430567619, true, 1, false, 4, "false", "false", "active"],
+          [41462, "Bruno", 0.09422382516369958, true, 1, false, 4, "false", "false", "active"],
+          [41482, "Bruno", 0.13264982406691087, true, 1, false, 4, "false", "false", "active"],
+          [41482, "Benjita", 0.018931793701485636, true, 1, false, 4, "false", "false", "active"],
+          [41504, "Bruno", 0.13668484326273916, true, 1, false, 4, "false", "false", "active"],
+          [41504, "Benjita", 0.020164619914365682, true, 1, false, 4, "false", "false", "active"],
+          [41526, "Bruno", 0.14372884167213978, true, 1, false, 4, "false", "false", "active"],
+          [41526, "Benjita", 0.038819331136393055, true, 1, false, 4, "false", "false", "active"],
+          [41542, "Bruno", 0.13732098094517278, true, 1, false, 4, "false", "false", "active"],
+          [41542, "Benjita", 0.11204455950889529, true, 1, false, 4, "false", "false", "active"],
+          [41563, "Bruno", 0.11876718368936716, true, 1, false, 4, "false", "false", "active"],
+          [41563, "Benjita", 0.09172371296972896, true, 1, false, 4, "false", "false", "active"],
+          [41582, "Bruno", 0.0871418092062768, true, 1, false, 4, "false", "false", "active"],
+          [41582, "Benjita", 0.09999111762709093, true, 1, false, 4, "false", "false", "active"],
+          [41604, "Bruno", 0.07799975965294648, true, 1, false, 4, "false", "false", "active"],
+          [41604, "Benjita", 0.08852626060333084, true, 1, false, 4, "false", "false", "active"],
+          [41622, "Bruno", 0.05905634153932402, true, 1, false, 4, "false", "false", "active"],
+          [41622, "Benjita", 0.09412468719317624, true, 1, false, 4, "false", "false", "active"],
+          [41644, "Bruno", 0.027465548440032527, true, 1, false, 4, "false", "false", "active"],
+          [41644, "Benjita", 0.08886497362060901, true, 1, false, 4, "false", "false", "active"],
+          [41662, "Bruno", 0.0050178573634961626, true, 1, false, 4, "false", "false", "active"],
+          [41662, "Benjita", 0.1201664966815042, true, 1, false, 4, "false", "false", "active"],
+          [41685, "Benjita", 0.17545219800874046, true, 1, false, 4, "false", "false", "active"],
+          [41702, "Benjita", 0.1856807451271029, true, 1, false, 4, "false", "false", "active"],
+          [41722, "Benjita", 0.22382425631580005, true, 1, false, 4, "false", "false", "active"],
+          [41743, "Benjita", 0.20300718622547692, true, 1, false, 4, "false", "false", "active"],
+          [41764, "Benjita", 0.15258035688590912, true, 1, false, 4, "false", "false", "active"],
+          [41784, "Benjita", 0.15967703802560282, true, 1, false, 4, "false", "false", "active"],
+          [41802, "Benjita", 0.1489228485852515, true, 1, false, 4, "false", "false", "active"],
+          [41823, "Benjita", 0.10862212316477157, true, 1, false, 4, "false", "false", "active"],
+          [41842, "Benjita", 0.033749138808594134, true, 1, false, 4, "false", "false", "active"],
+          [41867, "Benjita", 0.00561222824799277, true, 1, false, 4, "false", "false", "active"],
+          [41883, "Benjita", 0.0031492278561446735, true, 1, false, 4, "false", "false", "active"]
+        ],
+        "commands": [
+          {
+            "atMs": 9400,
+            "eventType": "elevenlabs_agent_command",
+            "eventId": "b6159302-3535-4561-80d4-7b3dca8a8940",
+            "sourceEventId": null,
+            "sessionId": "353d7a15-b5b8-49b7-98de-2ec0b13908a1",
+            "commandType": "user_activity",
+            "providerType": "user_activity",
+            "conversationId": null
+          },
+          {
+            "atMs": 9401,
+            "eventType": "elevenlabs_agent_command",
+            "eventId": "01497a97-3c9b-424e-8c36-5a692f3b5a79",
+            "sourceEventId": null,
+            "sessionId": "c26d5b15-103c-499a-9bab-b56c6426c56d",
+            "commandType": "user_activity",
+            "providerType": "user_activity",
+            "conversationId": null
+          },
+          {
+            "atMs": 9402,
+            "eventType": "elevenlabs_agent_command",
+            "eventId": "137aee6d-52f4-4893-819b-415e9341ba77",
+            "sourceEventId": null,
+            "sessionId": "90795bca-4d8f-4f0b-96de-e458aac34bcf",
+            "commandType": "contextual_update",
+            "providerType": "contextual_update",
+            "conversationId": null
+          },
+          {
+            "atMs": 9402,
+            "eventType": "elevenlabs_agent_command",
+            "eventId": "2ae4dde8-c2ff-49ad-aa4d-88ba00dcba70",
+            "sourceEventId": null,
+            "sessionId": "90795bca-4d8f-4f0b-96de-e458aac34bcf",
+            "commandType": "user_message",
+            "providerType": "user_message",
+            "conversationId": null
+          },
+          {
+            "atMs": 11357,
+            "eventType": "avatar.interrupt",
+            "eventId": null,
+            "sourceEventId": null,
+            "sessionId": "90795bca-4d8f-4f0b-96de-e458aac34bcf",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 40744,
+            "eventType": "avatar.interrupt",
+            "eventId": null,
+            "sourceEventId": null,
+            "sessionId": "353d7a15-b5b8-49b7-98de-2ec0b13908a1",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 40890,
+            "eventType": "avatar.interrupt",
+            "eventId": null,
+            "sourceEventId": null,
+            "sessionId": "c26d5b15-103c-499a-9bab-b56c6426c56d",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 41228,
+            "eventType": "avatar.interrupt",
+            "eventId": null,
+            "sourceEventId": null,
+            "sessionId": "353d7a15-b5b8-49b7-98de-2ec0b13908a1",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 41412,
+            "eventType": "avatar.interrupt",
+            "eventId": null,
+            "sourceEventId": null,
+            "sessionId": "c26d5b15-103c-499a-9bab-b56c6426c56d",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          }
+        ],
+        "providerEvents": [
+          {
+            "atMs": 5842,
+            "eventType": "avatar.speak_started",
+            "eventId": "f627bc29-c090-456d-919a-7cb65797ee72",
+            "sourceEventId": "1bc728a8-8a9b-4afa-96f9-5c77a54f6509",
+            "sessionId": "90795bca-4d8f-4f0b-96de-e458aac34bcf",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 5843,
+            "eventType": "avatar.speak_ended",
+            "eventId": "70971c4b-6db9-4219-a6ed-9e3923324cd4",
+            "sourceEventId": "1bc728a8-8a9b-4afa-96f9-5c77a54f6509",
+            "sessionId": "90795bca-4d8f-4f0b-96de-e458aac34bcf",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 5843,
+            "eventType": "avatar.transcription",
+            "eventId": "e1367ccf-15a9-4133-84f2-088094051ab0",
+            "sourceEventId": null,
+            "sessionId": "90795bca-4d8f-4f0b-96de-e458aac34bcf",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 6074,
+            "eventType": "avatar.speak_started",
+            "eventId": "d47248ab-4275-490c-9e3e-72883f4557b0",
+            "sourceEventId": "1bc728a8-8a9b-4afa-96f9-5c77a54f6509",
+            "sessionId": "90795bca-4d8f-4f0b-96de-e458aac34bcf",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 6157,
+            "eventType": "avatar.speak_started",
+            "eventId": "4a74cbaa-3e92-4221-b78f-dbd34cbf2b16",
+            "sourceEventId": "6b40c891-0152-4bac-a791-08adf42bec3e",
+            "sessionId": "c26d5b15-103c-499a-9bab-b56c6426c56d",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 6157,
+            "eventType": "avatar.speak_ended",
+            "eventId": "1bd98427-c1d4-4a16-b9c9-92baf288e7b8",
+            "sourceEventId": "6b40c891-0152-4bac-a791-08adf42bec3e",
+            "sessionId": "c26d5b15-103c-499a-9bab-b56c6426c56d",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 6157,
+            "eventType": "avatar.transcription",
+            "eventId": "fb8dab22-84d3-4ed0-bfec-049fc700b400",
+            "sourceEventId": null,
+            "sessionId": "c26d5b15-103c-499a-9bab-b56c6426c56d",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 6157,
+            "eventType": "avatar.speak_started",
+            "eventId": "dbe6a34b-42d3-4d68-b982-78ef796e6991",
+            "sourceEventId": "6b40c891-0152-4bac-a791-08adf42bec3e",
+            "sessionId": "c26d5b15-103c-499a-9bab-b56c6426c56d",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 6340,
+            "eventType": "avatar.speak_ended",
+            "eventId": "61b31832-ee73-4978-b634-78ea5d006d74",
+            "sourceEventId": "6b40c891-0152-4bac-a791-08adf42bec3e",
+            "sessionId": "c26d5b15-103c-499a-9bab-b56c6426c56d",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 6353,
+            "eventType": "avatar.speak_started",
+            "eventId": "b8e814dd-b057-4f38-b037-0095f05aa4ec",
+            "sourceEventId": "a1689dd4-a5ff-4fdc-b66b-70bdac4810ac",
+            "sessionId": "353d7a15-b5b8-49b7-98de-2ec0b13908a1",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 6353,
+            "eventType": "avatar.speak_ended",
+            "eventId": "85b5fe7e-2b21-47ba-8884-1fd3b606e71e",
+            "sourceEventId": "a1689dd4-a5ff-4fdc-b66b-70bdac4810ac",
+            "sessionId": "353d7a15-b5b8-49b7-98de-2ec0b13908a1",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 6353,
+            "eventType": "avatar.transcription",
+            "eventId": "20d5968b-8d50-40ad-a49c-00d210b13905",
+            "sourceEventId": null,
+            "sessionId": "353d7a15-b5b8-49b7-98de-2ec0b13908a1",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 6423,
+            "eventType": "avatar.speak_ended",
+            "eventId": "7950f0a8-bce1-4c5f-96ce-2b3dd30db723",
+            "sourceEventId": "1bc728a8-8a9b-4afa-96f9-5c77a54f6509",
+            "sessionId": "90795bca-4d8f-4f0b-96de-e458aac34bcf",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 6568,
+            "eventType": "avatar.speak_started",
+            "eventId": "20d5ef4b-8f2b-4d82-925f-566c42c26826",
+            "sourceEventId": "a1689dd4-a5ff-4fdc-b66b-70bdac4810ac",
+            "sessionId": "353d7a15-b5b8-49b7-98de-2ec0b13908a1",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 6971,
+            "eventType": "avatar.speak_ended",
+            "eventId": "a63cd94a-99cd-4f65-a66b-c457bdc0f47a",
+            "sourceEventId": "a1689dd4-a5ff-4fdc-b66b-70bdac4810ac",
+            "sessionId": "353d7a15-b5b8-49b7-98de-2ec0b13908a1",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 11065,
+            "eventType": "avatar.speak_started",
+            "eventId": "c3bb740f-661b-4789-a33e-fb7c195665b6",
+            "sourceEventId": "01cf5dac-83b0-4690-ad41-1e550d5938d1",
+            "sessionId": "90795bca-4d8f-4f0b-96de-e458aac34bcf",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 11657,
+            "eventType": "elevenlabs_agent_event",
+            "eventId": "fa9e548f-7879-45a3-a91c-7f52832f6157",
+            "sourceEventId": null,
+            "sessionId": "90795bca-4d8f-4f0b-96de-e458aac34bcf",
+            "commandType": "agent_response",
+            "providerType": "agent_response",
+            "conversationId": null
+          },
+          {
+            "atMs": 11657,
+            "eventType": "avatar.transcription.chunk",
+            "eventId": "53cc77dc-92a0-467a-858b-6ce1ecf4e2c6",
+            "sourceEventId": null,
+            "sessionId": "90795bca-4d8f-4f0b-96de-e458aac34bcf",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 12574,
+            "eventType": "avatar.speak_ended",
+            "eventId": "b2abbd4e-b5f5-43ef-81cf-f3c9133ffb1b",
+            "sourceEventId": "01cf5dac-83b0-4690-ad41-1e550d5938d1",
+            "sessionId": "90795bca-4d8f-4f0b-96de-e458aac34bcf",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 40429,
+            "eventType": "elevenlabs_agent_event",
+            "eventId": "4e9fa6f1-e675-4f96-9db8-52b9cab2994c",
+            "sourceEventId": null,
+            "sessionId": "353d7a15-b5b8-49b7-98de-2ec0b13908a1",
+            "commandType": "user_transcript",
+            "providerType": "user_transcript",
+            "conversationId": null
+          },
+          {
+            "atMs": 40429,
+            "eventType": "user.speak_ended",
+            "eventId": "3d2a7c6b-64bd-44aa-9def-4dd8edef9a6a",
+            "sourceEventId": null,
+            "sessionId": "353d7a15-b5b8-49b7-98de-2ec0b13908a1",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 40439,
+            "eventType": "user.transcription.chunk",
+            "eventId": "dbe844ba-0c68-4086-93d3-0ba673ef82f9",
+            "sourceEventId": null,
+            "sessionId": "353d7a15-b5b8-49b7-98de-2ec0b13908a1",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 40453,
+            "eventType": "user.transcription",
+            "eventId": "a2eb4a8b-90c0-4250-974a-f7a180b8ac07",
+            "sourceEventId": null,
+            "sessionId": "353d7a15-b5b8-49b7-98de-2ec0b13908a1",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 40459,
+            "eventType": "elevenlabs_agent_event",
+            "eventId": "e258bbf5-b29a-4176-8b6f-5e6134c3162b",
+            "sourceEventId": null,
+            "sessionId": "353d7a15-b5b8-49b7-98de-2ec0b13908a1",
+            "commandType": "agent_response",
+            "providerType": "agent_response",
+            "conversationId": null
+          },
+          {
+            "atMs": 40477,
+            "eventType": "avatar.transcription.chunk",
+            "eventId": "113ce8a4-5cc6-4a64-a2b1-14b51dcf34ef",
+            "sourceEventId": null,
+            "sessionId": "353d7a15-b5b8-49b7-98de-2ec0b13908a1",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 40486,
+            "eventType": "elevenlabs_agent_event",
+            "eventId": "723e0a90-f783-4ea5-b245-b5a8f2b8e82f",
+            "sourceEventId": null,
+            "sessionId": "c26d5b15-103c-499a-9bab-b56c6426c56d",
+            "commandType": "user_transcript",
+            "providerType": "user_transcript",
+            "conversationId": null
+          },
+          {
+            "atMs": 40486,
+            "eventType": "user.speak_ended",
+            "eventId": "f9367c18-0ec0-46d9-a116-434a9d53f119",
+            "sourceEventId": null,
+            "sessionId": "c26d5b15-103c-499a-9bab-b56c6426c56d",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 40486,
+            "eventType": "user.transcription.chunk",
+            "eventId": "2e9b26c3-e202-43b8-ab0d-2c1896fbc222",
+            "sourceEventId": null,
+            "sessionId": "c26d5b15-103c-499a-9bab-b56c6426c56d",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 40506,
+            "eventType": "user.transcription",
+            "eventId": "d0ea6bd3-addf-4bdc-ad27-e1989429ec97",
+            "sourceEventId": null,
+            "sessionId": "c26d5b15-103c-499a-9bab-b56c6426c56d",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 40535,
+            "eventType": "elevenlabs_agent_event",
+            "eventId": "05d17e82-17bb-4ebd-94ec-a378b6c88fc5",
+            "sourceEventId": null,
+            "sessionId": "c26d5b15-103c-499a-9bab-b56c6426c56d",
+            "commandType": "agent_response",
+            "providerType": "agent_response",
+            "conversationId": null
+          },
+          {
+            "atMs": 40541,
+            "eventType": "avatar.transcription.chunk",
+            "eventId": "84f57ea5-b32b-4677-977d-73fad1bffd52",
+            "sourceEventId": null,
+            "sessionId": "c26d5b15-103c-499a-9bab-b56c6426c56d",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 40744,
+            "eventType": "avatar.speak_started",
+            "eventId": "30e268ed-cab2-4acb-be12-5954dd63995c",
+            "sourceEventId": "2106799c-4740-485f-86cc-f0a64b89a029",
+            "sessionId": "353d7a15-b5b8-49b7-98de-2ec0b13908a1",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 40890,
+            "eventType": "avatar.speak_started",
+            "eventId": "1baccfcf-2fb1-405e-b486-b3f704a6f9ad",
+            "sourceEventId": "fbca616c-423f-4435-b8de-c165d9f2a138",
+            "sessionId": "c26d5b15-103c-499a-9bab-b56c6426c56d",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 40983,
+            "eventType": "avatar.transcription",
+            "eventId": "33bb0a04-03ee-4dea-8a9e-388f1b868311",
+            "sourceEventId": null,
+            "sessionId": "353d7a15-b5b8-49b7-98de-2ec0b13908a1",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 41123,
+            "eventType": "avatar.transcription",
+            "eventId": "abbfa012-2b31-4fce-a8b7-2122bdd7e5fb",
+            "sourceEventId": null,
+            "sessionId": "c26d5b15-103c-499a-9bab-b56c6426c56d",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 41135,
+            "eventType": "avatar.speak_ended",
+            "eventId": "f4c70280-2f2e-4be8-841a-5d7af8b12115",
+            "sourceEventId": "2106799c-4740-485f-86cc-f0a64b89a029",
+            "sessionId": "353d7a15-b5b8-49b7-98de-2ec0b13908a1",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 41228,
+            "eventType": "avatar.speak_started",
+            "eventId": "d98ac54b-836f-4722-9308-3a2c85942948",
+            "sourceEventId": "2106799c-4740-485f-86cc-f0a64b89a029",
+            "sessionId": "353d7a15-b5b8-49b7-98de-2ec0b13908a1",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 41258,
+            "eventType": "avatar.speak_ended",
+            "eventId": "60b727af-deba-4e8c-a2e2-984b24f339bb",
+            "sourceEventId": "fbca616c-423f-4435-b8de-c165d9f2a138",
+            "sessionId": "c26d5b15-103c-499a-9bab-b56c6426c56d",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 41412,
+            "eventType": "avatar.speak_started",
+            "eventId": "3683084d-c2af-4838-b4a5-0a3089e756e7",
+            "sourceEventId": "fbca616c-423f-4435-b8de-c165d9f2a138",
+            "sessionId": "c26d5b15-103c-499a-9bab-b56c6426c56d",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 41655,
+            "eventType": "avatar.speak_ended",
+            "eventId": "eac6233d-d1e5-48fd-9171-9985dd1eccf8",
+            "sourceEventId": "2106799c-4740-485f-86cc-f0a64b89a029",
+            "sessionId": "353d7a15-b5b8-49b7-98de-2ec0b13908a1",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 41936,
+            "eventType": "avatar.speak_ended",
+            "eventId": "2c20833a-9855-4eed-aca0-afcd2f6b72ca",
+            "sourceEventId": "fbca616c-423f-4435-b8de-c165d9f2a138",
+            "sessionId": "c26d5b15-103c-499a-9bab-b56c6426c56d",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          }
+        ]
+      }
+    },
+    {
+      "sourceReport": "full-app-report-1789246940963.json",
+      "sourceSha256": "4cfe3aa72b2ae3c4c18681d584b77e2a93d8205d3fdbef3122a16827b0f6ced0",
+      "createdAt": "2026-09-12T21:01:31.971Z",
+      "sessionId": "cmtyverz5000fg8pobz2xjf4l",
+      "groupId": "cmtavsb2800b3uii7wxw1uh6d",
+      "scenario": "barge-in",
+      "bargeTarget": "other",
+      "oracleStatus": "experimental-not-accepted",
+      "layout": "desktop",
+      "outcome": "inconclusive",
+      "roundPassed": true,
+      "roundState": [
+        {
+          "id": "cmtyvf2120016g8po5rltwmc4",
+          "status": "cancelled",
+          "sourceEventId": "scribe:299bb883-4917-4a13-89c5-a94298db64dd",
+          "turns": [
+            {
+              "id": "cmtyvf2200018g8po75vpg7xq",
+              "avatarId": "cmtavpot900a8uii7a7wap2oy",
+              "status": "interrupted",
+              "responseLength": null
+            },
+            {
+              "id": "cmtyvf2200019g8po8xi6r11t",
+              "avatarId": "cmtavomuk009puii7oqfc4p7p",
+              "status": "interrupted",
+              "responseLength": null
+            },
+            {
+              "id": "cmtyvf220001ag8pogcsl9p7e",
+              "avatarId": "cmtavnb4o0094uii72liceowv",
+              "status": "interrupted",
+              "responseLength": null
+            }
+          ]
+        },
+        {
+          "id": "cmtyvf7x30022g8pow88rt7er",
+          "status": "completed",
+          "sourceEventId": "scribe:935a0549-395c-4fc9-9b17-67cb99c0894f",
+          "turns": [
+            {
+              "id": "cmtyvf7xh0024g8poaxb2xpmm",
+              "avatarId": "cmtavomuk009puii7oqfc4p7p",
+              "status": "completed",
+              "responseLength": 5
+            }
+          ]
+        }
+      ],
+      "bargeIn": {
+        "oldRoundId": "cmtyvf2120016g8po5rltwmc4",
+        "oldTurnId": "cmtyvf2200018g8po75vpg7xq",
+        "ownerAvatarId": "cmtavpot900a8uii7a7wap2oy",
+        "ownerName": "Vera",
+        "ownerProviderSessionId": "fd01840f-ca21-44c2-b431-72fd38ca2d11",
+        "targetAvatarId": "cmtavomuk009puii7oqfc4p7p",
+        "targetName": "Bruno",
+        "firstAudibleSampleAtMs": 15444,
+        "partialAt": "2026-09-12T21:02:00.182Z",
+        "partialBrowserAtMs": 15508,
+        "partialLength": 4,
+        "committedLength": 43,
+        "committedAt": "2026-09-12T21:02:00.283Z",
+        "newRoundId": "cmtyvf7x30022g8pow88rt7er",
+        "newTurnId": "cmtyvf7xh0024g8poaxb2xpmm",
+        "actualTargetAvatarId": "cmtavomuk009puii7oqfc4p7p"
+      },
+      "interruptionEvidence": {
+        "outcome": "inconclusive",
+        "reason": "experimental_oracle_requires_review_and_physical_qa",
+        "gateLatencyMs": 15,
+        "checks": {
+          "oneInterruptionId": true,
+          "exactlyTwoHumanSubmits": true,
+          "exactlyTwoUserCommands": true,
+          "commandsUseExpectedConnectors": true,
+          "oldRoundCancelled": true,
+          "atMostOneAudible": true,
+          "gateWithin200Ms": true,
+          "selectedRequestedTarget": true,
+          "nextResponseHasAudio": true,
+          "replacementsSandboxVerified": true,
+          "sameAvatarUsesNewConnector": true
+        },
+        "commandCount": 2,
+        "nextResponseAudibleSamples": 28,
+        "caveats": [
+          "Fake microphone and injected Scribe events; not physical interruption/echo QA",
+          "Gate latency includes Playwright/socket and 20 ms sampling uncertainty",
+          "Interrupted buffered audio may intentionally remain muted; normal closure oracle is not applicable"
+        ]
+      },
+      "providerChecks": [
+        {
+          "name": "Bruno",
+          "conversationId": "conv_0601m2bptf9zewhttbvfjqfbcqeb",
+          "status": "done",
+          "outcome": "passed",
+          "hasAudio": true,
+          "userMessageReceived": true,
+          "userMessages": 1,
+          "agentMessages": 2,
+          "generatedResponseAfterUser": true,
+          "responseLength": 5,
+          "transcriptEntryCount": 7
+        },
+        {
+          "name": "Vera",
+          "outcome": "skipped",
+          "reason": "not_expected_to_complete_in_interruption_scenario"
+        },
+        {
+          "name": "Benjita",
+          "outcome": "skipped",
+          "reason": "not_expected_to_complete_in_interruption_scenario"
+        }
+      ],
+      "cleanup": {
+        "status": 200
+      },
+      "ttsUnchanged": true,
+      "ttsProfile": {
+        "model_id": "eleven_flash_v2_5",
+        "agent_output_audio_format": "pcm_24000",
+        "optimize_streaming_latency": 3,
+        "stability": 0.45,
+        "speed": 0.98,
+        "similarity_boost": 0.78
+      },
+      "sandbox": {
+        "before": true,
+        "after": true,
+        "replacements": [
+          {
+            "avatarId": "cmtavpot900a8uii7a7wap2oy",
+            "providerSessionId": "67b3b32f-c843-4c4f-b418-bbf824c26c5c",
+            "participantAttemptId": "cmtyvf3ha001rg8pojuzo77mw",
+            "observedAt": "2026-09-12T21:02:01.067Z",
+            "tokenPassed": true,
+            "postStart": {
+              "status": 200,
+              "isSandbox": true,
+              "observedAt": "2026-09-12T21:02:02.672Z"
+            }
+          }
+        ]
+      },
+      "api": [
+        {
+          "at": "2026-09-12T21:01:44.809Z",
+          "requestObservedAt": "2026-09-12T21:01:44.789Z",
+          "responseObservedAt": "2026-09-12T21:01:44.809Z",
+          "path": "/api/me",
+          "status": 200,
+          "method": "GET"
+        },
+        {
+          "at": "2026-09-12T21:01:44.864Z",
+          "requestObservedAt": "2026-09-12T21:01:44.844Z",
+          "responseObservedAt": "2026-09-12T21:01:44.864Z",
+          "path": "/api/avatar-groups/cmtavsb2800b3uii7wxw1uh6d",
+          "status": 200,
+          "method": "GET"
+        },
+        {
+          "at": "2026-09-12T21:01:44.864Z",
+          "requestObservedAt": "2026-09-12T21:01:44.844Z",
+          "responseObservedAt": "2026-09-12T21:01:44.864Z",
+          "path": "/api/avatar-groups/cmtavsb2800b3uii7wxw1uh6d",
+          "status": 200,
+          "method": "GET"
+        },
+        {
+          "at": "2026-09-12T21:01:46.642Z",
+          "requestObservedAt": "2026-09-12T21:01:45.291Z",
+          "responseObservedAt": "2026-09-12T21:01:46.642Z",
+          "path": "/api/avatar-groups/cmtavsb2800b3uii7wxw1uh6d/voice-sessions",
+          "status": 201,
+          "method": "POST"
+        },
+        {
+          "at": "2026-09-12T21:01:49.535Z",
+          "requestObservedAt": "2026-09-12T21:01:49.483Z",
+          "responseObservedAt": "2026-09-12T21:01:49.535Z",
+          "path": "/api/group-voice-sessions/cmtyverz5000fg8pobz2xjf4l/participants/cmtavpot900a8uii7a7wap2oy/started",
+          "status": 200,
+          "method": "POST",
+          "input": {
+            "participantAttemptId": "cmtyves00000og8pogr16kx7t"
+          }
+        },
+        {
+          "at": "2026-09-12T21:01:49.593Z",
+          "requestObservedAt": "2026-09-12T21:01:49.565Z",
+          "responseObservedAt": "2026-09-12T21:01:49.593Z",
+          "path": "/api/group-voice-sessions/cmtyverz5000fg8pobz2xjf4l/participants/cmtavnb4o0094uii72liceowv/started",
+          "status": 200,
+          "method": "POST",
+          "input": {
+            "participantAttemptId": "cmtyves01000sg8poqvgjwgjp"
+          }
+        },
+        {
+          "at": "2026-09-12T21:01:54.006Z",
+          "requestObservedAt": "2026-09-12T21:01:53.959Z",
+          "responseObservedAt": "2026-09-12T21:01:54.006Z",
+          "path": "/api/group-voice-sessions/cmtyverz5000fg8pobz2xjf4l/participants/cmtavomuk009puii7oqfc4p7p/started",
+          "status": 200,
+          "method": "POST",
+          "input": {
+            "participantAttemptId": "cmtyves00000qg8pov95ptvj6"
+          }
+        },
+        {
+          "at": "2026-09-12T21:01:57.665Z",
+          "requestObservedAt": "2026-09-12T21:01:57.261Z",
+          "responseObservedAt": "2026-09-12T21:01:57.665Z",
+          "path": "/api/group-voice-sessions/cmtyverz5000fg8pobz2xjf4l/scribe-token",
+          "status": 200,
+          "method": "POST"
+        },
+        {
+          "at": "2026-09-12T21:01:58.477Z",
+          "requestObservedAt": "2026-09-12T21:01:58.359Z",
+          "responseObservedAt": "2026-09-12T21:01:58.477Z",
+          "path": "/api/group-voice-sessions/cmtyverz5000fg8pobz2xjf4l/turns",
+          "status": 200,
+          "method": "POST",
+          "phase": "queued",
+          "roundId": "cmtyvf2120016g8po5rltwmc4",
+          "directive": {
+            "action": "speak",
+            "avatarId": "cmtavpot900a8uii7a7wap2oy",
+            "turnId": "cmtyvf2200018g8po75vpg7xq"
+          },
+          "input": {
+            "sourceEventId": "scribe:299bb883-4917-4a13-89c5-a94298db64dd",
+            "contentLength": 173
+          }
+        },
+        {
+          "at": "2026-09-12T21:02:00.082Z",
+          "requestObservedAt": "2026-09-12T21:01:59.981Z",
+          "responseObservedAt": "2026-09-12T21:02:00.082Z",
+          "path": "/api/group-voice-sessions/cmtyverz5000fg8pobz2xjf4l/provider-events",
+          "status": 200,
+          "method": "POST",
+          "phase": "speaking",
+          "input": {
+            "type": "speak_started",
+            "sourceEventId": "speak_started:cmtavpot900a8uii7a7wap2oy:turn:cmtyvf2200018g8po75vpg7xq",
+            "avatarId": "cmtavpot900a8uii7a7wap2oy",
+            "turnId": "cmtyvf2200018g8po75vpg7xq"
+          }
+        },
+        {
+          "at": "2026-09-12T21:02:00.249Z",
+          "requestObservedAt": "2026-09-12T21:02:00.185Z",
+          "responseObservedAt": "2026-09-12T21:02:00.249Z",
+          "path": "/api/group-voice-sessions/cmtyverz5000fg8pobz2xjf4l/interrupt",
+          "status": 200,
+          "method": "POST",
+          "phase": "listening",
+          "directive": {
+            "action": "interrupt",
+            "avatarId": "cmtavpot900a8uii7a7wap2oy",
+            "reason": "user"
+          },
+          "interruption": {
+            "sourceEventId": "barge:9a8c61c2-2021-498a-a478-7ffa10f4248e",
+            "status": "cancelled",
+            "turnId": "cmtyvf2200018g8po75vpg7xq",
+            "avatarIds": ["cmtavpot900a8uii7a7wap2oy"]
+          },
+          "input": {
+            "sourceEventId": "barge:9a8c61c2-2021-498a-a478-7ffa10f4248e",
+            "reason": "user",
+            "trigger": "voice",
+            "expectedTurnId": "cmtyvf2200018g8po75vpg7xq",
+            "expectedAvatarId": "cmtavpot900a8uii7a7wap2oy"
+          }
+        },
+        {
+          "at": "2026-09-12T21:02:00.351Z",
+          "requestObservedAt": "2026-09-12T21:02:00.325Z",
+          "responseObservedAt": "2026-09-12T21:02:00.351Z",
+          "path": "/api/group-voice-sessions/cmtyverz5000fg8pobz2xjf4l/provider-events",
+          "status": 200,
+          "method": "POST",
+          "phase": "listening",
+          "input": {
+            "type": "agent_response",
+            "sourceEventId": "agent_response:cmtavpot900a8uii7a7wap2oy:1137f865-6975-492c-a997-ad857aa06508",
+            "avatarId": "cmtavpot900a8uii7a7wap2oy",
+            "turnId": "cmtyvf2200018g8po75vpg7xq",
+            "contentLength": 349
+          }
+        },
+        {
+          "at": "2026-09-12T21:02:01.068Z",
+          "requestObservedAt": "2026-09-12T21:02:00.250Z",
+          "responseObservedAt": "2026-09-12T21:02:01.068Z",
+          "path": "/api/group-voice-sessions/cmtyverz5000fg8pobz2xjf4l/participants/cmtavpot900a8uii7a7wap2oy/retry",
+          "status": 200,
+          "method": "POST",
+          "input": {
+            "interruptionSourceEventId": "barge:9a8c61c2-2021-498a-a478-7ffa10f4248e"
+          }
+        },
+        {
+          "at": "2026-09-12T21:02:03.614Z",
+          "requestObservedAt": "2026-09-12T21:02:02.672Z",
+          "responseObservedAt": "2026-09-12T21:02:03.614Z",
+          "path": "/api/group-voice-sessions/cmtyverz5000fg8pobz2xjf4l/participants/cmtavpot900a8uii7a7wap2oy/started",
+          "status": 200,
+          "method": "POST",
+          "input": {
+            "participantAttemptId": "cmtyvf3ha001rg8pojuzo77mw"
+          }
+        },
+        {
+          "at": "2026-09-12T21:02:06.075Z",
+          "requestObservedAt": "2026-09-12T21:02:05.992Z",
+          "responseObservedAt": "2026-09-12T21:02:06.075Z",
+          "path": "/api/group-voice-sessions/cmtyverz5000fg8pobz2xjf4l/turns",
+          "status": 200,
+          "method": "POST",
+          "phase": "queued",
+          "roundId": "cmtyvf7x30022g8pow88rt7er",
+          "directive": {
+            "action": "speak",
+            "avatarId": "cmtavomuk009puii7oqfc4p7p",
+            "turnId": "cmtyvf7xh0024g8poaxb2xpmm"
+          },
+          "input": {
+            "sourceEventId": "scribe:935a0549-395c-4fc9-9b17-67cb99c0894f",
+            "contentLength": 43
+          }
+        },
+        {
+          "at": "2026-09-12T21:02:07.136Z",
+          "requestObservedAt": "2026-09-12T21:02:07.103Z",
+          "responseObservedAt": "2026-09-12T21:02:07.136Z",
+          "path": "/api/group-voice-sessions/cmtyverz5000fg8pobz2xjf4l/provider-events",
+          "status": 200,
+          "method": "POST",
+          "phase": "queued",
+          "input": {
+            "type": "agent_response",
+            "sourceEventId": "agent_response:cmtavomuk009puii7oqfc4p7p:d35d934d-c99c-4cdd-8ef2-98a41211893e",
+            "avatarId": "cmtavomuk009puii7oqfc4p7p",
+            "turnId": "cmtyvf7xh0024g8poaxb2xpmm",
+            "contentLength": 5
+          }
+        },
+        {
+          "at": "2026-09-12T21:02:07.565Z",
+          "requestObservedAt": "2026-09-12T21:02:07.528Z",
+          "responseObservedAt": "2026-09-12T21:02:07.565Z",
+          "path": "/api/group-voice-sessions/cmtyverz5000fg8pobz2xjf4l/provider-events",
+          "status": 200,
+          "method": "POST",
+          "phase": "speaking",
+          "input": {
+            "type": "speak_started",
+            "sourceEventId": "speak_started:cmtavomuk009puii7oqfc4p7p:turn:cmtyvf7xh0024g8poaxb2xpmm",
+            "avatarId": "cmtavomuk009puii7oqfc4p7p",
+            "turnId": "cmtyvf7xh0024g8poaxb2xpmm"
+          }
+        },
+        {
+          "at": "2026-09-12T21:02:09.722Z",
+          "requestObservedAt": "2026-09-12T21:02:09.664Z",
+          "responseObservedAt": "2026-09-12T21:02:09.722Z",
+          "path": "/api/group-voice-sessions/cmtyverz5000fg8pobz2xjf4l/provider-events",
+          "status": 200,
+          "method": "POST",
+          "phase": "listening",
+          "directive": {
+            "action": "listen",
+            "reason": "round_complete"
+          },
+          "input": {
+            "type": "speak_ended",
+            "sourceEventId": "speak_ended:cmtavomuk009puii7oqfc4p7p:turn:cmtyvf7xh0024g8poaxb2xpmm",
+            "avatarId": "cmtavomuk009puii7oqfc4p7p",
+            "turnId": "cmtyvf7xh0024g8poaxb2xpmm",
+            "contentLength": 5
+          }
+        },
+        {
+          "at": "2026-09-12T21:02:14.489Z",
+          "requestObservedAt": "2026-09-12T21:02:14.432Z",
+          "responseObservedAt": "2026-09-12T21:02:14.489Z",
+          "path": "/api/group-voice-sessions/cmtyverz5000fg8pobz2xjf4l/end",
+          "status": 200,
+          "method": "POST",
+          "input": {
+            "reason": "user"
+          }
+        },
+        {
+          "at": "2026-09-12T21:02:14.512Z",
+          "requestObservedAt": "2026-09-12T21:02:14.489Z",
+          "responseObservedAt": "2026-09-12T21:02:14.512Z",
+          "path": "/api/group-conversations",
+          "status": 200,
+          "method": "GET"
+        }
+      ],
+      "media": {
+        "startedAt": 257.70000000298023,
+        "wallStartedAt": "2026-09-12T21:01:44.675Z",
+        "sampleIntervalMs": 20,
+        "maxUnmutedElements": 1,
+        "participants": {
+          "Vera": {
+            "samples": 996,
+            "nonSilentUnmutedSamples": 8,
+            "peakRms": 0.283277502292087,
+            "firstAudioAtMs": 15371,
+            "lastAudioAtMs": 15507,
+            "unmutedSamples": 86
+          },
+          "Benjita": {
+            "samples": 1065,
+            "nonSilentUnmutedSamples": 0,
+            "peakRms": 0.25003496915665846,
+            "firstAudioAtMs": null,
+            "lastAudioAtMs": null,
+            "unmutedSamples": 0
+          },
+          "Bruno": {
+            "samples": 848,
+            "nonSilentUnmutedSamples": 28,
+            "peakRms": 0.287026512831767,
+            "firstAudioAtMs": 22983,
+            "lastAudioAtMs": 23983,
+            "unmutedSamples": 180
+          }
+        },
+        "originalSampleCount": 2909,
+        "samples": [
+          [4729, "Vera", 0, true, 1, false, 0, "false", "false", "connecting"],
+          [4803, "Benjita", 0, true, 1, false, 0, "false", "false", "connecting"],
+          [5362, "Benjita", 0.00000286111026071012, true, 1, false, 4, "false", "false", "connecting"],
+          [5383, "Vera", 0.000017219291163160638, true, 1, false, 4, "false", "false", "connecting"],
+          [5445, "Benjita", 0.006720211038881039, true, 1, false, 4, "false", "false", "connecting"],
+          [5464, "Benjita", 0.025621970710909065, true, 1, false, 4, "false", "false", "connecting"],
+          [5484, "Benjita", 0.016892101717509826, true, 1, false, 4, "false", "false", "connecting"],
+          [5543, "Vera", 0.06276986011669242, true, 1, false, 4, "false", "false", "connecting"],
+          [5543, "Benjita", 0.09122752643941193, true, 1, false, 4, "false", "false", "connecting"],
+          [5563, "Vera", 0.05333453973161147, true, 1, false, 4, "false", "false", "connecting"],
+          [5564, "Benjita", 0.10571171074369176, true, 1, false, 4, "false", "false", "connecting"],
+          [5587, "Vera", 0.09497876286834085, true, 1, false, 4, "false", "false", "connecting"],
+          [5587, "Benjita", 0.25003496915665846, true, 1, false, 4, "false", "false", "connecting"],
+          [5606, "Vera", 0.12168185274640042, true, 1, false, 4, "false", "false", "connecting"],
+          [5606, "Benjita", 0.22781585951263264, true, 1, false, 4, "false", "false", "connecting"],
+          [5623, "Vera", 0.0920261010754355, true, 1, false, 4, "false", "false", "connecting"],
+          [5623, "Benjita", 0.1755032054442637, true, 1, false, 4, "false", "false", "connecting"],
+          [5646, "Vera", 0.09465139687875208, true, 1, false, 4, "false", "false", "connecting"],
+          [5647, "Benjita", 0.1377876883355803, true, 1, false, 4, "false", "false", "connecting"],
+          [5666, "Vera", 0.09868026037163177, true, 1, false, 4, "false", "false", "connecting"],
+          [5666, "Benjita", 0.14218838670089953, true, 1, false, 4, "false", "false", "connecting"],
+          [5682, "Vera", 0.0845488667525162, true, 1, false, 4, "false", "false", "connecting"],
+          [5682, "Benjita", 0.15654750941171913, true, 1, false, 4, "false", "false", "connecting"],
+          [5707, "Vera", 0.05839521749096481, true, 1, false, 4, "false", "false", "connecting"],
+          [5707, "Benjita", 0.1469049338296894, true, 1, false, 4, "false", "false", "connecting"],
+          [5724, "Vera", 0.010087618068717035, true, 1, false, 4, "false", "false", "connecting"],
+          [5724, "Benjita", 0.11938778865944193, true, 1, false, 4, "false", "false", "connecting"],
+          [5745, "Benjita", 0.054204010993123074, true, 1, false, 4, "false", "false", "connecting"],
+          [5765, "Vera", 0.021709359905594635, true, 1, false, 4, "false", "false", "connecting"],
+          [5765, "Benjita", 0.01689849256502395, true, 1, false, 4, "false", "false", "connecting"],
+          [5785, "Vera", 0.0022179645429481255, true, 1, false, 4, "false", "false", "connecting"],
+          [5785, "Benjita", 0.0031279243850777373, true, 1, false, 4, "false", "false", "connecting"],
+          [5847, "Vera", 0.09189152611954954, true, 1, false, 4, "false", "false", "connecting"],
+          [5866, "Vera", 0.03691462830937833, true, 1, false, 4, "false", "false", "connecting"],
+          [6342, "Vera", 0.05576296542096902, true, 1, false, 4, "false", "false", "connecting"],
+          [6364, "Vera", 0.1513271085197153, true, 1, false, 4, "false", "false", "connecting"],
+          [6383, "Vera", 0.1423132135721664, true, 1, false, 4, "false", "false", "connecting"],
+          [6404, "Vera", 0.12513206903338248, true, 1, false, 4, "false", "false", "connecting"],
+          [6424, "Vera", 0.10105217372157278, true, 1, false, 4, "false", "false", "connecting"],
+          [6424, "Benjita", 0.006714894515937141, true, 1, false, 4, "false", "false", "connecting"],
+          [6443, "Vera", 0.09039282820390364, true, 1, false, 4, "false", "false", "connecting"],
+          [6444, "Benjita", 0.00765408389121871, true, 1, false, 4, "false", "false", "connecting"],
+          [6464, "Vera", 0.09226249464248411, true, 1, false, 4, "false", "false", "connecting"],
+          [6464, "Benjita", 0.0012606740766332245, true, 1, false, 4, "false", "false", "connecting"],
+          [6485, "Vera", 0.09466719532642036, true, 1, false, 4, "false", "false", "connecting"],
+          [6485, "Benjita", 0.002583657587501243, true, 1, false, 4, "false", "false", "connecting"],
+          [6504, "Vera", 0.12002446130842834, true, 1, false, 4, "false", "false", "connecting"],
+          [6504, "Benjita", 0.08270932006657525, true, 1, false, 4, "false", "false", "connecting"],
+          [6525, "Vera", 0.10379716333418064, true, 1, false, 4, "false", "false", "connecting"],
+          [6525, "Benjita", 0.21049229186991755, true, 1, false, 4, "false", "false", "connecting"],
+          [6546, "Vera", 0.09393371095874027, true, 1, false, 4, "false", "false", "connecting"],
+          [6546, "Benjita", 0.18114057853511878, true, 1, false, 4, "false", "false", "connecting"],
+          [6565, "Vera", 0.09016079289579908, true, 1, false, 4, "false", "false", "connecting"],
+          [6565, "Benjita", 0.16655420872693769, true, 1, false, 4, "false", "false", "connecting"],
+          [6583, "Vera", 0.0253872406596369, true, 1, false, 4, "false", "false", "connecting"],
+          [6584, "Benjita", 0.1472780573915371, true, 1, false, 4, "false", "false", "connecting"],
+          [6603, "Vera", 0.008404951420973748, true, 1, false, 4, "false", "false", "connecting"],
+          [6603, "Benjita", 0.1198807075674064, true, 1, false, 4, "false", "false", "connecting"],
+          [6623, "Benjita", 0.092414967002564, true, 1, false, 4, "false", "false", "connecting"],
+          [6647, "Benjita", 0.08042630776945892, true, 1, false, 4, "false", "false", "connecting"],
+          [6666, "Benjita", 0.07818386666923853, true, 1, false, 4, "false", "false", "connecting"],
+          [6686, "Benjita", 0.06045677860354874, true, 1, false, 4, "false", "false", "connecting"],
+          [6704, "Benjita", 0.051908555138394846, true, 1, false, 4, "false", "false", "connecting"],
+          [6724, "Benjita", 0.028759651327354644, true, 1, false, 4, "false", "false", "connecting"],
+          [6745, "Benjita", 0.021570851030755133, true, 1, false, 4, "false", "false", "connecting"],
+          [6765, "Benjita", 0.014507541155653286, true, 1, false, 4, "false", "false", "connecting"],
+          [6783, "Benjita", 0.010254450296675738, true, 1, false, 4, "false", "false", "connecting"],
+          [6806, "Benjita", 0.001638110449661513, true, 1, false, 4, "false", "false", "connecting"],
+          [7723, "Vera", 0.0000174292984765271, true, 1, false, 4, "false", "false", "active"],
+          [7924, "Benjita", 0.000017377033390205856, true, 1, false, 4, "false", "false", "active"],
+          [9143, "Bruno", 0, true, 1, false, 0, "false", "false", "connecting"],
+          [10162, "Bruno", 0.0000170334253971798, true, 1, false, 4, "false", "false", "connecting"],
+          [10306, "Bruno", 0.07285554408192432, true, 1, false, 4, "false", "false", "connecting"],
+          [10324, "Bruno", 0.08097338363465623, true, 1, false, 4, "false", "false", "connecting"],
+          [10346, "Bruno", 0.1377704178566768, true, 1, false, 4, "false", "false", "connecting"],
+          [10365, "Bruno", 0.16741075712085707, true, 1, false, 4, "false", "false", "connecting"],
+          [10383, "Bruno", 0.1542428689672813, true, 1, false, 4, "false", "false", "connecting"],
+          [10405, "Bruno", 0.11905038634629944, true, 1, false, 4, "false", "false", "connecting"],
+          [10424, "Bruno", 0.14124475081851978, true, 1, false, 4, "false", "false", "connecting"],
+          [10443, "Bruno", 0.14596214217666426, true, 1, false, 4, "false", "false", "connecting"],
+          [10467, "Bruno", 0.16687552322204044, true, 1, false, 4, "false", "false", "connecting"],
+          [10486, "Bruno", 0.16853479463696344, true, 1, false, 4, "false", "false", "connecting"],
+          [10502, "Bruno", 0.1188370678110292, true, 1, false, 4, "false", "false", "connecting"],
+          [10524, "Bruno", 0.02711594904285119, true, 1, false, 4, "false", "false", "connecting"],
+          [10545, "Bruno", 0.016494381571757803, true, 1, false, 4, "false", "false", "connecting"],
+          [10563, "Bruno", 0.0033362143233041544, true, 1, false, 4, "false", "false", "connecting"],
+          [11124, "Bruno", 0.027852005595977457, true, 1, false, 4, "false", "false", "connecting"],
+          [11145, "Bruno", 0.24512139403812427, true, 1, false, 4, "false", "false", "connecting"],
+          [11165, "Bruno", 0.2829339574426596, true, 1, false, 4, "false", "false", "connecting"],
+          [11186, "Bruno", 0.287026512831767, true, 1, false, 4, "false", "false", "connecting"],
+          [11203, "Bruno", 0.264689422400521, true, 1, false, 4, "false", "false", "connecting"],
+          [11224, "Bruno", 0.22740794006021045, true, 1, false, 4, "false", "false", "connecting"],
+          [11246, "Bruno", 0.1693916401534472, true, 1, false, 4, "false", "false", "connecting"],
+          [11266, "Bruno", 0.13727577176973607, true, 1, false, 4, "false", "false", "connecting"],
+          [11286, "Bruno", 0.10277189748074625, true, 1, false, 4, "false", "false", "connecting"],
+          [11302, "Bruno", 0.085848818672789, true, 1, false, 4, "false", "false", "connecting"],
+          [11323, "Bruno", 0.08178249584655738, true, 1, false, 4, "false", "false", "connecting"],
+          [11345, "Bruno", 0.07644945449269129, true, 1, false, 4, "false", "false", "connecting"],
+          [11366, "Bruno", 0.06365870985477468, true, 1, false, 4, "false", "false", "connecting"],
+          [11386, "Bruno", 0.05912822341017959, true, 1, false, 4, "false", "false", "connecting"],
+          [11403, "Bruno", 0.05426461728913204, true, 1, false, 4, "false", "false", "connecting"],
+          [11423, "Bruno", 0.04333041137450852, true, 1, false, 4, "false", "false", "connecting"],
+          [11442, "Bruno", 0.022700339775587372, true, 1, false, 4, "false", "false", "connecting"],
+          [11465, "Bruno", 0.013361504481959186, true, 1, false, 4, "false", "false", "connecting"],
+          [11484, "Bruno", 0.008809683418576504, true, 1, false, 4, "false", "false", "connecting"],
+          [11503, "Bruno", 0.0020300945299929585, true, 1, false, 4, "false", "false", "connecting"],
+          [12603, "Bruno", 0.00000286111026071012, true, 1, false, 4, "false", "false", "active"],
+          [13803, "Vera", 0.000017455369949836148, false, 1, false, 4, "false", "false", "active"],
+          [13823, "Vera", 0.000014958012435746234, false, 1, false, 4, "false", "true", "active"],
+          [15282, "Vera", 0.000017377033390205856, false, 1, false, 4, "true", "true", "active"],
+          [15371, "Vera", 0.06507880870522859, false, 1, false, 4, "true", "true", "active"],
+          [15382, "Vera", 0.12882944216086042, false, 1, false, 4, "true", "true", "active"],
+          [15405, "Vera", 0.2225603207965074, false, 1, false, 4, "true", "true", "active"],
+          [15423, "Vera", 0.23445721808760212, false, 1, false, 4, "true", "true", "active"],
+          [15444, "Vera", 0.25832319693448574, false, 1, false, 4, "true", "true", "active"],
+          [15472, "Vera", 0.24662454588767085, false, 1, false, 4, "true", "true", "active"],
+          [15483, "Vera", 0.195312022389947, false, 1, false, 4, "true", "true", "active"],
+          [15507, "Vera", 0.02888857916129205, false, 1, false, 4, "true", "true", "active"],
+          [15523, "Vera", 0.11405029992030258, true, 1, false, 4, "false", "false", "active"],
+          [15542, "Vera", 0.1353658478694894, true, 1, false, 4, "false", "false", "active"],
+          [15564, "Vera", 0.1924447145030734, true, 1, false, 4, "false", "false", "active"],
+          [15583, "Vera", 0.20664040156056065, true, 1, false, 4, "false", "false", "active"],
+          [15603, "Vera", 0.14092354517910932, true, 1, false, 4, "false", "false", "active"],
+          [15623, "Vera", 0.12037414932412573, true, 1, false, 4, "false", "false", "active"],
+          [15647, "Vera", 0.15430731205591433, true, 1, false, 4, "false", "false", "active"],
+          [15664, "Vera", 0.15667282958182369, true, 1, false, 4, "false", "false", "active"],
+          [15683, "Vera", 0.1439502479539984, true, 1, false, 4, "false", "false", "active"],
+          [15706, "Vera", 0.13768306309709313, true, 1, false, 4, "false", "false", "active"],
+          [15723, "Vera", 0.13029341574395348, true, 1, false, 4, "false", "false", "active"],
+          [15745, "Vera", 0.17347818347619637, true, 1, false, 4, "false", "false", "active"],
+          [15764, "Vera", 0.16754778993762276, true, 1, false, 4, "false", "false", "active"],
+          [15783, "Vera", 0.06051104176949379, true, 1, false, 4, "false", "false", "active"],
+          [15803, "Vera", 0.01426370528242745, true, 1, false, 4, "false", "false", "active"],
+          [15822, "Vera", 0.09939963633073065, true, 1, false, 4, "false", "false", "active"],
+          [15843, "Vera", 0.2586712526854437, true, 1, false, 4, "false", "false", "active"],
+          [15866, "Vera", 0.20959696738665295, true, 1, false, 4, "false", "false", "active"],
+          [15883, "Vera", 0.15560178410349987, true, 1, false, 4, "false", "false", "active"],
+          [15906, "Vera", 0.1445109224257039, true, 1, false, 4, "false", "false", "active"],
+          [15924, "Vera", 0.17029345631963094, true, 1, false, 4, "false", "false", "active"],
+          [15947, "Vera", 0.08554828671137527, true, 1, false, 4, "false", "false", "active"],
+          [15965, "Vera", 0.1697614503682353, true, 1, false, 4, "false", "false", "active"],
+          [15987, "Vera", 0.23457622716586798, true, 1, false, 4, "false", "false", "active"],
+          [16006, "Vera", 0.283277502292087, true, 1, false, 4, "false", "false", "active"],
+          [16024, "Vera", 0.18350152446608345, true, 1, false, 4, "false", "false", "active"],
+          [16043, "Vera", 0.12459936795504643, true, 1, false, 4, "false", "false", "active"],
+          [16065, "Vera", 0.11951600828358161, true, 1, false, 4, "false", "false", "active"],
+          [16084, "Vera", 0.1291161708497622, true, 1, false, 4, "false", "false", "active"],
+          [16104, "Vera", 0.12203364222544835, true, 1, false, 4, "false", "false", "active"],
+          [16124, "Vera", 0.16333490256516683, true, 1, false, 4, "false", "false", "active"],
+          [16145, "Vera", 0.18808733314049011, true, 1, false, 4, "false", "false", "active"],
+          [16164, "Vera", 0.1344676851688419, true, 1, false, 4, "false", "false", "active"],
+          [16183, "Vera", 0.16613780663728214, true, 1, false, 4, "false", "false", "active"],
+          [16207, "Vera", 0.1067843341457736, true, 1, false, 4, "false", "false", "active"],
+          [16224, "Vera", 0.0954358886537538, true, 1, false, 4, "false", "false", "active"],
+          [16242, "Vera", 0.015340074144722996, true, 1, false, 4, "false", "false", "active"],
+          [16266, "Vera", 0.01841552460904863, true, 1, false, 4, "false", "false", "active"],
+          [16284, "Vera", 0.018577351372009724, true, 1, false, 4, "false", "false", "active"],
+          [16303, "Vera", 0.012749607100665824, true, 1, false, 4, "false", "false", "active"],
+          [16322, "Vera", 0.07978228178692436, true, 1, false, 4, "false", "false", "active"],
+          [16342, "Vera", 0.08357816595585217, true, 1, false, 4, "false", "false", "active"],
+          [16364, "Vera", 0.01231942872908712, true, 1, false, 4, "false", "false", "active"],
+          [16386, "Vera", 0.0011128494073705418, true, 1, false, 4, "false", "false", "active"],
+          [16402, "Vera", 0.009736338844550945, true, 1, false, 4, "false", "false", "connecting"],
+          [16423, "Vera", 0.005431366358567266, true, 1, false, 4, "false", "false", "connecting"],
+          [17923, "Vera", 0, true, 1, false, 0, "false", "false", "connecting"],
+          [18042, "Vera", 0.000004265032786209207, true, 1, false, 4, "false", "false", "connecting"],
+          [18964, "Vera", 0.06412531423040421, true, 1, false, 4, "false", "false", "connecting"],
+          [18987, "Vera", 0.06019682853770739, true, 1, false, 4, "false", "false", "connecting"],
+          [19002, "Vera", 0.13590788302940168, true, 1, false, 4, "false", "false", "connecting"],
+          [19025, "Vera", 0.1806990317529447, true, 1, false, 4, "false", "false", "connecting"],
+          [19044, "Vera", 0.14143861810573635, true, 1, false, 4, "false", "false", "connecting"],
+          [19065, "Vera", 0.14152398283388473, true, 1, false, 4, "false", "false", "connecting"],
+          [19083, "Vera", 0.14454545154283469, true, 1, false, 4, "false", "false", "connecting"],
+          [19104, "Vera", 0.15592332804108072, true, 1, false, 4, "false", "false", "connecting"],
+          [19125, "Vera", 0.1378117933173123, true, 1, false, 4, "false", "false", "connecting"],
+          [19143, "Vera", 0.0607381756644593, true, 1, false, 4, "false", "false", "connecting"],
+          [19165, "Vera", 0.008048359967343892, true, 1, false, 4, "false", "false", "connecting"],
+          [19182, "Vera", 0.030401639069553853, true, 1, false, 4, "false", "false", "connecting"],
+          [19202, "Vera", 0.0012659359608013629, true, 1, false, 4, "false", "false", "connecting"],
+          [19265, "Vera", 0.09299359732593485, true, 1, false, 4, "false", "false", "connecting"],
+          [19284, "Vera", 0.10231895752993601, true, 1, false, 4, "false", "false", "connecting"],
+          [19923, "Vera", 0.11100329386833058, true, 1, false, 4, "false", "false", "connecting"],
+          [19943, "Vera", 0.24620015788339134, true, 1, false, 4, "false", "false", "connecting"],
+          [19965, "Vera", 0.16948339330365364, true, 1, false, 4, "false", "false", "connecting"],
+          [19985, "Vera", 0.1476666593971143, true, 1, false, 4, "false", "false", "connecting"],
+          [20003, "Vera", 0.13898797732869003, true, 1, false, 4, "false", "false", "connecting"],
+          [20022, "Vera", 0.16596551331451537, true, 1, false, 4, "false", "false", "connecting"],
+          [20044, "Vera", 0.2121654388194694, true, 1, false, 4, "false", "false", "connecting"],
+          [20064, "Vera", 0.21643877397041766, true, 1, false, 4, "false", "false", "connecting"],
+          [20083, "Vera", 0.22170599297050944, true, 1, false, 4, "false", "false", "connecting"],
+          [20107, "Vera", 0.18942830435230973, true, 1, false, 4, "false", "false", "connecting"],
+          [20125, "Vera", 0.1583532645747728, true, 1, false, 4, "false", "false", "connecting"],
+          [20146, "Vera", 0.11263890272492132, true, 1, false, 4, "false", "false", "connecting"],
+          [20162, "Vera", 0.08612181568098837, true, 1, false, 4, "false", "false", "connecting"],
+          [20186, "Vera", 0.06024718840170492, true, 1, false, 4, "false", "false", "connecting"],
+          [20206, "Vera", 0.07172109908756269, true, 1, false, 4, "false", "false", "connecting"],
+          [20225, "Vera", 0.06542940052873468, true, 1, false, 4, "false", "false", "connecting"],
+          [20244, "Vera", 0.022374974763863027, true, 1, false, 4, "false", "false", "connecting"],
+          [21322, "Vera", 0.00001584385716172362, true, 1, false, 4, "false", "false", "active"],
+          [21404, "Bruno", 0.00000286111026071012, false, 1, false, 4, "false", "true", "active"],
+          [22864, "Bruno", 0.000017455369949836148, false, 1, false, 4, "true", "true", "active"],
+          [22983, "Bruno", 0.0024665761596450895, false, 1, false, 4, "true", "true", "active"],
+          [23006, "Bruno", 0.08283514887956442, false, 1, false, 4, "true", "true", "active"],
+          [23023, "Bruno", 0.09962272859350452, false, 1, false, 4, "true", "true", "active"],
+          [23042, "Bruno", 0.059791848899337405, false, 1, false, 4, "true", "true", "active"],
+          [23062, "Bruno", 0.05394522447424118, false, 1, false, 4, "true", "true", "active"],
+          [23084, "Bruno", 0.047677046195910615, false, 1, false, 4, "true", "true", "active"],
+          [23104, "Bruno", 0.05486600650672721, false, 1, false, 4, "true", "true", "active"],
+          [23123, "Bruno", 0.061541062519211896, false, 1, false, 4, "true", "true", "active"],
+          [23146, "Bruno", 0.05455342024925539, false, 1, false, 4, "true", "true", "active"],
+          [23165, "Bruno", 0.04508946251831399, false, 1, false, 4, "true", "true", "active"],
+          [23183, "Bruno", 0.03578815079475885, false, 1, false, 4, "true", "true", "active"],
+          [23206, "Bruno", 0.1574536822723844, false, 1, false, 4, "true", "true", "active"],
+          [23225, "Bruno", 0.17701557124677325, false, 1, false, 4, "true", "true", "active"],
+          [23243, "Bruno", 0.17520482993553685, false, 1, false, 4, "true", "true", "active"],
+          [23266, "Bruno", 0.15406963040194574, false, 1, false, 4, "true", "true", "active"],
+          [23286, "Bruno", 0.12982925235693235, false, 1, false, 4, "true", "true", "active"],
+          [23302, "Bruno", 0.11542216688739208, false, 1, false, 4, "true", "true", "active"],
+          [23327, "Bruno", 0.09398123135507785, false, 1, false, 4, "true", "true", "active"],
+          [23345, "Bruno", 0.016877494367652925, false, 1, false, 4, "true", "true", "active"],
+          [23826, "Bruno", 0.02013638329835342, false, 1, false, 4, "true", "true", "active"],
+          [23842, "Bruno", 0.025573880674248404, false, 1, false, 4, "true", "true", "active"],
+          [23865, "Bruno", 0.02280322081132328, false, 1, false, 4, "true", "true", "active"],
+          [23885, "Bruno", 0.016208787850035787, false, 1, false, 4, "true", "true", "active"],
+          [23902, "Bruno", 0.008882357790863537, false, 1, false, 4, "true", "true", "active"],
+          [23923, "Bruno", 0.001582421663539919, false, 1, false, 4, "true", "true", "active"],
+          [23945, "Bruno", 0.0010001753082102835, false, 1, false, 4, "true", "true", "active"],
+          [23965, "Bruno", 0.0013106647023134205, false, 1, false, 4, "true", "true", "active"],
+          [23983, "Bruno", 0.0013976982611201459, false, 1, false, 4, "true", "true", "active"],
+          [25004, "Bruno", 0.000002336086745527048, true, 1, false, 4, "false", "true", "active"],
+          [25064, "Bruno", 0.000017377033390205856, true, 1, false, 4, "false", "false", "active"]
+        ],
+        "commands": [
+          {
+            "atMs": 13803,
+            "eventType": "elevenlabs_agent_command",
+            "eventId": "f965db05-9ff4-4481-b1ea-6a1f1b40db02",
+            "sourceEventId": null,
+            "sessionId": "c3e49738-5c2b-4f3a-8141-d837b9236323",
+            "commandType": "user_activity",
+            "providerType": "user_activity",
+            "conversationId": null
+          },
+          {
+            "atMs": 13803,
+            "eventType": "elevenlabs_agent_command",
+            "eventId": "f6aae786-dff1-47da-aed5-87a617454c39",
+            "sourceEventId": null,
+            "sessionId": "2c1c9339-f15c-4c1e-b32c-70ed8e06f69e",
+            "commandType": "user_activity",
+            "providerType": "user_activity",
+            "conversationId": null
+          },
+          {
+            "atMs": 13803,
+            "eventType": "elevenlabs_agent_command",
+            "eventId": "88f68484-29f3-434c-a0b0-502dab86b4b7",
+            "sourceEventId": null,
+            "sessionId": "fd01840f-ca21-44c2-b431-72fd38ca2d11",
+            "commandType": "contextual_update",
+            "providerType": "contextual_update",
+            "conversationId": null
+          },
+          {
+            "atMs": 13803,
+            "eventType": "elevenlabs_agent_command",
+            "eventId": "c085b849-4547-41fc-9130-ab51b76f5470",
+            "sourceEventId": null,
+            "sessionId": "fd01840f-ca21-44c2-b431-72fd38ca2d11",
+            "commandType": "user_message",
+            "providerType": "user_message",
+            "conversationId": null
+          },
+          {
+            "atMs": 15509,
+            "eventType": "avatar.interrupt",
+            "eventId": null,
+            "sourceEventId": null,
+            "sessionId": "fd01840f-ca21-44c2-b431-72fd38ca2d11",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 21400,
+            "eventType": "elevenlabs_agent_command",
+            "eventId": "c6b07a48-248a-4c6a-a678-bdc7624d9ab8",
+            "sourceEventId": null,
+            "sessionId": "2c1c9339-f15c-4c1e-b32c-70ed8e06f69e",
+            "commandType": "user_activity",
+            "providerType": "user_activity",
+            "conversationId": null
+          },
+          {
+            "atMs": 21400,
+            "eventType": "elevenlabs_agent_command",
+            "eventId": "b91efe25-ec2f-45c2-8294-6145cb4b2649",
+            "sourceEventId": null,
+            "sessionId": "67b3b32f-c843-4c4f-b418-bbf824c26c5c",
+            "commandType": "user_activity",
+            "providerType": "user_activity",
+            "conversationId": null
+          },
+          {
+            "atMs": 21400,
+            "eventType": "elevenlabs_agent_command",
+            "eventId": "eca095ec-5229-42c6-8349-a6c4aff39ba6",
+            "sourceEventId": null,
+            "sessionId": "c3e49738-5c2b-4f3a-8141-d837b9236323",
+            "commandType": "contextual_update",
+            "providerType": "contextual_update",
+            "conversationId": null
+          },
+          {
+            "atMs": 21400,
+            "eventType": "elevenlabs_agent_command",
+            "eventId": "895c2f9f-e916-40e5-bc1c-45d4c69c2eec",
+            "sourceEventId": null,
+            "sessionId": "c3e49738-5c2b-4f3a-8141-d837b9236323",
+            "commandType": "user_message",
+            "providerType": "user_message",
+            "conversationId": null
+          }
+        ],
+        "providerEvents": [
+          {
+            "atMs": 4864,
+            "eventType": "elevenlabs_agent_event",
+            "eventId": "7bc0e400-686f-487a-9581-4ea0dc0f802b",
+            "sourceEventId": null,
+            "sessionId": "fd01840f-ca21-44c2-b431-72fd38ca2d11",
+            "commandType": "conversation_initiation_metadata",
+            "providerType": "conversation_initiation_metadata",
+            "conversationId": "conv_8601m2bptawffjhby1v4e5hwgyr1"
+          },
+          {
+            "atMs": 5025,
+            "eventType": "elevenlabs_agent_event",
+            "eventId": "b590dc37-07ea-40e9-a39a-2d28c41956bf",
+            "sourceEventId": null,
+            "sessionId": "fd01840f-ca21-44c2-b431-72fd38ca2d11",
+            "commandType": "agent_response",
+            "providerType": "agent_response",
+            "conversationId": null
+          },
+          {
+            "atMs": 5026,
+            "eventType": "avatar.transcription.chunk",
+            "eventId": "50d74ca8-2b53-4b17-9ddb-98828dd9a2de",
+            "sourceEventId": null,
+            "sessionId": "fd01840f-ca21-44c2-b431-72fd38ca2d11",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 5041,
+            "eventType": "elevenlabs_agent_event",
+            "eventId": "796f1929-0da7-463a-88e5-45209b2b3c33",
+            "sourceEventId": null,
+            "sessionId": "2c1c9339-f15c-4c1e-b32c-70ed8e06f69e",
+            "commandType": "conversation_initiation_metadata",
+            "providerType": "conversation_initiation_metadata",
+            "conversationId": "conv_5701m2bptatzfqhatcqp9cbqs7vf"
+          },
+          {
+            "atMs": 5041,
+            "eventType": "elevenlabs_agent_event",
+            "eventId": "f3cf4741-401e-4c90-af20-e365fdf1533d",
+            "sourceEventId": null,
+            "sessionId": "2c1c9339-f15c-4c1e-b32c-70ed8e06f69e",
+            "commandType": "agent_response",
+            "providerType": "agent_response",
+            "conversationId": null
+          },
+          {
+            "atMs": 5041,
+            "eventType": "avatar.transcription.chunk",
+            "eventId": "163ead16-ea51-46aa-915e-3e38f4ec6a29",
+            "sourceEventId": null,
+            "sessionId": "2c1c9339-f15c-4c1e-b32c-70ed8e06f69e",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 5332,
+            "eventType": "avatar.speak_started",
+            "eventId": "ea8827e2-667e-4741-8170-93fbff7dceee",
+            "sourceEventId": "8a9c21fd-e23b-41fa-a66a-18bc193558c6",
+            "sessionId": "fd01840f-ca21-44c2-b431-72fd38ca2d11",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 5351,
+            "eventType": "avatar.speak_started",
+            "eventId": "eccc34e7-21ee-415c-9875-fd1e8f399fa2",
+            "sourceEventId": "af1f4a58-44a4-4946-ae9b-cf3a48ab8402",
+            "sessionId": "2c1c9339-f15c-4c1e-b32c-70ed8e06f69e",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 5649,
+            "eventType": "avatar.speak_ended",
+            "eventId": "f1526eea-947c-4e1a-b4df-5f1838882d0c",
+            "sourceEventId": "af1f4a58-44a4-4946-ae9b-cf3a48ab8402",
+            "sessionId": "2c1c9339-f15c-4c1e-b32c-70ed8e06f69e",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 5731,
+            "eventType": "avatar.speak_ended",
+            "eventId": "660fcc40-4b86-413b-9f69-4fdd20627647",
+            "sourceEventId": "8a9c21fd-e23b-41fa-a66a-18bc193558c6",
+            "sessionId": "fd01840f-ca21-44c2-b431-72fd38ca2d11",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 6077,
+            "eventType": "avatar.transcription",
+            "eventId": "7a1c9d68-766f-4c4c-affd-68927b6e99c0",
+            "sourceEventId": null,
+            "sessionId": "2c1c9339-f15c-4c1e-b32c-70ed8e06f69e",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 6078,
+            "eventType": "avatar.transcription",
+            "eventId": "d9aac3c7-5799-4fb6-b087-1ca449ca2f74",
+            "sourceEventId": null,
+            "sessionId": "fd01840f-ca21-44c2-b431-72fd38ca2d11",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 6219,
+            "eventType": "avatar.speak_started",
+            "eventId": "171202b5-a33e-43ea-926a-96040b757b78",
+            "sourceEventId": "8a9c21fd-e23b-41fa-a66a-18bc193558c6",
+            "sessionId": "fd01840f-ca21-44c2-b431-72fd38ca2d11",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 6284,
+            "eventType": "avatar.speak_started",
+            "eventId": "b26330de-d800-453f-b798-b4e44bb7d012",
+            "sourceEventId": "af1f4a58-44a4-4946-ae9b-cf3a48ab8402",
+            "sessionId": "2c1c9339-f15c-4c1e-b32c-70ed8e06f69e",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 6697,
+            "eventType": "avatar.speak_ended",
+            "eventId": "f70c3aca-1e09-4f40-8712-38aa45513e3e",
+            "sourceEventId": "8a9c21fd-e23b-41fa-a66a-18bc193558c6",
+            "sessionId": "fd01840f-ca21-44c2-b431-72fd38ca2d11",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 6897,
+            "eventType": "avatar.speak_ended",
+            "eventId": "f47aa3bc-c650-404f-afa5-7ee2af33439b",
+            "sourceEventId": "af1f4a58-44a4-4946-ae9b-cf3a48ab8402",
+            "sessionId": "2c1c9339-f15c-4c1e-b32c-70ed8e06f69e",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 9437,
+            "eventType": "elevenlabs_agent_event",
+            "eventId": "e7617eb7-0b8f-4e34-a625-14505e52c83d",
+            "sourceEventId": null,
+            "sessionId": "c3e49738-5c2b-4f3a-8141-d837b9236323",
+            "commandType": "conversation_initiation_metadata",
+            "providerType": "conversation_initiation_metadata",
+            "conversationId": "conv_0601m2bptf9zewhttbvfjqfbcqeb"
+          },
+          {
+            "atMs": 9756,
+            "eventType": "elevenlabs_agent_event",
+            "eventId": "82fd03ff-7806-458c-a2f9-758032ea0850",
+            "sourceEventId": null,
+            "sessionId": "c3e49738-5c2b-4f3a-8141-d837b9236323",
+            "commandType": "agent_response",
+            "providerType": "agent_response",
+            "conversationId": null
+          },
+          {
+            "atMs": 9773,
+            "eventType": "avatar.transcription.chunk",
+            "eventId": "9fa5c102-0351-403d-b4d9-4ba3403041c3",
+            "sourceEventId": null,
+            "sessionId": "c3e49738-5c2b-4f3a-8141-d837b9236323",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 10096,
+            "eventType": "avatar.speak_started",
+            "eventId": "3b9a48bc-7093-4e60-9c8e-c571c120c1fa",
+            "sourceEventId": "74ccdc5b-c3e2-45aa-aeed-297f00fe65cd",
+            "sessionId": "c3e49738-5c2b-4f3a-8141-d837b9236323",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 10502,
+            "eventType": "avatar.speak_ended",
+            "eventId": "580fb42b-c063-4c45-9751-d61e963f88b7",
+            "sourceEventId": "74ccdc5b-c3e2-45aa-aeed-297f00fe65cd",
+            "sessionId": "c3e49738-5c2b-4f3a-8141-d837b9236323",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 10829,
+            "eventType": "avatar.transcription",
+            "eventId": "43c0b541-5098-4bdd-8104-cd06c428b9c4",
+            "sourceEventId": null,
+            "sessionId": "c3e49738-5c2b-4f3a-8141-d837b9236323",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 10976,
+            "eventType": "avatar.speak_started",
+            "eventId": "4a41abda-bafd-48e9-b5cb-4da4456eabc9",
+            "sourceEventId": "74ccdc5b-c3e2-45aa-aeed-297f00fe65cd",
+            "sessionId": "c3e49738-5c2b-4f3a-8141-d837b9236323",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 11583,
+            "eventType": "avatar.speak_ended",
+            "eventId": "821b6bb5-c683-41ab-b1fd-f22e42499d1e",
+            "sourceEventId": "74ccdc5b-c3e2-45aa-aeed-297f00fe65cd",
+            "sessionId": "c3e49738-5c2b-4f3a-8141-d837b9236323",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 15272,
+            "eventType": "avatar.speak_started",
+            "eventId": "2f00781d-200d-4daf-b1ce-375f8ef6ab2c",
+            "sourceEventId": "6b2b4eed-9137-4350-8c8e-389e64232baf",
+            "sessionId": "fd01840f-ca21-44c2-b431-72fd38ca2d11",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 15649,
+            "eventType": "elevenlabs_agent_event",
+            "eventId": "1137f865-6975-492c-a997-ad857aa06508",
+            "sourceEventId": null,
+            "sessionId": "fd01840f-ca21-44c2-b431-72fd38ca2d11",
+            "commandType": "agent_response",
+            "providerType": "agent_response",
+            "conversationId": null
+          },
+          {
+            "atMs": 15803,
+            "eventType": "avatar.transcription.chunk",
+            "eventId": "9dc588fe-a05c-400d-8d0a-85aa661a3f52",
+            "sourceEventId": null,
+            "sessionId": "fd01840f-ca21-44c2-b431-72fd38ca2d11",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 18032,
+            "eventType": "elevenlabs_agent_event",
+            "eventId": "6a471c69-4087-42fd-b5e4-c9988a004c8f",
+            "sourceEventId": null,
+            "sessionId": "67b3b32f-c843-4c4f-b418-bbf824c26c5c",
+            "commandType": "conversation_initiation_metadata",
+            "providerType": "conversation_initiation_metadata",
+            "conversationId": "conv_8101m2bptqs7f9ft38dn2tn7251q"
+          },
+          {
+            "atMs": 18476,
+            "eventType": "elevenlabs_agent_event",
+            "eventId": "3027ab0b-3da7-4e84-bb55-64e276de6d12",
+            "sourceEventId": null,
+            "sessionId": "67b3b32f-c843-4c4f-b418-bbf824c26c5c",
+            "commandType": "agent_response",
+            "providerType": "agent_response",
+            "conversationId": null
+          },
+          {
+            "atMs": 18486,
+            "eventType": "avatar.transcription.chunk",
+            "eventId": "c3a7fe3c-62a7-4c39-ac2b-e27b4a08ac0c",
+            "sourceEventId": null,
+            "sessionId": "67b3b32f-c843-4c4f-b418-bbf824c26c5c",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 18756,
+            "eventType": "avatar.speak_started",
+            "eventId": "5a4f7457-9cac-46ac-9d24-606a8860d650",
+            "sourceEventId": "72bcc930-8807-4b91-89c5-b12bcf67adaa",
+            "sessionId": "67b3b32f-c843-4c4f-b418-bbf824c26c5c",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 19181,
+            "eventType": "avatar.speak_ended",
+            "eventId": "fb7a533b-e9a7-4411-8095-f77921a15e7d",
+            "sourceEventId": "72bcc930-8807-4b91-89c5-b12bcf67adaa",
+            "sessionId": "67b3b32f-c843-4c4f-b418-bbf824c26c5c",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 19529,
+            "eventType": "avatar.transcription",
+            "eventId": "04857159-5f0d-45cf-838f-c221892791b3",
+            "sourceEventId": null,
+            "sessionId": "67b3b32f-c843-4c4f-b418-bbf824c26c5c",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 19796,
+            "eventType": "avatar.speak_started",
+            "eventId": "9396c2be-b222-498b-a44f-f8394bb9a601",
+            "sourceEventId": "72bcc930-8807-4b91-89c5-b12bcf67adaa",
+            "sessionId": "67b3b32f-c843-4c4f-b418-bbf824c26c5c",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 20313,
+            "eventType": "avatar.speak_ended",
+            "eventId": "53177b37-6379-4439-b012-6b41a3233617",
+            "sourceEventId": "72bcc930-8807-4b91-89c5-b12bcf67adaa",
+            "sessionId": "67b3b32f-c843-4c4f-b418-bbf824c26c5c",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 22426,
+            "eventType": "elevenlabs_agent_event",
+            "eventId": "d35d934d-c99c-4cdd-8ef2-98a41211893e",
+            "sourceEventId": null,
+            "sessionId": "c3e49738-5c2b-4f3a-8141-d837b9236323",
+            "commandType": "agent_response",
+            "providerType": "agent_response",
+            "conversationId": null
+          },
+          {
+            "atMs": 22433,
+            "eventType": "avatar.transcription.chunk",
+            "eventId": "dd790849-42fc-42a0-a125-6ee4502bf071",
+            "sourceEventId": null,
+            "sessionId": "c3e49738-5c2b-4f3a-8141-d837b9236323",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 22852,
+            "eventType": "avatar.speak_started",
+            "eventId": "b91db705-8300-4037-b245-1780b478b16f",
+            "sourceEventId": "a7e6406d-9e1f-459d-8d95-c43a67877002",
+            "sessionId": "c3e49738-5c2b-4f3a-8141-d837b9236323",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 23177,
+            "eventType": "avatar.speak_ended",
+            "eventId": "2a85b780-0dc4-438f-a826-266f13b7b492",
+            "sourceEventId": "a7e6406d-9e1f-459d-8d95-c43a67877002",
+            "sessionId": "c3e49738-5c2b-4f3a-8141-d837b9236323",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 23434,
+            "eventType": "avatar.transcription",
+            "eventId": "28732f09-5946-4041-8626-717670424074",
+            "sourceEventId": null,
+            "sessionId": "c3e49738-5c2b-4f3a-8141-d837b9236323",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 23659,
+            "eventType": "avatar.speak_started",
+            "eventId": "7fb82779-51b6-4337-a84e-3e1794b1784c",
+            "sourceEventId": "a7e6406d-9e1f-459d-8d95-c43a67877002",
+            "sessionId": "c3e49738-5c2b-4f3a-8141-d837b9236323",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 23978,
+            "eventType": "avatar.speak_ended",
+            "eventId": "02439850-73bf-41cb-b655-da0e5bae07b6",
+            "sourceEventId": "a7e6406d-9e1f-459d-8d95-c43a67877002",
+            "sessionId": "c3e49738-5c2b-4f3a-8141-d837b9236323",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          }
+        ]
+      }
+    },
+    {
+      "sourceReport": "full-app-report-1789247234298.json",
+      "sourceSha256": "45596132a0a226a50d4f867897ef7a445d8e2fa066b2dd315064c1cec7043e98",
+      "createdAt": "2026-09-12T21:06:28.595Z",
+      "sessionId": "cmtyvl1ir000fau5g8gika6rq",
+      "groupId": "cmtavsb2800b3uii7wxw1uh6d",
+      "scenario": "barge-in",
+      "bargeTarget": "same",
+      "oracleStatus": "experimental-not-accepted",
+      "layout": "desktop",
+      "outcome": "inconclusive",
+      "roundPassed": true,
+      "roundState": [
+        {
+          "id": "cmtyvlbza0018au5ge635dy31",
+          "status": "cancelled",
+          "sourceEventId": "scribe:8dd1046a-0ad8-46dd-88e2-6bfb3cabddde",
+          "turns": [
+            {
+              "id": "cmtyvlc05001aau5gnzpfg3kl",
+              "avatarId": "cmtavpot900a8uii7a7wap2oy",
+              "status": "interrupted",
+              "responseLength": null
+            },
+            {
+              "id": "cmtyvlc05001bau5g67g46vvu",
+              "avatarId": "cmtavomuk009puii7oqfc4p7p",
+              "status": "interrupted",
+              "responseLength": null
+            },
+            {
+              "id": "cmtyvlc05001cau5gqj5g0i8z",
+              "avatarId": "cmtavnb4o0094uii72liceowv",
+              "status": "interrupted",
+              "responseLength": null
+            }
+          ]
+        },
+        {
+          "id": "cmtyvlii20026au5go0dirccb",
+          "status": "completed",
+          "sourceEventId": "scribe:a5b7a6ba-237b-4752-96a0-d2934f0093de",
+          "turns": [
+            {
+              "id": "cmtyvliip0028au5giuj65drc",
+              "avatarId": "cmtavpot900a8uii7a7wap2oy",
+              "status": "completed",
+              "responseLength": 5
+            }
+          ]
+        }
+      ],
+      "bargeIn": {
+        "oldRoundId": "cmtyvlbza0018au5ge635dy31",
+        "oldTurnId": "cmtyvlc05001aau5gnzpfg3kl",
+        "ownerAvatarId": "cmtavpot900a8uii7a7wap2oy",
+        "ownerName": "Vera",
+        "ownerProviderSessionId": "7f777ce6-0387-4fd3-8540-12b597c4b042",
+        "targetAvatarId": "cmtavpot900a8uii7a7wap2oy",
+        "targetName": "Vera",
+        "firstAudibleSampleAtMs": 15484,
+        "partialAt": "2026-09-12T21:06:52.859Z",
+        "partialBrowserAtMs": 15542,
+        "partialLength": 4,
+        "committedLength": 42,
+        "committedAt": "2026-09-12T21:06:52.959Z",
+        "newRoundId": "cmtyvlii20026au5go0dirccb",
+        "newTurnId": "cmtyvliip0028au5giuj65drc",
+        "actualTargetAvatarId": "cmtavpot900a8uii7a7wap2oy"
+      },
+      "interruptionEvidence": {
+        "outcome": "inconclusive",
+        "reason": "experimental_oracle_requires_review_and_physical_qa",
+        "gateLatencyMs": 24,
+        "checks": {
+          "oneInterruptionId": true,
+          "exactlyTwoHumanSubmits": true,
+          "exactlyTwoUserCommands": true,
+          "commandsUseExpectedConnectors": true,
+          "oldRoundCancelled": true,
+          "atMostOneAudible": true,
+          "gateWithin200Ms": true,
+          "selectedRequestedTarget": true,
+          "nextResponseHasAudio": true,
+          "replacementsSandboxVerified": true,
+          "sameAvatarUsesNewConnector": true
+        },
+        "commandCount": 2,
+        "nextResponseAudibleSamples": 19,
+        "caveats": [
+          "Fake microphone and injected Scribe events; not physical interruption/echo QA",
+          "Gate latency includes Playwright/socket and 20 ms sampling uncertainty",
+          "Interrupted buffered audio may intentionally remain muted; normal closure oracle is not applicable"
+        ]
+      },
+      "providerChecks": [
+        {
+          "name": "Bruno",
+          "outcome": "skipped",
+          "reason": "not_expected_to_complete_in_interruption_scenario"
+        },
+        {
+          "name": "Vera",
+          "conversationId": "conv_9701m2bq3pmnepttcjfe5gjfz6rj",
+          "status": "done",
+          "outcome": "passed",
+          "hasAudio": true,
+          "userMessageReceived": true,
+          "userMessages": 1,
+          "agentMessages": 2,
+          "generatedResponseAfterUser": true,
+          "responseLength": 5,
+          "transcriptEntryCount": 7
+        },
+        {
+          "name": "Benjita",
+          "outcome": "skipped",
+          "reason": "not_expected_to_complete_in_interruption_scenario"
+        }
+      ],
+      "cleanup": {
+        "status": 200
+      },
+      "ttsUnchanged": true,
+      "ttsProfile": {
+        "model_id": "eleven_flash_v2_5",
+        "agent_output_audio_format": "pcm_24000",
+        "optimize_streaming_latency": 3,
+        "stability": 0.45,
+        "speed": 0.98,
+        "similarity_boost": 0.78
+      },
+      "sandbox": {
+        "before": true,
+        "after": true,
+        "replacements": [
+          {
+            "avatarId": "cmtavpot900a8uii7a7wap2oy",
+            "providerSessionId": "76a3edc0-3160-4924-82d5-8d553c4c6eeb",
+            "participantAttemptId": "cmtyvldaw001rau5g5w1blguk",
+            "observedAt": "2026-09-12T21:06:53.650Z",
+            "tokenPassed": true,
+            "postStart": {
+              "status": 200,
+              "isSandbox": true,
+              "observedAt": "2026-09-12T21:06:56.294Z"
+            }
+          }
+        ]
+      },
+      "api": [
+        {
+          "at": "2026-09-12T21:06:37.458Z",
+          "requestObservedAt": "2026-09-12T21:06:37.434Z",
+          "responseObservedAt": "2026-09-12T21:06:37.458Z",
+          "path": "/api/me",
+          "status": 200,
+          "method": "GET"
+        },
+        {
+          "at": "2026-09-12T21:06:37.517Z",
+          "requestObservedAt": "2026-09-12T21:06:37.495Z",
+          "responseObservedAt": "2026-09-12T21:06:37.517Z",
+          "path": "/api/avatar-groups/cmtavsb2800b3uii7wxw1uh6d",
+          "status": 200,
+          "method": "GET"
+        },
+        {
+          "at": "2026-09-12T21:06:37.518Z",
+          "requestObservedAt": "2026-09-12T21:06:37.495Z",
+          "responseObservedAt": "2026-09-12T21:06:37.518Z",
+          "path": "/api/avatar-groups/cmtavsb2800b3uii7wxw1uh6d",
+          "status": 200,
+          "method": "GET"
+        },
+        {
+          "at": "2026-09-12T21:06:38.938Z",
+          "requestObservedAt": "2026-09-12T21:06:37.641Z",
+          "responseObservedAt": "2026-09-12T21:06:38.938Z",
+          "path": "/api/avatar-groups/cmtavsb2800b3uii7wxw1uh6d/voice-sessions",
+          "status": 201,
+          "method": "POST"
+        },
+        {
+          "at": "2026-09-12T21:06:41.109Z",
+          "requestObservedAt": "2026-09-12T21:06:41.062Z",
+          "responseObservedAt": "2026-09-12T21:06:41.109Z",
+          "path": "/api/group-voice-sessions/cmtyvl1ir000fau5g8gika6rq/participants/cmtavpot900a8uii7a7wap2oy/started",
+          "status": 200,
+          "method": "POST",
+          "input": {
+            "participantAttemptId": "cmtyvl1ja000qau5gj6ll8ja9"
+          }
+        },
+        {
+          "at": "2026-09-12T21:06:41.377Z",
+          "requestObservedAt": "2026-09-12T21:06:41.352Z",
+          "responseObservedAt": "2026-09-12T21:06:41.377Z",
+          "path": "/api/group-voice-sessions/cmtyvl1ir000fau5g8gika6rq/participants/cmtavnb4o0094uii72liceowv/started",
+          "status": 200,
+          "method": "POST",
+          "input": {
+            "participantAttemptId": "cmtyvl1jb000sau5g6x2a5xui"
+          }
+        },
+        {
+          "at": "2026-09-12T21:06:46.316Z",
+          "requestObservedAt": "2026-09-12T21:06:46.270Z",
+          "responseObservedAt": "2026-09-12T21:06:46.316Z",
+          "path": "/api/group-voice-sessions/cmtyvl1ir000fau5g8gika6rq/participants/cmtavomuk009puii7oqfc4p7p/started",
+          "status": 200,
+          "method": "POST",
+          "input": {
+            "participantAttemptId": "cmtyvl1ja000oau5g5odghizy"
+          }
+        },
+        {
+          "at": "2026-09-12T21:06:50.212Z",
+          "requestObservedAt": "2026-09-12T21:06:49.780Z",
+          "responseObservedAt": "2026-09-12T21:06:50.212Z",
+          "path": "/api/group-voice-sessions/cmtyvl1ir000fau5g8gika6rq/scribe-token",
+          "status": 200,
+          "method": "POST"
+        },
+        {
+          "at": "2026-09-12T21:06:51.297Z",
+          "requestObservedAt": "2026-09-12T21:06:51.187Z",
+          "responseObservedAt": "2026-09-12T21:06:51.297Z",
+          "path": "/api/group-voice-sessions/cmtyvl1ir000fau5g8gika6rq/turns",
+          "status": 200,
+          "method": "POST",
+          "phase": "queued",
+          "roundId": "cmtyvlbza0018au5ge635dy31",
+          "directive": {
+            "action": "speak",
+            "avatarId": "cmtavpot900a8uii7a7wap2oy",
+            "turnId": "cmtyvlc05001aau5gnzpfg3kl"
+          },
+          "input": {
+            "sourceEventId": "scribe:8dd1046a-0ad8-46dd-88e2-6bfb3cabddde",
+            "contentLength": 173
+          }
+        },
+        {
+          "at": "2026-09-12T21:06:52.595Z",
+          "requestObservedAt": "2026-09-12T21:06:52.547Z",
+          "responseObservedAt": "2026-09-12T21:06:52.595Z",
+          "path": "/api/group-voice-sessions/cmtyvl1ir000fau5g8gika6rq/provider-events",
+          "status": 200,
+          "method": "POST",
+          "phase": "speaking",
+          "input": {
+            "type": "speak_started",
+            "sourceEventId": "speak_started:cmtavpot900a8uii7a7wap2oy:turn:cmtyvlc05001aau5gnzpfg3kl",
+            "avatarId": "cmtavpot900a8uii7a7wap2oy",
+            "turnId": "cmtyvlc05001aau5gnzpfg3kl"
+          }
+        },
+        {
+          "at": "2026-09-12T21:06:52.916Z",
+          "requestObservedAt": "2026-09-12T21:06:52.861Z",
+          "responseObservedAt": "2026-09-12T21:06:52.916Z",
+          "path": "/api/group-voice-sessions/cmtyvl1ir000fau5g8gika6rq/interrupt",
+          "status": 200,
+          "method": "POST",
+          "phase": "listening",
+          "directive": {
+            "action": "interrupt",
+            "avatarId": "cmtavpot900a8uii7a7wap2oy",
+            "reason": "user"
+          },
+          "interruption": {
+            "sourceEventId": "barge:4e0f8592-6a9b-4d51-a2ea-4546c85ac253",
+            "status": "cancelled",
+            "turnId": "cmtyvlc05001aau5gnzpfg3kl",
+            "avatarIds": ["cmtavpot900a8uii7a7wap2oy"]
+          },
+          "input": {
+            "sourceEventId": "barge:4e0f8592-6a9b-4d51-a2ea-4546c85ac253",
+            "reason": "user",
+            "trigger": "voice",
+            "expectedTurnId": "cmtyvlc05001aau5gnzpfg3kl",
+            "expectedAvatarId": "cmtavpot900a8uii7a7wap2oy"
+          }
+        },
+        {
+          "at": "2026-09-12T21:06:53.310Z",
+          "requestObservedAt": "2026-09-12T21:06:53.268Z",
+          "responseObservedAt": "2026-09-12T21:06:53.310Z",
+          "path": "/api/group-voice-sessions/cmtyvl1ir000fau5g8gika6rq/provider-events",
+          "status": 200,
+          "method": "POST",
+          "phase": "listening",
+          "input": {
+            "type": "agent_response",
+            "sourceEventId": "agent_response:cmtavpot900a8uii7a7wap2oy:06903d5a-9c91-4840-9249-55f3464c0704",
+            "avatarId": "cmtavpot900a8uii7a7wap2oy",
+            "turnId": "cmtyvlc05001aau5gnzpfg3kl",
+            "contentLength": 382
+          }
+        },
+        {
+          "at": "2026-09-12T21:06:53.651Z",
+          "requestObservedAt": "2026-09-12T21:06:52.917Z",
+          "responseObservedAt": "2026-09-12T21:06:53.651Z",
+          "path": "/api/group-voice-sessions/cmtyvl1ir000fau5g8gika6rq/participants/cmtavpot900a8uii7a7wap2oy/retry",
+          "status": 200,
+          "method": "POST",
+          "input": {
+            "interruptionSourceEventId": "barge:4e0f8592-6a9b-4d51-a2ea-4546c85ac253"
+          }
+        },
+        {
+          "at": "2026-09-12T21:06:56.998Z",
+          "requestObservedAt": "2026-09-12T21:06:56.294Z",
+          "responseObservedAt": "2026-09-12T21:06:56.998Z",
+          "path": "/api/group-voice-sessions/cmtyvl1ir000fau5g8gika6rq/participants/cmtavpot900a8uii7a7wap2oy/started",
+          "status": 200,
+          "method": "POST",
+          "input": {
+            "participantAttemptId": "cmtyvldaw001rau5g5w1blguk"
+          }
+        },
+        {
+          "at": "2026-09-12T21:06:59.744Z",
+          "requestObservedAt": "2026-09-12T21:06:59.642Z",
+          "responseObservedAt": "2026-09-12T21:06:59.744Z",
+          "path": "/api/group-voice-sessions/cmtyvl1ir000fau5g8gika6rq/turns",
+          "status": 200,
+          "method": "POST",
+          "phase": "queued",
+          "roundId": "cmtyvlii20026au5go0dirccb",
+          "directive": {
+            "action": "speak",
+            "avatarId": "cmtavpot900a8uii7a7wap2oy",
+            "turnId": "cmtyvliip0028au5giuj65drc"
+          },
+          "input": {
+            "sourceEventId": "scribe:a5b7a6ba-237b-4752-96a0-d2934f0093de",
+            "contentLength": 42
+          }
+        },
+        {
+          "at": "2026-09-12T21:07:00.874Z",
+          "requestObservedAt": "2026-09-12T21:07:00.825Z",
+          "responseObservedAt": "2026-09-12T21:07:00.874Z",
+          "path": "/api/group-voice-sessions/cmtyvl1ir000fau5g8gika6rq/provider-events",
+          "status": 200,
+          "method": "POST",
+          "phase": "queued",
+          "input": {
+            "type": "agent_response",
+            "sourceEventId": "agent_response:cmtavpot900a8uii7a7wap2oy:656e9d67-c183-4d22-aecc-014f302adb0e",
+            "avatarId": "cmtavpot900a8uii7a7wap2oy",
+            "turnId": "cmtyvliip0028au5giuj65drc",
+            "contentLength": 5
+          }
+        },
+        {
+          "at": "2026-09-12T21:07:01.095Z",
+          "requestObservedAt": "2026-09-12T21:07:01.044Z",
+          "responseObservedAt": "2026-09-12T21:07:01.095Z",
+          "path": "/api/group-voice-sessions/cmtyvl1ir000fau5g8gika6rq/provider-events",
+          "status": 200,
+          "method": "POST",
+          "phase": "speaking",
+          "input": {
+            "type": "speak_started",
+            "sourceEventId": "speak_started:cmtavpot900a8uii7a7wap2oy:turn:cmtyvliip0028au5giuj65drc",
+            "avatarId": "cmtavpot900a8uii7a7wap2oy",
+            "turnId": "cmtyvliip0028au5giuj65drc"
+          }
+        },
+        {
+          "at": "2026-09-12T21:07:03.344Z",
+          "requestObservedAt": "2026-09-12T21:07:03.281Z",
+          "responseObservedAt": "2026-09-12T21:07:03.344Z",
+          "path": "/api/group-voice-sessions/cmtyvl1ir000fau5g8gika6rq/provider-events",
+          "status": 200,
+          "method": "POST",
+          "phase": "listening",
+          "directive": {
+            "action": "listen",
+            "reason": "round_complete"
+          },
+          "input": {
+            "type": "speak_ended",
+            "sourceEventId": "speak_ended:cmtavpot900a8uii7a7wap2oy:turn:cmtyvliip0028au5giuj65drc",
+            "avatarId": "cmtavpot900a8uii7a7wap2oy",
+            "turnId": "cmtyvliip0028au5giuj65drc",
+            "contentLength": 5
+          }
+        },
+        {
+          "at": "2026-09-12T21:07:08.041Z",
+          "requestObservedAt": "2026-09-12T21:07:07.992Z",
+          "responseObservedAt": "2026-09-12T21:07:08.041Z",
+          "path": "/api/group-voice-sessions/cmtyvl1ir000fau5g8gika6rq/end",
+          "status": 200,
+          "method": "POST",
+          "input": {
+            "reason": "user"
+          }
+        },
+        {
+          "at": "2026-09-12T21:07:08.064Z",
+          "requestObservedAt": "2026-09-12T21:07:08.042Z",
+          "responseObservedAt": "2026-09-12T21:07:08.064Z",
+          "path": "/api/group-conversations",
+          "status": 200,
+          "method": "GET"
+        }
+      ],
+      "media": {
+        "startedAt": 85.79999999701977,
+        "wallStartedAt": "2026-09-12T21:06:37.317Z",
+        "sampleIntervalMs": 20,
+        "maxUnmutedElements": 1,
+        "participants": {
+          "Vera": {
+            "samples": 1049,
+            "nonSilentUnmutedSamples": 26,
+            "peakRms": 0.4900725206481583,
+            "firstAudioAtMs": 15423,
+            "lastAudioAtMs": 24303,
+            "unmutedSamples": 255
+          },
+          "Benjita": {
+            "samples": 1153,
+            "nonSilentUnmutedSamples": 0,
+            "peakRms": 0.2367503665515379,
+            "firstAudioAtMs": null,
+            "lastAudioAtMs": null,
+            "unmutedSamples": 0
+          },
+          "Bruno": {
+            "samples": 907,
+            "nonSilentUnmutedSamples": 0,
+            "peakRms": 0.30061991373152064,
+            "firstAudioAtMs": null,
+            "lastAudioAtMs": null,
+            "unmutedSamples": 0
+          }
+        },
+        "originalSampleCount": 3109,
+        "samples": [
+          [3635, "Vera", 0, true, 1, false, 0, "false", "false", "connecting"],
+          [3964, "Benjita", 0, true, 1, false, 0, "false", "false", "connecting"],
+          [4082, "Vera", 0.0000171133300344091, true, 1, false, 4, "false", "false", "connecting"],
+          [4205, "Vera", 0.0029632610851254046, true, 1, false, 4, "false", "false", "connecting"],
+          [4226, "Vera", 0.0651564772890271, true, 1, false, 4, "false", "false", "connecting"],
+          [4244, "Vera", 0.22428609163104996, true, 1, false, 4, "false", "false", "connecting"],
+          [4267, "Vera", 0.18117927196806624, true, 1, false, 4, "false", "false", "connecting"],
+          [4282, "Vera", 0.11682962085524683, true, 1, false, 4, "false", "false", "connecting"],
+          [4305, "Vera", 0.1283923454545919, true, 1, false, 4, "false", "false", "connecting"],
+          [4325, "Vera", 0.16410143361805934, true, 1, false, 4, "false", "false", "connecting"],
+          [4343, "Vera", 0.12354852228497537, true, 1, false, 4, "false", "false", "connecting"],
+          [4367, "Vera", 0.055213057105444975, true, 1, false, 4, "false", "false", "connecting"],
+          [4384, "Vera", 0.026933992961011483, true, 1, false, 4, "false", "false", "connecting"],
+          [4407, "Vera", 0.015006009451971614, true, 1, false, 4, "false", "false", "connecting"],
+          [4423, "Benjita", 0.00000286111026071012, true, 1, false, 4, "false", "false", "connecting"],
+          [4464, "Vera", 0.024602454572899342, true, 1, false, 4, "false", "false", "connecting"],
+          [4485, "Vera", 0.2731725225574012, true, 1, false, 4, "false", "false", "connecting"],
+          [4502, "Vera", 0.22340867324075178, true, 1, false, 4, "false", "false", "connecting"],
+          [4523, "Vera", 0.19282786283488632, true, 1, false, 4, "false", "false", "connecting"],
+          [4523, "Benjita", 0.0018561004612731994, true, 1, false, 4, "false", "false", "connecting"],
+          [4543, "Benjita", 0.15564713186683338, true, 1, false, 4, "false", "false", "connecting"],
+          [4566, "Benjita", 0.09233929038795692, true, 1, false, 4, "false", "false", "connecting"],
+          [4584, "Benjita", 0.13294688080562658, true, 1, false, 4, "false", "false", "connecting"],
+          [4603, "Benjita", 0.1133684556227921, true, 1, false, 4, "false", "false", "connecting"],
+          [4627, "Benjita", 0.08366526835761523, true, 1, false, 4, "false", "false", "connecting"],
+          [4644, "Benjita", 0.08880084479266603, true, 1, false, 4, "false", "false", "connecting"],
+          [4663, "Benjita", 0.1011910607103969, true, 1, false, 4, "false", "false", "connecting"],
+          [4686, "Benjita", 0.09694465247461705, true, 1, false, 4, "false", "false", "connecting"],
+          [4702, "Benjita", 0.07685936613348922, true, 1, false, 4, "false", "false", "connecting"],
+          [4724, "Benjita", 0.026310457508350652, true, 1, false, 4, "false", "false", "connecting"],
+          [4744, "Benjita", 0.006335128734243102, true, 1, false, 4, "false", "false", "connecting"],
+          [4764, "Benjita", 0.025704385747326836, true, 1, false, 4, "false", "false", "connecting"],
+          [4783, "Benjita", 0.005429932895932313, true, 1, false, 4, "false", "false", "connecting"],
+          [5165, "Vera", 0.014894441775245433, true, 1, false, 4, "false", "false", "connecting"],
+          [5182, "Vera", 0.05415701621204615, true, 1, false, 4, "false", "false", "connecting"],
+          [5204, "Vera", 0.09667446861204444, true, 1, false, 4, "false", "false", "connecting"],
+          [5224, "Vera", 0.15507571746258497, true, 1, false, 4, "false", "false", "connecting"],
+          [5245, "Vera", 0.16744948199341578, true, 1, false, 4, "false", "false", "connecting"],
+          [5262, "Vera", 0.13818446965743336, true, 1, false, 4, "false", "false", "connecting"],
+          [5288, "Vera", 0.11993052857414781, true, 1, false, 4, "false", "false", "connecting"],
+          [5304, "Vera", 0.07926528265082246, true, 1, false, 4, "false", "false", "connecting"],
+          [5327, "Vera", 0.0662082035254933, true, 1, false, 4, "false", "false", "connecting"],
+          [5345, "Vera", 0.04862646749157319, true, 1, false, 4, "false", "false", "connecting"],
+          [5363, "Vera", 0.01420829497869907, true, 1, false, 4, "false", "false", "connecting"],
+          [5506, "Benjita", 0.003578186738119105, true, 1, false, 4, "false", "false", "connecting"],
+          [5526, "Benjita", 0.06557043150013128, true, 1, false, 4, "false", "false", "connecting"],
+          [5543, "Benjita", 0.2367503665515379, true, 1, false, 4, "false", "false", "connecting"],
+          [5565, "Benjita", 0.22028155381381112, true, 1, false, 4, "false", "false", "connecting"],
+          [5583, "Benjita", 0.201336617817192, true, 1, false, 4, "false", "false", "connecting"],
+          [5607, "Benjita", 0.16409478296224422, true, 1, false, 4, "false", "false", "connecting"],
+          [5625, "Benjita", 0.12419836385540016, true, 1, false, 4, "false", "false", "connecting"],
+          [5645, "Benjita", 0.09477544469745881, true, 1, false, 4, "false", "false", "connecting"],
+          [5663, "Benjita", 0.07612035818784507, true, 1, false, 4, "false", "false", "connecting"],
+          [5684, "Benjita", 0.06360357634975533, true, 1, false, 4, "false", "false", "connecting"],
+          [5707, "Benjita", 0.059553552527268974, true, 1, false, 4, "false", "false", "connecting"],
+          [5726, "Benjita", 0.05775302794716475, true, 1, false, 4, "false", "false", "connecting"],
+          [5745, "Benjita", 0.038155746349229275, true, 1, false, 4, "false", "false", "connecting"],
+          [5763, "Benjita", 0.02892714066820673, true, 1, false, 4, "false", "false", "connecting"],
+          [5784, "Benjita", 0.013710369417198373, true, 1, false, 4, "false", "false", "connecting"],
+          [5806, "Benjita", 0.015487985363581574, true, 1, false, 4, "false", "false", "connecting"],
+          [5825, "Benjita", 0.006145762376742321, true, 1, false, 4, "false", "false", "connecting"],
+          [5847, "Benjita", 0.0019120999532599029, true, 1, false, 4, "false", "false", "connecting"],
+          [6482, "Vera", 0.0000171133300344091, true, 1, false, 4, "false", "false", "active"],
+          [6904, "Benjita", 0.000017455369949836148, true, 1, false, 4, "false", "false", "active"],
+          [8883, "Bruno", 0, true, 1, false, 0, "false", "false", "connecting"],
+          [9885, "Bruno", 0.0000042650848483266525, true, 1, false, 4, "false", "false", "connecting"],
+          [10062, "Bruno", 0.06865470933620578, true, 1, false, 4, "false", "false", "connecting"],
+          [10087, "Bruno", 0.036931398062065655, true, 1, false, 4, "false", "false", "connecting"],
+          [10105, "Bruno", 0.11018699112701898, true, 1, false, 4, "false", "false", "connecting"],
+          [10125, "Bruno", 0.12919775345969334, true, 1, false, 4, "false", "false", "connecting"],
+          [10144, "Bruno", 0.11331172049083867, true, 1, false, 4, "false", "false", "connecting"],
+          [10167, "Bruno", 0.10349615939586582, true, 1, false, 4, "false", "false", "connecting"],
+          [10183, "Bruno", 0.12201998016273105, true, 1, false, 4, "false", "false", "connecting"],
+          [10207, "Bruno", 0.12737104027923377, true, 1, false, 4, "false", "false", "connecting"],
+          [10224, "Bruno", 0.13027028870733212, true, 1, false, 4, "false", "false", "connecting"],
+          [10242, "Bruno", 0.13473045834051153, true, 1, false, 4, "false", "false", "connecting"],
+          [10263, "Bruno", 0.10478201832679054, true, 1, false, 4, "false", "false", "connecting"],
+          [10286, "Bruno", 0.03452555163955935, true, 1, false, 4, "false", "false", "connecting"],
+          [10306, "Bruno", 0.013744889803644238, true, 1, false, 4, "false", "false", "connecting"],
+          [10324, "Bruno", 0.003990818398300682, true, 1, false, 4, "false", "false", "connecting"],
+          [11044, "Bruno", 0.03152298707542673, true, 1, false, 4, "false", "false", "connecting"],
+          [11064, "Bruno", 0.30061991373152064, true, 1, false, 4, "false", "false", "connecting"],
+          [11087, "Bruno", 0.24598012814247963, true, 1, false, 4, "false", "false", "connecting"],
+          [11106, "Bruno", 0.21416352223558888, true, 1, false, 4, "false", "false", "connecting"],
+          [11126, "Bruno", 0.2022205417251083, true, 1, false, 4, "false", "false", "connecting"],
+          [11144, "Bruno", 0.15740205076275937, true, 1, false, 4, "false", "false", "connecting"],
+          [11167, "Bruno", 0.1172101689464824, true, 1, false, 4, "false", "false", "connecting"],
+          [11186, "Bruno", 0.08970524052924057, true, 1, false, 4, "false", "false", "connecting"],
+          [11204, "Bruno", 0.0672474967925077, true, 1, false, 4, "false", "false", "connecting"],
+          [11226, "Bruno", 0.06534349589048473, true, 1, false, 4, "false", "false", "connecting"],
+          [11245, "Bruno", 0.0491584738326071, true, 1, false, 4, "false", "false", "connecting"],
+          [11263, "Bruno", 0.04077084472271223, true, 1, false, 4, "false", "false", "connecting"],
+          [11287, "Bruno", 0.03999428688140418, true, 1, false, 4, "false", "false", "connecting"],
+          [11303, "Bruno", 0.03138965597398691, true, 1, false, 4, "false", "false", "connecting"],
+          [11323, "Bruno", 0.030903568218103056, true, 1, false, 4, "false", "false", "connecting"],
+          [11345, "Bruno", 0.016982405342027756, true, 1, false, 4, "false", "false", "connecting"],
+          [11364, "Bruno", 0.011580130921438411, true, 1, false, 4, "false", "false", "connecting"],
+          [11386, "Bruno", 0.002899287542260546, true, 1, false, 4, "false", "false", "connecting"],
+          [11525, "Bruno", 0.0013275440554722303, true, 1, false, 4, "false", "false", "connecting"],
+          [11544, "Bruno", 0.001061957161282755, true, 1, false, 4, "false", "false", "connecting"],
+          [12486, "Bruno", 0.00000286111026071012, true, 1, false, 4, "false", "false", "active"],
+          [13985, "Vera", 0.0000170334253971798, false, 1, false, 4, "false", "true", "active"],
+          [15223, "Vera", 0.000017455369949836148, false, 1, false, 4, "true", "true", "active"],
+          [15423, "Vera", 0.05254091564725834, false, 1, false, 4, "true", "true", "active"],
+          [15442, "Vera", 0.14262592102887023, false, 1, false, 4, "true", "true", "active"],
+          [15462, "Vera", 0.1800228587622008, false, 1, false, 4, "true", "true", "active"],
+          [15484, "Vera", 0.1922432287908506, false, 1, false, 4, "true", "true", "active"],
+          [15504, "Vera", 0.18890692886077803, false, 1, false, 4, "true", "true", "active"],
+          [15526, "Vera", 0.19538953841642395, false, 1, false, 4, "true", "true", "active"],
+          [15542, "Vera", 0.16434987408715557, false, 1, false, 4, "true", "true", "active"],
+          [15566, "Vera", 0.07489672721083586, true, 1, false, 4, "false", "false", "active"],
+          [15585, "Vera", 0.07670838890572765, true, 1, false, 4, "false", "false", "active"],
+          [15603, "Vera", 0.13870904225026404, true, 1, false, 4, "false", "false", "active"],
+          [15625, "Vera", 0.14196514463297003, true, 1, false, 4, "false", "false", "active"],
+          [15643, "Vera", 0.205682340520665, true, 1, false, 4, "false", "false", "active"],
+          [15662, "Vera", 0.23614063954505535, true, 1, false, 4, "false", "false", "active"],
+          [15682, "Vera", 0.11092646304432631, true, 1, false, 4, "false", "false", "active"],
+          [15703, "Vera", 0.12661235914607988, true, 1, false, 4, "false", "false", "active"],
+          [15722, "Vera", 0.12757659390930168, true, 1, false, 4, "false", "false", "active"],
+          [15743, "Vera", 0.1317676971332446, true, 1, false, 4, "false", "false", "active"],
+          [15766, "Vera", 0.12504918549696387, true, 1, false, 4, "false", "false", "active"],
+          [15785, "Vera", 0.1230886040219636, true, 1, false, 4, "false", "false", "active"],
+          [15802, "Vera", 0.13198906625951182, true, 1, false, 4, "false", "false", "active"],
+          [15823, "Vera", 0.15551183124981388, true, 1, false, 4, "false", "false", "active"],
+          [15844, "Vera", 0.14671582732495972, true, 1, false, 4, "false", "false", "active"],
+          [15867, "Vera", 0.053709193183200034, true, 1, false, 4, "false", "false", "active"],
+          [15886, "Vera", 0.027087796897985485, true, 1, false, 4, "false", "false", "active"],
+          [15903, "Vera", 0.24064460910345906, true, 1, false, 4, "false", "false", "active"],
+          [15924, "Vera", 0.24228802322206042, true, 1, false, 4, "false", "false", "active"],
+          [15945, "Vera", 0.1890215411508222, true, 1, false, 4, "false", "false", "active"],
+          [15964, "Vera", 0.05783547216857732, true, 1, false, 4, "false", "false", "active"],
+          [15983, "Vera", 0.1862743067481644, true, 1, false, 4, "false", "false", "active"],
+          [16005, "Vera", 0.12021863006112017, true, 1, false, 4, "false", "false", "active"],
+          [16022, "Vera", 0.11880231654014924, true, 1, false, 4, "false", "false", "active"],
+          [16043, "Vera", 0.2137077137619595, true, 1, false, 4, "false", "false", "active"],
+          [16062, "Vera", 0.28143137818908787, true, 1, false, 4, "false", "false", "active"],
+          [16086, "Vera", 0.2754765464977763, true, 1, false, 4, "false", "false", "active"],
+          [16105, "Vera", 0.14258284407218272, true, 1, false, 4, "false", "false", "active"],
+          [16123, "Vera", 0.10650726990107477, true, 1, false, 4, "false", "false", "active"],
+          [16143, "Vera", 0.11001810558566183, true, 1, false, 4, "false", "false", "active"],
+          [16164, "Vera", 0.16070279077011002, true, 1, false, 4, "false", "false", "active"],
+          [16186, "Vera", 0.177803061366292, true, 1, false, 4, "false", "false", "active"],
+          [16204, "Vera", 0.19534170288328231, true, 1, false, 4, "false", "false", "active"],
+          [16223, "Vera", 0.15685621887138454, true, 1, false, 4, "false", "false", "active"],
+          [16243, "Vera", 0.2172256905551685, true, 1, false, 4, "false", "false", "active"],
+          [16267, "Vera", 0.13548293191554206, true, 1, false, 4, "false", "false", "active"],
+          [16285, "Vera", 0.03190345900618605, true, 1, false, 4, "false", "false", "active"],
+          [16346, "Vera", 0.000017455369949836148, true, 1, false, 4, "false", "false", "connecting"],
+          [18903, "Vera", 0, true, 1, false, 0, "false", "false", "connecting"],
+          [19905, "Vera", 0.000024463547710461677, true, 1, false, 4, "false", "false", "connecting"],
+          [20007, "Vera", 0.06704681725595428, true, 1, false, 4, "false", "false", "connecting"],
+          [20026, "Vera", 0.1388320598909209, true, 1, false, 4, "false", "false", "connecting"],
+          [20043, "Vera", 0.2655062279550008, true, 1, false, 4, "false", "false", "connecting"],
+          [20067, "Vera", 0.21751296001972475, true, 1, false, 4, "false", "false", "connecting"],
+          [20082, "Vera", 0.14880808754993494, true, 1, false, 4, "false", "false", "connecting"],
+          [20105, "Vera", 0.16646341403360654, true, 1, false, 4, "false", "false", "connecting"],
+          [20126, "Vera", 0.15932692727101197, true, 1, false, 4, "false", "false", "connecting"],
+          [20144, "Vera", 0.17992498960298017, true, 1, false, 4, "false", "false", "connecting"],
+          [20163, "Vera", 0.16195851595892688, true, 1, false, 4, "false", "false", "connecting"],
+          [20186, "Vera", 0.1372553944086761, true, 1, false, 4, "false", "false", "connecting"],
+          [20205, "Vera", 0.051667173366327604, true, 1, false, 4, "false", "false", "connecting"],
+          [20222, "Vera", 0.0022956471141472477, true, 1, false, 4, "false", "false", "connecting"],
+          [20242, "Vera", 0.036994993105530484, true, 1, false, 4, "false", "false", "connecting"],
+          [20263, "Vera", 0.013914625848055109, true, 1, false, 4, "false", "false", "connecting"],
+          [20283, "Vera", 0.0011861521423057132, true, 1, false, 4, "false", "false", "connecting"],
+          [20324, "Vera", 0.06718468044376152, true, 1, false, 4, "false", "false", "connecting"],
+          [20342, "Vera", 0.11057799215554354, true, 1, false, 4, "false", "false", "connecting"],
+          [20985, "Vera", 0.21094163711657993, true, 1, false, 4, "false", "false", "connecting"],
+          [21007, "Vera", 0.3470986313063128, true, 1, false, 4, "false", "false", "connecting"],
+          [21022, "Vera", 0.2910554005797514, true, 1, false, 4, "false", "false", "connecting"],
+          [21048, "Vera", 0.2562460234122684, true, 1, false, 4, "false", "false", "connecting"],
+          [21066, "Vera", 0.24462022789249818, true, 1, false, 4, "false", "false", "connecting"],
+          [21084, "Vera", 0.21642532483066068, true, 1, false, 4, "false", "false", "connecting"],
+          [21103, "Vera", 0.14467161498816428, true, 1, false, 4, "false", "false", "connecting"],
+          [21126, "Vera", 0.14911629091501571, true, 1, false, 4, "false", "false", "connecting"],
+          [21146, "Vera", 0.1457671408570705, true, 1, false, 4, "false", "false", "connecting"],
+          [21165, "Vera", 0.11066085151723382, true, 1, false, 4, "false", "false", "connecting"],
+          [21186, "Vera", 0.0878118366996666, true, 1, false, 4, "false", "false", "connecting"],
+          [21205, "Vera", 0.05893114706341946, true, 1, false, 4, "false", "false", "connecting"],
+          [21223, "Vera", 0.07281999399412259, true, 1, false, 4, "false", "false", "connecting"],
+          [21245, "Vera", 0.0766623255247591, true, 1, false, 4, "false", "false", "connecting"],
+          [21266, "Vera", 0.04509596011276995, true, 1, false, 4, "false", "false", "connecting"],
+          [21286, "Vera", 0.009215675848135558, true, 1, false, 4, "false", "false", "connecting"],
+          [22342, "Vera", 0.000017377033390205856, true, 1, false, 4, "false", "false", "active"],
+          [22443, "Vera", 0.000002336086745527048, false, 1, false, 4, "false", "true", "active"],
+          [23743, "Vera", 0.000017377033390205856, false, 1, false, 4, "true", "true", "active"],
+          [23943, "Vera", 0.10105479939484742, false, 1, false, 4, "true", "true", "active"],
+          [23967, "Vera", 0.4900725206481583, false, 1, false, 4, "true", "true", "active"],
+          [23984, "Vera", 0.4867401466426554, false, 1, false, 4, "true", "true", "active"],
+          [24005, "Vera", 0.3651071956590279, false, 1, false, 4, "true", "true", "active"],
+          [24023, "Vera", 0.20708480932057194, false, 1, false, 4, "true", "true", "active"],
+          [24045, "Vera", 0.07068163034430093, false, 1, false, 4, "true", "true", "active"],
+          [24067, "Vera", 0.08418129342760784, false, 1, false, 4, "true", "true", "active"],
+          [24083, "Vera", 0.0536784719828022, false, 1, false, 4, "true", "true", "active"],
+          [24102, "Vera", 0.04596175515805551, false, 1, false, 4, "true", "true", "active"],
+          [24123, "Vera", 0.0285287732159381, false, 1, false, 4, "true", "true", "active"],
+          [24143, "Vera", 0.2659621139600527, false, 1, false, 4, "true", "true", "active"],
+          [24164, "Vera", 0.3093666244690348, false, 1, false, 4, "true", "true", "active"],
+          [24184, "Vera", 0.2791460204064019, false, 1, false, 4, "true", "true", "active"],
+          [24206, "Vera", 0.19845688174960635, false, 1, false, 4, "true", "true", "active"],
+          [24227, "Vera", 0.18925270843610395, false, 1, false, 4, "true", "true", "active"],
+          [24244, "Vera", 0.17640546215521705, false, 1, false, 4, "true", "true", "active"],
+          [24267, "Vera", 0.1074184405118764, false, 1, false, 4, "true", "true", "active"],
+          [24286, "Vera", 0.028613477524287535, false, 1, false, 4, "true", "true", "active"],
+          [24303, "Vera", 0.0013414671699849153, false, 1, false, 4, "true", "true", "active"],
+          [25985, "Vera", 0.000017377033390205856, true, 1, false, 4, "false", "true", "active"],
+          [26042, "Vera", 0.000002336086745527048, true, 1, false, 4, "false", "false", "active"]
+        ],
+        "commands": [
+          {
+            "atMs": 13981,
+            "eventType": "elevenlabs_agent_command",
+            "eventId": "fa91289d-3d67-4407-858e-a0e6b0c905c1",
+            "sourceEventId": null,
+            "sessionId": "badf3552-7731-459b-83d8-ffe1e9bc201b",
+            "commandType": "user_activity",
+            "providerType": "user_activity",
+            "conversationId": null
+          },
+          {
+            "atMs": 13981,
+            "eventType": "elevenlabs_agent_command",
+            "eventId": "5db4068d-efef-425f-aa4a-6a4dca63d5ac",
+            "sourceEventId": null,
+            "sessionId": "20aa628e-078c-418d-8af3-2a664aff8d08",
+            "commandType": "user_activity",
+            "providerType": "user_activity",
+            "conversationId": null
+          },
+          {
+            "atMs": 13983,
+            "eventType": "elevenlabs_agent_command",
+            "eventId": "38adce2b-5ae2-47b2-84cd-8903f4c28a0c",
+            "sourceEventId": null,
+            "sessionId": "7f777ce6-0387-4fd3-8540-12b597c4b042",
+            "commandType": "contextual_update",
+            "providerType": "contextual_update",
+            "conversationId": null
+          },
+          {
+            "atMs": 13983,
+            "eventType": "elevenlabs_agent_command",
+            "eventId": "8c938505-3ee8-46fc-bb16-18b784f20093",
+            "sourceEventId": null,
+            "sessionId": "7f777ce6-0387-4fd3-8540-12b597c4b042",
+            "commandType": "user_message",
+            "providerType": "user_message",
+            "conversationId": null
+          },
+          {
+            "atMs": 15544,
+            "eventType": "avatar.interrupt",
+            "eventId": null,
+            "sourceEventId": null,
+            "sessionId": "7f777ce6-0387-4fd3-8540-12b597c4b042",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 22427,
+            "eventType": "elevenlabs_agent_command",
+            "eventId": "aaad344a-6e09-48d4-a51c-2a511e3bc752",
+            "sourceEventId": null,
+            "sessionId": "badf3552-7731-459b-83d8-ffe1e9bc201b",
+            "commandType": "user_activity",
+            "providerType": "user_activity",
+            "conversationId": null
+          },
+          {
+            "atMs": 22428,
+            "eventType": "elevenlabs_agent_command",
+            "eventId": "6dabac20-afa4-40d5-a59b-0466bf824464",
+            "sourceEventId": null,
+            "sessionId": "20aa628e-078c-418d-8af3-2a664aff8d08",
+            "commandType": "user_activity",
+            "providerType": "user_activity",
+            "conversationId": null
+          },
+          {
+            "atMs": 22428,
+            "eventType": "elevenlabs_agent_command",
+            "eventId": "12f833bd-8e4e-4030-9396-784330a115f7",
+            "sourceEventId": null,
+            "sessionId": "76a3edc0-3160-4924-82d5-8d553c4c6eeb",
+            "commandType": "contextual_update",
+            "providerType": "contextual_update",
+            "conversationId": null
+          },
+          {
+            "atMs": 22428,
+            "eventType": "elevenlabs_agent_command",
+            "eventId": "9a14e6f3-96d8-495c-81e7-11cb47202feb",
+            "sourceEventId": null,
+            "sessionId": "76a3edc0-3160-4924-82d5-8d553c4c6eeb",
+            "commandType": "user_message",
+            "providerType": "user_message",
+            "conversationId": null
+          }
+        ],
+        "providerEvents": [
+          {
+            "atMs": 4070,
+            "eventType": "elevenlabs_agent_event",
+            "eventId": "535f102e-74b2-46d1-bda4-76c357b2209c",
+            "sourceEventId": null,
+            "sessionId": "20aa628e-078c-418d-8af3-2a664aff8d08",
+            "commandType": "conversation_initiation_metadata",
+            "providerType": "conversation_initiation_metadata",
+            "conversationId": "conv_9801m2bq37r1e44v3aneqrx9yc9s"
+          },
+          {
+            "atMs": 4091,
+            "eventType": "elevenlabs_agent_event",
+            "eventId": "fc2e01d0-648e-44e2-b6b6-423416139e01",
+            "sourceEventId": null,
+            "sessionId": "20aa628e-078c-418d-8af3-2a664aff8d08",
+            "commandType": "agent_response",
+            "providerType": "agent_response",
+            "conversationId": null
+          },
+          {
+            "atMs": 4103,
+            "eventType": "avatar.transcription.chunk",
+            "eventId": "f1869a61-ed95-4901-aa66-6461d9f387c7",
+            "sourceEventId": null,
+            "sessionId": "20aa628e-078c-418d-8af3-2a664aff8d08",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 4191,
+            "eventType": "avatar.speak_started",
+            "eventId": "373b89de-f5a3-44d9-8ede-895a3a4c2736",
+            "sourceEventId": "bcfc000e-6efa-4ed3-a606-633677ce6502",
+            "sessionId": "7f777ce6-0387-4fd3-8540-12b597c4b042",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 4415,
+            "eventType": "avatar.speak_ended",
+            "eventId": "bfde1848-f87b-4b58-950f-e337d80413f8",
+            "sourceEventId": "bcfc000e-6efa-4ed3-a606-633677ce6502",
+            "sessionId": "7f777ce6-0387-4fd3-8540-12b597c4b042",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 4491,
+            "eventType": "avatar.speak_started",
+            "eventId": "9348217b-b40e-4d0f-b690-f72974271cdc",
+            "sourceEventId": "41118863-8ce1-472e-8cb5-86db1ea7499e",
+            "sessionId": "20aa628e-078c-418d-8af3-2a664aff8d08",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 4714,
+            "eventType": "avatar.speak_ended",
+            "eventId": "e9069c02-f3bd-4766-a619-1473e091c840",
+            "sourceEventId": "41118863-8ce1-472e-8cb5-86db1ea7499e",
+            "sessionId": "20aa628e-078c-418d-8af3-2a664aff8d08",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 4775,
+            "eventType": "avatar.transcription",
+            "eventId": "c562ee0c-d43d-4dbb-86cb-c64a6477efa2",
+            "sourceEventId": null,
+            "sessionId": "7f777ce6-0387-4fd3-8540-12b597c4b042",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 5013,
+            "eventType": "avatar.speak_started",
+            "eventId": "285171e9-fd9f-4539-9c20-98388e700c93",
+            "sourceEventId": "bcfc000e-6efa-4ed3-a606-633677ce6502",
+            "sessionId": "7f777ce6-0387-4fd3-8540-12b597c4b042",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 5151,
+            "eventType": "avatar.transcription",
+            "eventId": "5734944d-4733-411b-8e35-44bb7b835b0a",
+            "sourceEventId": null,
+            "sessionId": "20aa628e-078c-418d-8af3-2a664aff8d08",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 5357,
+            "eventType": "avatar.speak_started",
+            "eventId": "e7607670-0dd0-430f-b1ff-27775cb03285",
+            "sourceEventId": "41118863-8ce1-472e-8cb5-86db1ea7499e",
+            "sessionId": "20aa628e-078c-418d-8af3-2a664aff8d08",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 5464,
+            "eventType": "avatar.speak_ended",
+            "eventId": "b29161e4-6bda-47f3-a641-c8b7ba935f52",
+            "sourceEventId": "bcfc000e-6efa-4ed3-a606-633677ce6502",
+            "sessionId": "7f777ce6-0387-4fd3-8540-12b597c4b042",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 5875,
+            "eventType": "avatar.speak_ended",
+            "eventId": "7b76c2bc-798a-4a04-bf38-5b4144e50225",
+            "sourceEventId": "41118863-8ce1-472e-8cb5-86db1ea7499e",
+            "sessionId": "20aa628e-078c-418d-8af3-2a664aff8d08",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 9131,
+            "eventType": "elevenlabs_agent_event",
+            "eventId": "1c6f4925-b331-49d3-83f3-28064398d7ef",
+            "sourceEventId": null,
+            "sessionId": "badf3552-7731-459b-83d8-ffe1e9bc201b",
+            "commandType": "conversation_initiation_metadata",
+            "providerType": "conversation_initiation_metadata",
+            "conversationId": "conv_8601m2bq3ctmffjs98g1s9386wc1"
+          },
+          {
+            "atMs": 9499,
+            "eventType": "elevenlabs_agent_event",
+            "eventId": "bdabf80a-79e6-4454-84f6-cb7d1127cd7d",
+            "sourceEventId": null,
+            "sessionId": "badf3552-7731-459b-83d8-ffe1e9bc201b",
+            "commandType": "agent_response",
+            "providerType": "agent_response",
+            "conversationId": null
+          },
+          {
+            "atMs": 9540,
+            "eventType": "avatar.transcription.chunk",
+            "eventId": "b5bcbf37-5fb7-41c3-b3c4-2c6da991f9c4",
+            "sourceEventId": null,
+            "sessionId": "badf3552-7731-459b-83d8-ffe1e9bc201b",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 9819,
+            "eventType": "avatar.speak_started",
+            "eventId": "8021881c-ee56-4274-9b7e-80e2661e43b9",
+            "sourceEventId": "8af5a5e0-d3e3-4b3b-a487-ea3dd51bc51c",
+            "sessionId": "badf3552-7731-459b-83d8-ffe1e9bc201b",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 10213,
+            "eventType": "avatar.speak_ended",
+            "eventId": "f1bb23e0-ae54-4670-b55a-59e668e553b8",
+            "sourceEventId": "8af5a5e0-d3e3-4b3b-a487-ea3dd51bc51c",
+            "sessionId": "badf3552-7731-459b-83d8-ffe1e9bc201b",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 10562,
+            "eventType": "avatar.transcription",
+            "eventId": "4e1ab84d-884e-4a44-844a-7caa7fccef93",
+            "sourceEventId": null,
+            "sessionId": "badf3552-7731-459b-83d8-ffe1e9bc201b",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 10855,
+            "eventType": "avatar.speak_started",
+            "eventId": "e80c3d03-2f23-433c-b590-23d77cc2ce84",
+            "sourceEventId": "8af5a5e0-d3e3-4b3b-a487-ea3dd51bc51c",
+            "sessionId": "badf3552-7731-459b-83d8-ffe1e9bc201b",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 11461,
+            "eventType": "avatar.speak_ended",
+            "eventId": "347826f2-7b4d-40eb-b27e-f8e7cda38e68",
+            "sourceEventId": "8af5a5e0-d3e3-4b3b-a487-ea3dd51bc51c",
+            "sessionId": "badf3552-7731-459b-83d8-ffe1e9bc201b",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 15208,
+            "eventType": "avatar.speak_started",
+            "eventId": "0ea2923d-bf2a-4ba1-8340-200db8e07d5c",
+            "sourceEventId": "a65e36b5-a73a-43a9-a3a7-f69909cc65c5",
+            "sessionId": "7f777ce6-0387-4fd3-8540-12b597c4b042",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 15950,
+            "eventType": "elevenlabs_agent_event",
+            "eventId": "06903d5a-9c91-4840-9249-55f3464c0704",
+            "sourceEventId": null,
+            "sessionId": "7f777ce6-0387-4fd3-8540-12b597c4b042",
+            "commandType": "agent_response",
+            "providerType": "agent_response",
+            "conversationId": null
+          },
+          {
+            "atMs": 16126,
+            "eventType": "avatar.speak_ended",
+            "eventId": "42015606-e124-4fc9-bc3d-ea7cd0843a12",
+            "sourceEventId": "a65e36b5-a73a-43a9-a3a7-f69909cc65c5",
+            "sessionId": "7f777ce6-0387-4fd3-8540-12b597c4b042",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 19124,
+            "eventType": "elevenlabs_agent_event",
+            "eventId": "879837e5-49e5-4d27-9fb8-959ff8fb8021",
+            "sourceEventId": null,
+            "sessionId": "76a3edc0-3160-4924-82d5-8d553c4c6eeb",
+            "commandType": "conversation_initiation_metadata",
+            "providerType": "conversation_initiation_metadata",
+            "conversationId": "conv_9701m2bq3pmnepttcjfe5gjfz6rj"
+          },
+          {
+            "atMs": 19521,
+            "eventType": "elevenlabs_agent_event",
+            "eventId": "028240f5-bf77-4ea1-9ac5-a5f594ecf163",
+            "sourceEventId": null,
+            "sessionId": "76a3edc0-3160-4924-82d5-8d553c4c6eeb",
+            "commandType": "agent_response",
+            "providerType": "agent_response",
+            "conversationId": null
+          },
+          {
+            "atMs": 19621,
+            "eventType": "avatar.transcription.chunk",
+            "eventId": "d77ee5f0-e668-4d79-8557-d2d516da594b",
+            "sourceEventId": null,
+            "sessionId": "76a3edc0-3160-4924-82d5-8d553c4c6eeb",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 19759,
+            "eventType": "avatar.speak_started",
+            "eventId": "9b817ad8-63ae-4a1f-be00-bd951be23919",
+            "sourceEventId": "d696e935-5e1f-4806-8a1c-d7c83a3cb32e",
+            "sessionId": "76a3edc0-3160-4924-82d5-8d553c4c6eeb",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 20163,
+            "eventType": "avatar.speak_ended",
+            "eventId": "52df1b62-4639-470a-8379-4852d617fd93",
+            "sourceEventId": "d696e935-5e1f-4806-8a1c-d7c83a3cb32e",
+            "sessionId": "76a3edc0-3160-4924-82d5-8d553c4c6eeb",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 20666,
+            "eventType": "avatar.transcription",
+            "eventId": "6c46063d-caa5-49b3-ae9a-9abe4cc5b505",
+            "sourceEventId": null,
+            "sessionId": "76a3edc0-3160-4924-82d5-8d553c4c6eeb",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 20799,
+            "eventType": "avatar.speak_started",
+            "eventId": "6016ee9c-51fa-4319-a8e5-e3b6eea543e6",
+            "sourceEventId": "d696e935-5e1f-4806-8a1c-d7c83a3cb32e",
+            "sessionId": "76a3edc0-3160-4924-82d5-8d553c4c6eeb",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 21321,
+            "eventType": "avatar.speak_ended",
+            "eventId": "c9719d2b-37d9-481c-a457-4847a4a2ee23",
+            "sourceEventId": "d696e935-5e1f-4806-8a1c-d7c83a3cb32e",
+            "sessionId": "76a3edc0-3160-4924-82d5-8d553c4c6eeb",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 23507,
+            "eventType": "elevenlabs_agent_event",
+            "eventId": "656e9d67-c183-4d22-aecc-014f302adb0e",
+            "sourceEventId": null,
+            "sessionId": "76a3edc0-3160-4924-82d5-8d553c4c6eeb",
+            "commandType": "agent_response",
+            "providerType": "agent_response",
+            "conversationId": null
+          },
+          {
+            "atMs": 23507,
+            "eventType": "avatar.transcription.chunk",
+            "eventId": "f5da341e-dfcc-4d4b-8207-640a8ca608d8",
+            "sourceEventId": null,
+            "sessionId": "76a3edc0-3160-4924-82d5-8d553c4c6eeb",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 23726,
+            "eventType": "avatar.speak_started",
+            "eventId": "831dee70-562b-4476-a73e-fa42eea0bc4d",
+            "sourceEventId": "9d80fa75-cfbd-48b4-bc12-f04a521fa879",
+            "sessionId": "76a3edc0-3160-4924-82d5-8d553c4c6eeb",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 24121,
+            "eventType": "avatar.speak_ended",
+            "eventId": "f5291358-5983-40f0-aadb-8fcb3ba61798",
+            "sourceEventId": "9d80fa75-cfbd-48b4-bc12-f04a521fa879",
+            "sessionId": "76a3edc0-3160-4924-82d5-8d553c4c6eeb",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 24512,
+            "eventType": "avatar.transcription",
+            "eventId": "bf67da95-459c-461a-ae85-08cd0f91b632",
+            "sourceEventId": null,
+            "sessionId": "76a3edc0-3160-4924-82d5-8d553c4c6eeb",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 24765,
+            "eventType": "avatar.speak_started",
+            "eventId": "c0a95bf7-ae20-4b95-a7c2-aef4229b3adc",
+            "sourceEventId": "9d80fa75-cfbd-48b4-bc12-f04a521fa879",
+            "sessionId": "76a3edc0-3160-4924-82d5-8d553c4c6eeb",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          },
+          {
+            "atMs": 24960,
+            "eventType": "avatar.speak_ended",
+            "eventId": "db4f1ad2-f55a-4c64-a6fa-ac9857da6b38",
+            "sourceEventId": "9d80fa75-cfbd-48b4-bc12-f04a521fa879",
+            "sessionId": "76a3edc0-3160-4924-82d5-8d553c4c6eeb",
+            "commandType": null,
+            "providerType": null,
+            "conversationId": null
+          }
+        ]
+      }
+    }
+  ]
+}

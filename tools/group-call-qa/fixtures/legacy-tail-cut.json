@@ -1,0 +1,774 @@
+{
+  "provenance": {
+    "kind": "anonymized-excerpt",
+    "recordedAt": "2026-09-09T02:39:07.198Z",
+    "source": "full-app-report-1788921575849.json",
+    "notes": "Original non-silent PCM samples and API event observation timestamps; participant and turn identifiers replaced. Legacy trace did not observe raw commands."
+  },
+  "injection": {
+    "at": "2026-09-09T02:39:27.313Z",
+    "kind": "scribe_committed_transcript",
+    "contentLength": 94
+  },
+  "roster": [
+    {
+      "name": "QA A",
+      "avatarId": "avatar-0",
+      "agentId": "agent_qa_0"
+    },
+    {
+      "name": "QA B",
+      "avatarId": "avatar-1",
+      "agentId": "agent_qa_1"
+    },
+    {
+      "name": "QA C",
+      "avatarId": "avatar-2",
+      "agentId": "agent_qa_2"
+    }
+  ],
+  "api": [
+    {
+      "at": "2026-09-09T02:39:25.462Z",
+      "path": "/api/group-voice-sessions/qa/provider-events",
+      "status": 200,
+      "phase": "listening",
+      "input": {
+        "type": "speak_started",
+        "turnId": null,
+        "avatarId": "avatar-2",
+        "sourceEventId": "event-0"
+      },
+      "directive": {
+        "action": "suppress",
+        "avatarId": "avatar-2",
+        "reason": "unauthorized_audio"
+      }
+    },
+    {
+      "at": "2026-09-09T02:39:26.203Z",
+      "path": "/api/group-voice-sessions/qa/provider-events",
+      "status": 200,
+      "phase": "listening",
+      "input": {
+        "type": "speak_started",
+        "turnId": null,
+        "avatarId": "avatar-1",
+        "sourceEventId": "event-1"
+      },
+      "directive": {
+        "action": "suppress",
+        "avatarId": "avatar-1",
+        "reason": "unauthorized_audio"
+      }
+    },
+    {
+      "at": "2026-09-09T02:39:27.428Z",
+      "path": "/api/group-voice-sessions/qa/turns",
+      "status": 200,
+      "phase": "queued",
+      "input": {
+        "sourceEventId": "event-2"
+      },
+      "directive": {
+        "action": "speak",
+        "avatarId": "avatar-0",
+        "turnId": "turn-0"
+      }
+    },
+    {
+      "at": "2026-09-09T02:39:27.448Z",
+      "path": "/api/group-voice-sessions/qa/provider-events",
+      "status": 200,
+      "phase": "queued",
+      "input": {
+        "type": "speak_started",
+        "turnId": null,
+        "avatarId": "avatar-0",
+        "sourceEventId": "event-3"
+      },
+      "directive": {
+        "action": "suppress",
+        "avatarId": "avatar-0",
+        "reason": "unauthorized_audio"
+      }
+    },
+    {
+      "at": "2026-09-09T02:39:28.754Z",
+      "path": "/api/group-voice-sessions/qa/provider-events",
+      "status": 200,
+      "phase": "queued",
+      "input": {
+        "type": "agent_response",
+        "turnId": "turn-0",
+        "avatarId": "avatar-0",
+        "sourceEventId": "event-4"
+      }
+    },
+    {
+      "at": "2026-09-09T02:39:29.064Z",
+      "path": "/api/group-voice-sessions/qa/provider-events",
+      "status": 200,
+      "phase": "speaking",
+      "input": {
+        "type": "speak_started",
+        "turnId": "turn-0",
+        "avatarId": "avatar-0",
+        "sourceEventId": "event-5"
+      }
+    },
+    {
+      "at": "2026-09-09T02:39:29.485Z",
+      "path": "/api/group-voice-sessions/qa/provider-events",
+      "status": 200,
+      "phase": "queued",
+      "input": {
+        "type": "speak_ended",
+        "turnId": "turn-0",
+        "avatarId": "avatar-0",
+        "sourceEventId": "event-6"
+      },
+      "directive": {
+        "action": "speak",
+        "avatarId": "avatar-1",
+        "turnId": "turn-1"
+      }
+    },
+    {
+      "at": "2026-09-09T02:39:30.106Z",
+      "path": "/api/group-voice-sessions/qa/provider-events",
+      "status": 200,
+      "phase": "queued",
+      "input": {
+        "type": "speak_started",
+        "turnId": null,
+        "avatarId": "avatar-0",
+        "sourceEventId": "event-7"
+      },
+      "directive": {
+        "action": "suppress",
+        "avatarId": "avatar-0",
+        "reason": "unauthorized_audio"
+      }
+    },
+    {
+      "at": "2026-09-09T02:39:30.400Z",
+      "path": "/api/group-voice-sessions/qa/provider-events",
+      "status": 200,
+      "phase": "queued",
+      "input": {
+        "type": "agent_response",
+        "turnId": "turn-1",
+        "avatarId": "avatar-1",
+        "sourceEventId": "event-8"
+      }
+    },
+    {
+      "at": "2026-09-09T02:39:30.683Z",
+      "path": "/api/group-voice-sessions/qa/provider-events",
+      "status": 200,
+      "phase": "speaking",
+      "input": {
+        "type": "speak_started",
+        "turnId": "turn-1",
+        "avatarId": "avatar-1",
+        "sourceEventId": "event-9"
+      }
+    },
+    {
+      "at": "2026-09-09T02:39:31.188Z",
+      "path": "/api/group-voice-sessions/qa/provider-events",
+      "status": 200,
+      "phase": "queued",
+      "input": {
+        "type": "speak_ended",
+        "turnId": "turn-1",
+        "avatarId": "avatar-1",
+        "sourceEventId": "event-10"
+      },
+      "directive": {
+        "action": "speak",
+        "avatarId": "avatar-2",
+        "turnId": "turn-2"
+      }
+    },
+    {
+      "at": "2026-09-09T02:39:31.716Z",
+      "path": "/api/group-voice-sessions/qa/provider-events",
+      "status": 200,
+      "phase": "queued",
+      "input": {
+        "type": "speak_started",
+        "turnId": null,
+        "avatarId": "avatar-1",
+        "sourceEventId": "event-11"
+      },
+      "directive": {
+        "action": "suppress",
+        "avatarId": "avatar-1",
+        "reason": "unauthorized_audio"
+      }
+    },
+    {
+      "at": "2026-09-09T02:39:32.306Z",
+      "path": "/api/group-voice-sessions/qa/provider-events",
+      "status": 200,
+      "phase": "queued",
+      "input": {
+        "type": "agent_response",
+        "turnId": "turn-2",
+        "avatarId": "avatar-2",
+        "sourceEventId": "event-12"
+      }
+    },
+    {
+      "at": "2026-09-09T02:39:32.722Z",
+      "path": "/api/group-voice-sessions/qa/provider-events",
+      "status": 200,
+      "phase": "speaking",
+      "input": {
+        "type": "speak_started",
+        "turnId": "turn-2",
+        "avatarId": "avatar-2",
+        "sourceEventId": "event-13"
+      }
+    },
+    {
+      "at": "2026-09-09T02:39:33.067Z",
+      "path": "/api/group-voice-sessions/qa/provider-events",
+      "status": 200,
+      "phase": "listening",
+      "input": {
+        "type": "speak_ended",
+        "turnId": "turn-2",
+        "avatarId": "avatar-2",
+        "sourceEventId": "event-14"
+      },
+      "directive": {
+        "action": "listen",
+        "reason": "round_complete"
+      }
+    },
+    {
+      "at": "2026-09-09T02:39:33.524Z",
+      "path": "/api/group-voice-sessions/qa/provider-events",
+      "status": 200,
+      "phase": "listening",
+      "input": {
+        "type": "speak_started",
+        "turnId": null,
+        "avatarId": "avatar-2",
+        "sourceEventId": "event-15"
+      },
+      "directive": {
+        "action": "suppress",
+        "avatarId": "avatar-2",
+        "reason": "unauthorized_audio"
+      }
+    }
+  ],
+  "media": {
+    "wallStartedAt": "2026-09-09T02:39:15.774Z",
+    "maxUnmutedElements": 1,
+    "commandObserverAvailable": false,
+    "samples": [
+      {
+        "atMs": 8953,
+        "name": "QA C",
+        "rms": 0.12072293556749035,
+        "muted": true,
+        "paused": false
+      },
+      {
+        "atMs": 9003,
+        "name": "QA C",
+        "rms": 0.13576240225346378,
+        "muted": true,
+        "paused": false
+      },
+      {
+        "atMs": 9052,
+        "name": "QA C",
+        "rms": 0.0941197288412057,
+        "muted": true,
+        "paused": false
+      },
+      {
+        "atMs": 9103,
+        "name": "QA C",
+        "rms": 0.09828233783755166,
+        "muted": true,
+        "paused": false
+      },
+      {
+        "atMs": 9153,
+        "name": "QA C",
+        "rms": 0.10428326459463921,
+        "muted": true,
+        "paused": false
+      },
+      {
+        "atMs": 9202,
+        "name": "QA C",
+        "rms": 0.07985752692464262,
+        "muted": true,
+        "paused": false
+      },
+      {
+        "atMs": 9253,
+        "name": "QA C",
+        "rms": 0.03853336634518017,
+        "muted": true,
+        "paused": false
+      },
+      {
+        "atMs": 9302,
+        "name": "QA C",
+        "rms": 0.0010324193285071552,
+        "muted": true,
+        "paused": false
+      },
+      {
+        "atMs": 9555,
+        "name": "QA B",
+        "rms": 0.034500383027512654,
+        "muted": true,
+        "paused": false
+      },
+      {
+        "atMs": 9603,
+        "name": "QA B",
+        "rms": 0.017507699044122336,
+        "muted": true,
+        "paused": false
+      },
+      {
+        "atMs": 9652,
+        "name": "QA B",
+        "rms": 0.1700946741375161,
+        "muted": true,
+        "paused": false
+      },
+      {
+        "atMs": 9702,
+        "name": "QA B",
+        "rms": 0.12579328003209964,
+        "muted": true,
+        "paused": false
+      },
+      {
+        "atMs": 9753,
+        "name": "QA B",
+        "rms": 0.14831003069265147,
+        "muted": true,
+        "paused": false
+      },
+      {
+        "atMs": 9802,
+        "name": "QA B",
+        "rms": 0.08409938164822599,
+        "muted": true,
+        "paused": false
+      },
+      {
+        "atMs": 9855,
+        "name": "QA B",
+        "rms": 0.0035380613330299906,
+        "muted": true,
+        "paused": false
+      },
+      {
+        "atMs": 9855,
+        "name": "QA C",
+        "rms": 0.20956739904646965,
+        "muted": true,
+        "paused": false
+      },
+      {
+        "atMs": 9902,
+        "name": "QA C",
+        "rms": 0.23605231151016245,
+        "muted": true,
+        "paused": false
+      },
+      {
+        "atMs": 9955,
+        "name": "QA C",
+        "rms": 0.13097396698769662,
+        "muted": true,
+        "paused": false
+      },
+      {
+        "atMs": 10005,
+        "name": "QA C",
+        "rms": 0.05923520489396169,
+        "muted": true,
+        "paused": false
+      },
+      {
+        "atMs": 10052,
+        "name": "QA C",
+        "rms": 0.04076825554828118,
+        "muted": true,
+        "paused": false
+      },
+      {
+        "atMs": 10103,
+        "name": "QA C",
+        "rms": 0.03393534080915796,
+        "muted": true,
+        "paused": false
+      },
+      {
+        "atMs": 10152,
+        "name": "QA C",
+        "rms": 0.01896560988190623,
+        "muted": true,
+        "paused": false
+      },
+      {
+        "atMs": 10601,
+        "name": "QA B",
+        "rms": 0.1540409294614671,
+        "muted": true,
+        "paused": false
+      },
+      {
+        "atMs": 10651,
+        "name": "QA B",
+        "rms": 0.32104840130256423,
+        "muted": true,
+        "paused": false
+      },
+      {
+        "atMs": 10702,
+        "name": "QA B",
+        "rms": 0.2630403076816067,
+        "muted": true,
+        "paused": false
+      },
+      {
+        "atMs": 10752,
+        "name": "QA B",
+        "rms": 0.16642045329200317,
+        "muted": true,
+        "paused": false
+      },
+      {
+        "atMs": 10801,
+        "name": "QA A",
+        "rms": 0.24426724496065672,
+        "muted": true,
+        "paused": false
+      },
+      {
+        "atMs": 10801,
+        "name": "QA B",
+        "rms": 0.16935108495321566,
+        "muted": true,
+        "paused": false
+      },
+      {
+        "atMs": 10855,
+        "name": "QA A",
+        "rms": 0.1620073663056511,
+        "muted": true,
+        "paused": false
+      },
+      {
+        "atMs": 10855,
+        "name": "QA B",
+        "rms": 0.08452542932138925,
+        "muted": true,
+        "paused": false
+      },
+      {
+        "atMs": 10903,
+        "name": "QA A",
+        "rms": 0.17092143896504838,
+        "muted": true,
+        "paused": false
+      },
+      {
+        "atMs": 10903,
+        "name": "QA B",
+        "rms": 0.04890140679060767,
+        "muted": true,
+        "paused": false
+      },
+      {
+        "atMs": 10953,
+        "name": "QA A",
+        "rms": 0.022000480693291066,
+        "muted": true,
+        "paused": false
+      },
+      {
+        "atMs": 10953,
+        "name": "QA B",
+        "rms": 0.005681361468213221,
+        "muted": true,
+        "paused": false
+      },
+      {
+        "atMs": 11052,
+        "name": "QA A",
+        "rms": 0.3320270049004291,
+        "muted": true,
+        "paused": false
+      },
+      {
+        "atMs": 11102,
+        "name": "QA A",
+        "rms": 0.17259958803681888,
+        "muted": true,
+        "paused": false
+      },
+      {
+        "atMs": 11754,
+        "name": "QA A",
+        "rms": 0.1906356877069729,
+        "muted": false,
+        "paused": false
+      },
+      {
+        "atMs": 11806,
+        "name": "QA A",
+        "rms": 0.40930896443369275,
+        "muted": false,
+        "paused": false
+      },
+      {
+        "atMs": 11852,
+        "name": "QA A",
+        "rms": 0.2184624556700221,
+        "muted": false,
+        "paused": false
+      },
+      {
+        "atMs": 11902,
+        "name": "QA A",
+        "rms": 0.06955943046012188,
+        "muted": false,
+        "paused": false
+      },
+      {
+        "atMs": 11953,
+        "name": "QA A",
+        "rms": 0.066106600693962,
+        "muted": false,
+        "paused": false
+      },
+      {
+        "atMs": 13406,
+        "name": "QA A",
+        "rms": 0.09119418478724663,
+        "muted": false,
+        "paused": false
+      },
+      {
+        "atMs": 13452,
+        "name": "QA A",
+        "rms": 0.22447346188605288,
+        "muted": false,
+        "paused": false
+      },
+      {
+        "atMs": 13502,
+        "name": "QA A",
+        "rms": 0.0784901365362654,
+        "muted": false,
+        "paused": false
+      },
+      {
+        "atMs": 13553,
+        "name": "QA A",
+        "rms": 0.05716726959385967,
+        "muted": false,
+        "paused": false
+      },
+      {
+        "atMs": 13602,
+        "name": "QA A",
+        "rms": 0.026330140440907847,
+        "muted": false,
+        "paused": false
+      },
+      {
+        "atMs": 13652,
+        "name": "QA A",
+        "rms": 0.1938793042081718,
+        "muted": true,
+        "paused": false
+      },
+      {
+        "atMs": 13701,
+        "name": "QA A",
+        "rms": 0.14508192072258327,
+        "muted": true,
+        "paused": false
+      },
+      {
+        "atMs": 13752,
+        "name": "QA A",
+        "rms": 0.10751604603125027,
+        "muted": true,
+        "paused": false
+      },
+      {
+        "atMs": 15052,
+        "name": "QA B",
+        "rms": 0.0037910457075231462,
+        "muted": false,
+        "paused": false
+      },
+      {
+        "atMs": 15103,
+        "name": "QA B",
+        "rms": 0.08094127258644192,
+        "muted": false,
+        "paused": false
+      },
+      {
+        "atMs": 15154,
+        "name": "QA B",
+        "rms": 0.035120478342947625,
+        "muted": false,
+        "paused": false
+      },
+      {
+        "atMs": 15203,
+        "name": "QA B",
+        "rms": 0.0951899072821489,
+        "muted": false,
+        "paused": false
+      },
+      {
+        "atMs": 15252,
+        "name": "QA B",
+        "rms": 0.1664327034708683,
+        "muted": false,
+        "paused": false
+      },
+      {
+        "atMs": 15302,
+        "name": "QA B",
+        "rms": 0.3272459252199205,
+        "muted": false,
+        "paused": false
+      },
+      {
+        "atMs": 15351,
+        "name": "QA B",
+        "rms": 0.29019757753717806,
+        "muted": true,
+        "paused": false
+      },
+      {
+        "atMs": 15402,
+        "name": "QA B",
+        "rms": 0.21725422635112546,
+        "muted": true,
+        "paused": false
+      },
+      {
+        "atMs": 16054,
+        "name": "QA B",
+        "rms": 0.001624265656184021,
+        "muted": true,
+        "paused": false
+      },
+      {
+        "atMs": 16106,
+        "name": "QA B",
+        "rms": 0.05456733610677949,
+        "muted": true,
+        "paused": false
+      },
+      {
+        "atMs": 16156,
+        "name": "QA B",
+        "rms": 0.009020081724105476,
+        "muted": true,
+        "paused": false
+      },
+      {
+        "atMs": 17052,
+        "name": "QA C",
+        "rms": 0.0031142159335792187,
+        "muted": false,
+        "paused": false
+      },
+      {
+        "atMs": 17103,
+        "name": "QA C",
+        "rms": 0.08319996198337656,
+        "muted": false,
+        "paused": false
+      },
+      {
+        "atMs": 17152,
+        "name": "QA C",
+        "rms": 0.06758481627527615,
+        "muted": false,
+        "paused": false
+      },
+      {
+        "atMs": 17205,
+        "name": "QA C",
+        "rms": 0.07635013855007718,
+        "muted": false,
+        "paused": false
+      },
+      {
+        "atMs": 17252,
+        "name": "QA C",
+        "rms": 0.01531255811634703,
+        "muted": true,
+        "paused": false
+      },
+      {
+        "atMs": 17302,
+        "name": "QA C",
+        "rms": 0.3135068722661887,
+        "muted": true,
+        "paused": false
+      },
+      {
+        "atMs": 17352,
+        "name": "QA C",
+        "rms": 0.2803822122317705,
+        "muted": true,
+        "paused": false
+      },
+      {
+        "atMs": 17402,
+        "name": "QA C",
+        "rms": 0.20380001382994312,
+        "muted": true,
+        "paused": false
+      },
+      {
+        "atMs": 17903,
+        "name": "QA C",
+        "rms": 0.05564066761433144,
+        "muted": true,
+        "paused": false
+      },
+      {
+        "atMs": 17957,
+        "name": "QA C",
+        "rms": 0.025956941932287078,
+        "muted": true,
+        "paused": false
+      },
+      {
+        "atMs": 18007,
+        "name": "QA C",
+        "rms": 0.0032150738377499937,
+        "muted": true,
+        "paused": false
+      }
+    ]
+  }
+}

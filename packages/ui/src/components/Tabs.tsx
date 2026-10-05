@@ -4,7 +4,7 @@ import { useId, useMemo, useState, type KeyboardEvent, type ReactNode } from "re
 
 export type TabItem = {
   value: string;
-  label: string;
+  label: ReactNode;
   content: ReactNode;
 };
 

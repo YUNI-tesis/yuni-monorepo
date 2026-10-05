@@ -4,7 +4,9 @@ import {
   EndGroupVoiceSessionInputSchema,
   GroupProviderEventInputSchema,
   GroupVoiceParticipantFailureInputSchema,
+  GroupVoiceParticipantInterruptionReadyInputSchema,
   GroupVoiceParticipantStartedInputSchema,
+  GroupVoiceParticipantRetryInputSchema,
   GroupVoiceTurnInputSchema,
   IdentifyPublicGroupLinkInputSchema,
   InterruptGroupVoiceSessionInputSchema,
@@ -100,7 +102,7 @@ export function createPublicGroupSessionsController(dependencies: PublicGroupSes
   );
   controller.post(
     "/public/group-voice-sessions/:sessionId/provider-events",
-    requestBodyLimit(PUBLIC_GROUP_COMMAND_BODY_MAX_BYTES),
+    requestBodyLimit(72 * 1024),
     async (context) => {
       const parsed = GroupProviderEventInputSchema.safeParse(await context.req.json().catch(() => ({})));
       if (!parsed.success) return context.json(validationError(parsed.error.issues), 400);
@@ -111,7 +113,7 @@ export function createPublicGroupSessionsController(dependencies: PublicGroupSes
   );
   controller.post(
     "/public/group-voice-sessions/:sessionId/interrupt",
-    requestBodyLimit(PUBLIC_GROUP_COMMAND_BODY_MAX_BYTES),
+    requestBodyLimit(72 * 1024),
     async (context) => {
       const parsed = InterruptGroupVoiceSessionInputSchema.safeParse(
         await context.req.json().catch(() => ({}))
@@ -122,13 +124,47 @@ export function createPublicGroupSessionsController(dependencies: PublicGroupSes
       );
     }
   );
-  controller.post("/public/group-voice-sessions/:sessionId/participants/:avatarId/retry", async (context) =>
-    runtime(
-      context,
-      dependencies,
-      (token, ip) => service.retry(context.req.param("sessionId"), token, ip, context.req.param("avatarId")),
-      "participant"
-    )
+  controller.post(
+    "/public/group-voice-sessions/:sessionId/participants/:avatarId/interruption-ready",
+    requestBodyLimit(PUBLIC_GROUP_COMMAND_BODY_MAX_BYTES),
+    async (context) => {
+      const parsed = GroupVoiceParticipantInterruptionReadyInputSchema.safeParse(
+        await context.req.json().catch(() => ({}))
+      );
+      if (!parsed.success) return context.json(validationError(parsed.error.issues), 400);
+      return runtime(context, dependencies, (token, ip) =>
+        service.confirmParticipantInterruptionReady(
+          context.req.param("sessionId"),
+          token,
+          ip,
+          context.req.param("avatarId"),
+          parsed.data
+        )
+      );
+    }
+  );
+  controller.post(
+    "/public/group-voice-sessions/:sessionId/participants/:avatarId/retry",
+    requestBodyLimit(PUBLIC_GROUP_COMMAND_BODY_MAX_BYTES),
+    async (context) => {
+      const parsed = GroupVoiceParticipantRetryInputSchema.safeParse(
+        await context.req.json().catch(() => ({}))
+      );
+      if (!parsed.success) return context.json(validationError(parsed.error.issues), 400);
+      return runtime(
+        context,
+        dependencies,
+        (token, ip) =>
+          service.retry(
+            context.req.param("sessionId"),
+            token,
+            ip,
+            context.req.param("avatarId"),
+            parsed.data
+          ),
+        "participant"
+      );
+    }
   );
   controller.post(
     "/public/group-voice-sessions/:sessionId/participants/:avatarId/started",

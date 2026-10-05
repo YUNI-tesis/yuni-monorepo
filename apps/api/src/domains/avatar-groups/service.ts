@@ -2,7 +2,9 @@ import {
   EndGroupVoiceSessionInputSchema,
   GroupProviderEventInputSchema,
   GroupVoiceParticipantFailureInputSchema,
+  GroupVoiceParticipantInterruptionReadyInputSchema,
   GroupVoiceParticipantStartedInputSchema,
+  GroupVoiceParticipantRetryInputSchema,
   GroupVoiceTurnInputSchema,
   InterruptGroupVoiceSessionInputSchema,
   LiveAvatarConfigSchema,
@@ -12,7 +14,9 @@ import {
   type EndGroupVoiceSessionInput,
   type GroupProviderEventInput,
   type GroupVoiceParticipantFailureInput,
+  type GroupVoiceParticipantInterruptionReadyInput,
   type GroupVoiceParticipantStartedInput,
+  type GroupVoiceParticipantRetryInput,
   type GroupVoiceTurnInput,
   type InterruptGroupVoiceSessionInput,
   type StartGroupVoiceSessionInput,
@@ -66,6 +70,7 @@ const GROUP_SHARED_CONTEXT_MESSAGE_MAX_BYTES = 900;
 const GROUP_SHARED_CONTEXT_MESSAGE_COUNT = 8;
 const GROUP_SHARED_CONTEXT_NAME_MAX_BYTES = 120;
 const GROUP_SHARED_CONTEXT_DESCRIPTION_MAX_BYTES = 320;
+const GROUP_SHARED_CONTEXT_INTERRUPTION_MAX_BYTES = 3_600;
 
 export class GroupVoiceSessionUnavailableError extends Error {
   constructor(message = "No pudimos conectar ningún avatar") {
@@ -483,26 +488,76 @@ export function createAvatarGroupsService(dependencies: AvatarGroupsServiceDepen
       }
     },
 
-    async retry(userId: string, sessionId: string, avatarId: string) {
+    async retry(
+      userId: string,
+      sessionId: string,
+      avatarId: string,
+      input: GroupVoiceParticipantRetryInput = {}
+    ) {
+      const parsed = GroupVoiceParticipantRetryInputSchema.parse(input);
       const session = await requireSession(userId, sessionId);
+      assertLive(session, true);
       if (session.status !== "active" && session.status !== "connecting") {
         throw new GroupVoiceSessionUnavailableError("La llamada ya terminó");
       }
       const participant = session.participants.find((item) => item.avatarAgentId === avatarId);
       if (!participant) throw new NotFoundError("Participante no encontrado");
-      if (participant.status !== "errored") {
+      if (participant.status !== "errored" && !parsed.interruptionSourceEventId) {
         throw new GroupVoiceSessionUnavailableError("El participante no está disponible para reintentar");
       }
       if ((session.groupAccessGrantId || session.groupPublicSessionId) && !session.activatedAt) {
         throw new GroupVoiceSessionUnavailableError("El roster completo todavía no fue confirmado");
       }
-      const claimed = await dependencies.repository.beginParticipantRetry(userId, sessionId, avatarId);
+      const claimed = await dependencies.repository.beginParticipantRetry(
+        userId,
+        sessionId,
+        avatarId,
+        parsed.interruptionSourceEventId,
+        parsed.failedParticipantAttemptId
+      );
       if (!claimed) {
         throw new GroupVoiceSessionUnavailableError("El participante ya se está reconectando");
+      }
+      if (claimed.retryAlreadyPrepared && claimed.realtimeSession?.providerSessionTokenCiphertext) {
+        return {
+          id: claimed.id,
+          avatar: toParticipantAvatar(claimed.avatarAgent),
+          realtimeSessionId: claimed.realtimeSessionId,
+          participantAttemptId: claimed.realtimeSessionId,
+          status: "active" as const,
+          sessionToken: dependencies.providerTokenProtector.decrypt(
+            claimed.realtimeSession.providerSessionTokenCiphertext
+          ),
+          sessionId: claimed.realtimeSession.providerSessionId,
+          error: null,
+        };
       }
       return initializeParticipant(session, claimed, {
         allowProviderSync: !session.groupAccessGrantId && !session.groupPublicSessionId,
       });
+    },
+
+    async confirmParticipantInterruptionReady(
+      userId: string,
+      sessionId: string,
+      avatarId: string,
+      input: GroupVoiceParticipantInterruptionReadyInput
+    ) {
+      const parsed = GroupVoiceParticipantInterruptionReadyInputSchema.parse(input);
+      const session = await requireSession(userId, sessionId);
+      assertLive(session);
+      const result = await dependencies.repository.markParticipantInterruptionReady(
+        userId,
+        sessionId,
+        avatarId,
+        parsed
+      );
+      return {
+        applied: result.kind === "ready" || result.kind === "duplicate",
+        phase: result.session.orchestrationPhase,
+        directive: null,
+        floor: toFloorDto(result.session),
+      };
     },
 
     async confirmParticipantStarted(
@@ -584,6 +639,7 @@ export function createAvatarGroupsService(dependencies: AvatarGroupsServiceDepen
       }));
 
       const orchestratorInput: GroupOrchestratorInput = {
+        interruptions: interruptionContext(session),
         transcript: messages
           .filter((message) => message.role === "user" || message.role === "assistant")
           .map((message) => ({
@@ -698,6 +754,9 @@ export function createAvatarGroupsService(dependencies: AvatarGroupsServiceDepen
         avatarId: parsed.avatarId,
         type: parsed.type,
         ...(parsed.content !== undefined ? { content: parsed.content } : {}),
+        ...(parsed.type === "agent_response_correction" && parsed.generatedText !== undefined
+          ? { generatedText: parsed.generatedText }
+          : {}),
       });
       logger.info("group provider event", {
         sessionId,
@@ -733,12 +792,12 @@ export function createAvatarGroupsService(dependencies: AvatarGroupsServiceDepen
       if (result.kind === "next" && result.next) {
         return reconcileCurrentSpeak(userId, sessionId, session, {});
       }
-      if (result.kind === "completed" || result.kind === "interrupted") {
+      if (result.kind === "completed") {
         return {
           phase: "listening" as const,
           directive: {
             action: "listen" as const,
-            reason: result.kind === "completed" ? "round_complete" : "interrupted",
+            reason: "round_complete",
           },
           floor: null,
         };
@@ -793,17 +852,6 @@ export function createAvatarGroupsService(dependencies: AvatarGroupsServiceDepen
             floor: null,
           };
         }
-        if (
-          parsed.type === "interruption" &&
-          current.session?.orchestrationPhase === "listening" &&
-          !current.turn
-        ) {
-          return {
-            phase: "listening" as const,
-            directive: { action: "listen" as const, reason: "interrupted" },
-            floor: null,
-          };
-        }
         return {
           phase: current.session?.orchestrationPhase ?? "listening",
           directive: null,
@@ -818,21 +866,38 @@ export function createAvatarGroupsService(dependencies: AvatarGroupsServiceDepen
     },
 
     async interrupt(userId: string, sessionId: string, input: InterruptGroupVoiceSessionInput) {
+      const startedAt = Date.now();
       const parsed = InterruptGroupVoiceSessionInputSchema.parse(input);
       const session = await requireSession(userId, sessionId);
       assertLive(session);
       const result = await dependencies.repository.interruptRound(userId, sessionId, {
         ...(parsed.expectedAvatarId ? { avatarId: parsed.expectedAvatarId } : {}),
         ...(parsed.expectedTurnId ? { turnId: parsed.expectedTurnId } : {}),
+        ...(parsed.sourceEventId ? { sourceEventId: parsed.sourceEventId } : {}),
+        ...(parsed.generatedText !== undefined ? { generatedText: parsed.generatedText } : {}),
+        ...(parsed.spokenFragment !== undefined ? { spokenFragment: parsed.spokenFragment } : {}),
+        ...(parsed.spokenFragmentSource ? { spokenFragmentSource: parsed.spokenFragmentSource } : {}),
       });
-      if (result.kind === "stale" || result.kind === "idle") {
+      const interruption = "interruption" in result ? result.interruption : undefined;
+      logger.info("group round interruption", {
+        sessionId,
+        sourceEventId: parsed.sourceEventId,
+        expectedTurnId: parsed.expectedTurnId,
+        result: result.kind,
+        reason: parsed.reason,
+        durationMs: Date.now() - startedAt,
+        fragmentLength: parsed.spokenFragment?.length ?? 0,
+      });
+      if (result.kind === "stale" || result.kind === "idle" || ("replayed" in result && result.replayed)) {
         return {
+          ...(interruption ? { interruption } : {}),
           phase: result.session.orchestrationPhase,
           directive: null,
           floor: toFloorDto(result.session),
         };
       }
       return {
+        ...(interruption ? { interruption } : {}),
         phase: "listening" as const,
         directive: result.avatarId
           ? { action: "interrupt" as const, avatarId: result.avatarId, reason: parsed.reason }
@@ -880,9 +945,31 @@ export function createAvatarGroupsService(dependencies: AvatarGroupsServiceDepen
         error: result.participant.errorMessage,
       };
       const refreshed = await requireSession(userId, sessionId);
+      const recoveringAttempts = new Set(
+        (refreshed.interruptionEvents ?? []).flatMap((receipt) => {
+          if (!Array.isArray(receipt.affectedParticipants)) return [];
+          return receipt.affectedParticipants.flatMap((affected) =>
+            affected &&
+            typeof affected === "object" &&
+            !Array.isArray(affected) &&
+            typeof affected.replacementAttemptId === "string"
+              ? [affected.replacementAttemptId]
+              : []
+          );
+        })
+      );
+      const recoverableParticipantCount = refreshed.participants.filter(
+        (item) =>
+          item.status === "active" ||
+          (item.status === "connecting" &&
+            item.realtimeSessionId &&
+            recoveringAttempts.has(item.realtimeSessionId))
+      ).length;
       if (
+        result.kind !== "stale" &&
+        result.kind !== "duplicate" &&
         refreshed.activatedAt &&
-        refreshed.participants.filter((item) => item.status === "active").length < 2
+        recoverableParticipantCount < 2
       ) {
         await dependencies.repository.endSession(userId, sessionId, "errored");
         logger.warn("group sharing session finished", {
@@ -979,6 +1066,7 @@ export function createAvatarGroupsService(dependencies: AvatarGroupsServiceDepen
           content: message.content,
           speakerAvatarId: message.groupParticipantSnapshot?.sourceAvatarId ?? message.speakerAvatarId,
           speakerName: message.groupParticipantSnapshot?.name ?? message.speakerAvatar?.name ?? null,
+          interrupted: isInterruptedMessage(message.metadata),
           createdAt: message.createdAt.toISOString(),
         })),
       };
@@ -1209,6 +1297,31 @@ function providerErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : "No pudimos conectar este avatar";
 }
 
+function isInterruptedMessage(metadata: unknown) {
+  return Boolean(
+    metadata && typeof metadata === "object" && "interrupted" in metadata && metadata.interrupted === true
+  );
+}
+
+function interruptionContext(
+  session: NonNullable<Awaited<ReturnType<GroupRepository["findVoiceSessionForOwner"]>>>
+) {
+  return (session.interruptionEvents ?? [])
+    .slice()
+    .reverse()
+    .flatMap((receipt) =>
+      receipt.interruptedTurns.map((turn) => ({
+        sourceEventId: receipt.sourceEventId,
+        turnId: turn.turnId,
+        avatarId: turn.avatarAgentId,
+        generatedDraft: turn.generatedText,
+        reportedFragment: turn.reportedFragment,
+        fragmentSource: turn.fragmentSource,
+        heardCertainty: "unknown" as const,
+      }))
+    );
+}
+
 async function createSpeakDirective(
   dependencies: Pick<AvatarGroupsServiceDependencies, "messagesRepository">,
   session: NonNullable<Awaited<ReturnType<GroupRepository["findVoiceSessionForOwner"]>>>,
@@ -1238,6 +1351,23 @@ async function createSpeakDirective(
       )}`;
     })
     .join("\n");
+  const interruptionLines: string[] = [];
+  let interruptionBytes = 0;
+  for (const interruption of interruptionContext(session).slice(-3).reverse()) {
+    const speaker = truncateUtf8Start(
+      participantNames.get(interruption.avatarId) ?? interruption.avatarId,
+      GROUP_SHARED_CONTEXT_NAME_MAX_BYTES
+    );
+    const line =
+      `Interrupción del turno ${interruption.turnId} de ${speaker}. ` +
+      `Lo efectivamente oído en el navegador es desconocido. Fragmento informado por el proveedor (${interruption.fragmentSource ?? "sin evidencia"}): ${truncateUtf8Start(interruption.reportedFragment ?? "desconocido", 800)}. ` +
+      `Borrador generado, NO confirmado como pronunciado; contenido pendiente: ${truncateUtf8Start(interruption.generatedDraft ?? "desconocido", 1_000)}. ` +
+      "La intervención humana siguiente reemplaza la intención anterior; no retomes automáticamente el borrador.";
+    const lineBytes = utf8ByteLength(line) + 2;
+    if (interruptionBytes + lineBytes > GROUP_SHARED_CONTEXT_INTERRUPTION_MAX_BYTES) continue;
+    interruptionLines.unshift(line);
+    interruptionBytes += lineBytes;
+  }
   const fixedContext = [
     "Contexto compartido de una llamada grupal dirigida por el usuario.",
     `Participantes en orden fijo: ${session.participants
@@ -1252,6 +1382,7 @@ async function createSpeakDirective(
           )})`
       )
       .join("; ")}.`,
+    ...interruptionLines,
   ].join("\n\n");
   const closingRule =
     "Las intervenciones listadas pertenecen a la misma conversación. No repitas lo ya dicho.";

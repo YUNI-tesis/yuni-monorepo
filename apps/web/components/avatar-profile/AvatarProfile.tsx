@@ -4,6 +4,9 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import React, { useState } from "react";
 import { Badge, Button, ErrorState, LoadingState, Tabs, YuniIcon } from "@yuni/ui";
 import { useAvatarProfile } from "../../hooks/useAvatarProfile";
+import { useAvatarContext } from "../../hooks/useAvatarContext";
+import { ContextNotice } from "./ContextNotice";
+import { getContextIssues } from "./context-state";
 import { useLiveAvatarOptions } from "../../hooks/useLiveAvatarOptions";
 import type { ApiAvatar } from "../../lib/api/avatar-api";
 import type { ApiLiveAvatarOption } from "../../lib/api/live-avatar-api";
@@ -22,10 +25,16 @@ import styles from "./AvatarProfile.module.css";
 type AvatarThumbnail = Pick<ApiLiveAvatarOption, "displayName" | "thumbnailUrl"> | null;
 
 export function AvatarProfile({ avatarId }: { avatarId: string }) {
+  return <AvatarProfileContent key={avatarId} avatarId={avatarId} />;
+}
+
+function AvatarProfileContent({ avatarId }: { avatarId: string }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const profile = useAvatarProfile(avatarId);
+  const contextManager = useAvatarContext(avatarId);
+  const contextIssues = getContextIssues(contextManager.context);
   const activeTab = resolveAvatarProfileTab(searchParams.get("tab"));
   const readyAvatar = profile.status === "ready" ? profile.avatar : null;
   const liveAvatar = readyAvatar ? getLiveAvatarSummary(readyAvatar) : null;
@@ -91,6 +100,11 @@ export function AvatarProfile({ avatarId }: { avatarId: string }) {
         onInteract={() => router.push(`/interact/${avatar.id}`)}
       />
 
+      <ContextNotice
+        context={contextManager.context}
+        onReview={activeTab !== "contexto" ? () => onTabChange("contexto") : undefined}
+      />
+
       <section className={styles.tabsSurface} aria-label="Secciones del perfil">
         <Tabs
           aria-label="Secciones del perfil del avatar"
@@ -98,12 +112,22 @@ export function AvatarProfile({ avatarId }: { avatarId: string }) {
           onValueChange={onTabChange}
           items={avatarProfileTabs.map((tab) => ({
             value: tab.value,
-            label: tab.label,
+            label:
+              tab.value === "contexto" && contextIssues.count ? (
+                <span className={styles.contextTabLabel}>
+                  Contexto{" "}
+                  <span className={styles.issueCount} aria-label={`${contextIssues.count} problemas`}>
+                    {contextIssues.count}
+                  </span>
+                </span>
+              ) : (
+                tab.label
+              ),
             content:
               tab.value === "info" ? (
                 <AvatarInfoTab avatar={avatar} />
               ) : tab.value === "contexto" ? (
-                <AvatarContextTab avatarId={avatar.id} />
+                <AvatarContextTab avatarId={avatar.id} manager={contextManager} />
               ) : tab.value === "compartir" ? (
                 <AvatarShareTab avatar={avatar} />
               ) : (

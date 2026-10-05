@@ -7,6 +7,7 @@ import {
 } from "@yuni/domain";
 import type { ObjectStorage } from "@yuni/storage";
 import { DocumentStateConflictError, type AvatarContextRepository } from "./repository";
+import { describeContextFailure } from "./failure-messages";
 
 const EXTENSIONS_BY_MIME: Record<string, string[]> = {
   "application/pdf": ["pdf"],
@@ -140,6 +141,17 @@ function toContextDto(record: Awaited<ReturnType<AvatarContextRepository["getFor
       : "ready";
   return {
     text: record.context,
+    textStatus:
+      record.providerContextSyncStatus === "failed"
+        ? "failed"
+        : record.providerContextSyncStatus === "synced"
+          ? "ready"
+          : "processing",
+    textError:
+      record.providerContextSyncStatus === "failed"
+        ? describeContextFailure(record.providerContextError, "text")
+        : null,
+    textHasPreviousUsableVersion: Boolean(record.providerContextLastUsableAt),
     status,
     hasPreviousUsableVersion: Boolean(record.providerContextLastUsableAt || record.providerLastUsableAt),
     updatedAt: record.updatedAt.toISOString(),
@@ -156,7 +168,7 @@ function toDocumentDto(document: {
   errorMessage: string | null;
   createdAt: Date;
   updatedAt: Date;
-  providerSync?: { status: string; providerLastUsableAt: Date | null } | null;
+  providerSync?: { status: string; providerLastUsableAt: Date | null; errorMessage?: string | null } | null;
 }) {
   const providerStatus = document.providerSync?.status;
   const status =
@@ -176,7 +188,10 @@ function toDocumentDto(document: {
     sizeBytes: document.sizeBytes,
     status,
     hasPreviousUsableVersion: Boolean(document.providerSync?.providerLastUsableAt),
-    error: status === "failed" ? "No pudimos procesar este documento. Podés reintentarlo." : null,
+    error:
+      status === "failed"
+        ? describeContextFailure(document.errorMessage || document.providerSync?.errorMessage, "document")
+        : null,
     createdAt: document.createdAt.toISOString(),
     updatedAt: document.updatedAt.toISOString(),
   };

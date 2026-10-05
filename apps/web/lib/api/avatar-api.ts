@@ -41,6 +41,7 @@ export type ApiAvatar = {
 };
 
 export type ApiAvatarSummary = {
+  contextIssueCount?: number;
   id: string;
   name: string;
   description: string;
@@ -90,6 +91,9 @@ export type ApiContextDocument = {
 
 export type ApiAvatarContext = {
   text: string;
+  textStatus?: "ready" | "processing" | "failed";
+  textError?: string | null;
+  textHasPreviousUsableVersion?: boolean;
   status: "ready" | "processing" | "failed";
   hasPreviousUsableVersion: boolean;
   updatedAt: string;

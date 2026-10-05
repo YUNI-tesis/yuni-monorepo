@@ -18,6 +18,7 @@ import type {
 } from "@yuni/domain";
 
 export type AvatarAgentRecord = {
+  contextIssueCount?: number;
   id: string;
   ownerId: string;
   name: string;
@@ -57,6 +58,7 @@ export type AvatarAgentDto = {
 };
 
 export type AvatarListItemDto = {
+  contextIssueCount?: number;
   id: string;
   name: string;
   description: string;
@@ -140,6 +142,29 @@ export function createAvatarsRepository(prisma: PrismaClientInstance): AvatarsRe
   const repository = createAvatarAgentRepository(prisma);
   return {
     ...repository,
+    async listByOwner(ownerId) {
+      const avatars = await prisma.avatarAgent.findMany({
+        where: { ownerId },
+        orderBy: { updatedAt: "desc" },
+        include: {
+          _count: {
+            select: {
+              documents: {
+                where: {
+                  deletedAt: null,
+                  status: { not: "deleting" },
+                  OR: [{ status: "failed" }, { providerSync: { is: { status: "failed" } } }],
+                },
+              },
+            },
+          },
+        },
+      });
+      return avatars.map(({ _count, ...avatar }) => ({
+        ...avatar,
+        contextIssueCount: _count.documents + Number(avatar.providerContextSyncStatus === "failed"),
+      }));
+    },
     async createWithProviderJobs(ownerId, input) {
       return prisma.$transaction(async (tx) => {
         const created = await createAvatarAgentRepository(tx).create(ownerId, input);

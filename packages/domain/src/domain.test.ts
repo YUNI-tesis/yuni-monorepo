@@ -6,8 +6,11 @@ import {
   EndVoiceSessionInputSchema,
   GroupProviderEventInputSchema,
   GroupVoiceParticipantFailureInputSchema,
+  GroupVoiceParticipantInterruptionReadyInputSchema,
   GroupVoiceParticipantStartedInputSchema,
   GroupVoiceTurnInputSchema,
+  InterruptGroupVoiceSessionInputSchema,
+  GroupVoiceParticipantRetryInputSchema,
   InteractionLimitsSchema,
   CreateShareLinkInputSchema,
   LiveAvatarConfigSchema,
@@ -294,6 +297,92 @@ describe("@yuni/domain", () => {
     });
 
     expect(parsed.email).toBe("demo@yuni.local");
+  });
+
+  it("requires a voice receipt and exact owner for human barge-in, but preserves safety interrupts", () => {
+    const input = {
+      reason: "user",
+      trigger: "voice",
+      sourceEventId: "scribe:cut",
+      expectedAvatarId: "avatar-1",
+      expectedTurnId: "turn-1",
+    };
+    expect(InterruptGroupVoiceSessionInputSchema.parse(input)).toEqual(input);
+    for (const field of ["trigger", "sourceEventId", "expectedAvatarId", "expectedTurnId"]) {
+      expect(InterruptGroupVoiceSessionInputSchema.safeParse({ ...input, [field]: undefined }).success).toBe(
+        false
+      );
+    }
+    expect(
+      InterruptGroupVoiceSessionInputSchema.safeParse({ ...input, spokenFragment: "Sólo lo corregido" })
+        .success
+    ).toBe(false);
+    expect(
+      InterruptGroupVoiceSessionInputSchema.safeParse({
+        ...input,
+        spokenFragment: "Sólo lo corregido",
+        spokenFragmentSource: "agent_response_correction",
+      }).success
+    ).toBe(true);
+    expect(
+      InterruptGroupVoiceSessionInputSchema.safeParse({ ...input, generatedText: "x".repeat(8_001) }).success
+    ).toBe(false);
+    expect(InterruptGroupVoiceSessionInputSchema.safeParse({ ...input, reason: "timeout" }).success).toBe(
+      false
+    );
+    expect(
+      InterruptGroupVoiceSessionInputSchema.safeParse({
+        reason: "timeout",
+        expectedAvatarId: "avatar-1",
+        expectedTurnId: "turn-1",
+      }).success
+    ).toBe(true);
+    expect(
+      GroupVoiceParticipantRetryInputSchema.safeParse({ failedParticipantAttemptId: "attempt-1" }).success
+    ).toBe(false);
+    expect(
+      GroupVoiceParticipantRetryInputSchema.safeParse({
+        interruptionSourceEventId: "scribe:cut",
+        failedParticipantAttemptId: "attempt-1",
+      }).success
+    ).toBe(true);
+  });
+
+  it("requires exact interruption identity and source-correlated terminal or explicit non-dispatch evidence", () => {
+    const input = {
+      interruptionSourceEventId: "human:cut",
+      participantAttemptId: "attempt-1",
+      interruptedTurnId: "turn-1",
+      evidence: { type: "speak_ended", eventId: "terminal:1", speechSourceEventId: "speech:1" },
+    };
+    expect(GroupVoiceParticipantInterruptionReadyInputSchema.parse(input)).toEqual(input);
+    expect(
+      GroupVoiceParticipantInterruptionReadyInputSchema.parse({
+        ...input,
+        evidence: { type: "not_dispatched" },
+      })
+    ).toMatchObject({ evidence: { type: "not_dispatched" } });
+    for (const field of [
+      "interruptionSourceEventId",
+      "participantAttemptId",
+      "interruptedTurnId",
+      "evidence",
+    ]) {
+      expect(
+        GroupVoiceParticipantInterruptionReadyInputSchema.safeParse({ ...input, [field]: undefined }).success
+      ).toBe(false);
+    }
+    for (const evidence of [
+      { type: "speak_ended", eventId: "terminal:1" },
+      { ...input.evidence, speechSourceEventId: " " },
+      { ...input.evidence, eventId: "x".repeat(161) },
+      { type: "not_dispatched", eventId: "invented-terminal" },
+      { type: "timeout" },
+    ]) {
+      expect(
+        GroupVoiceParticipantInterruptionReadyInputSchema.safeParse({ ...input, evidence }).success
+      ).toBe(false);
+    }
   });
 
   it("rejects invalid auth input", () => {
