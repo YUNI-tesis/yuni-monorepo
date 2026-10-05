@@ -1,0 +1,33 @@
+{
+  "observedAt": "2026-09-14T03:18:05.626Z",
+  "environment": "local database and real ElevenLabs API",
+  "requestedModel": "gpt-5.4",
+  "status": "passed",
+  "liveVoiceCallStarted": false,
+  "cleanup": {
+    "remoteAgentDeleted": true,
+    "localAvatarDeleted": true
+  },
+  "persistedDefaults": {
+    "conversationProfile": "natural",
+    "conversationModel": "gpt-5.4"
+  },
+  "remoteSettings": {
+    "llm": "gpt-5.4",
+    "reasoningEffort": "none",
+    "ttsModel": "eleven_v3_conversational",
+    "expressiveMode": true,
+    "turnEagerness": "normal",
+    "temperature": 0.4,
+    "maxTokens": 512,
+    "interruptionsEnabled": true
+  },
+  "voiceVerification": {
+    "profile": "natural",
+    "verifiedAt": "2026-09-14T03:18:07.838Z",
+    "effectiveModel": "eleven_v3_conversational",
+    "expressiveMode": true,
+    "fallbackReason": null,
+    "requestedModel": "eleven_v3_conversational"
+  }
+}

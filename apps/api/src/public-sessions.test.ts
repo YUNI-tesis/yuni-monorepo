@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { describe, expect, it, vi } from "vitest";
 import { AvatarProviderError } from "@yuni/avatars";
+import type { ProviderVoiceState } from "@yuni/domain";
 import { createPublicSessionsController } from "./domains/public-sessions/controller";
 import type { PublicSessionsControllerDependencies } from "./domains/public-sessions/controller";
 import { createPublicSessionsService } from "./domains/public-sessions/service";
@@ -14,6 +15,15 @@ import {
   ShareSessionCountLimitError,
 } from "./domains/external-sessions/policy";
 
+const verifiedNaturalVoiceState: ProviderVoiceState = {
+  profile: "natural",
+  requestedModel: "eleven_v3_conversational",
+  effectiveModel: "eleven_flash_v2_5",
+  expressiveMode: false,
+  fallbackReason: "expressive_tts_not_allowed",
+  verifiedAt: "2026-09-13T14:00:00.000Z",
+};
+
 function createFixture(
   options: {
     disabled?: boolean;
@@ -25,6 +35,9 @@ function createFixture(
     policyError?: Error;
     syncingWithUsableVersion?: boolean;
     concurrentEndDuringStartFailure?: boolean;
+    conversationProfile?: "standard" | "natural";
+    providerVoiceState?: unknown;
+    providerSyncStatus?: "syncing" | "synced" | "failed";
   } = {}
 ) {
   let ended = false;
@@ -62,13 +75,21 @@ function createFixture(
     avatarAgent: {
       id: "avatar-1",
       name: "Avatar público",
+      voiceConfig: {
+        provider: "elevenlabs",
+        voiceId: "voice-1",
+        speakingRate: 1,
+        ...(options.conversationProfile ? { conversationProfile: options.conversationProfile } : {}),
+      },
       liveAvatarConfig: {
         provider: "liveavatar",
         avatarId: "live-avatar-1",
         mode: "lite",
         sandbox: true,
       },
-      providerSyncStatus: options.syncingWithUsableVersion ? "syncing" : "synced",
+      providerSyncStatus:
+        options.providerSyncStatus ?? (options.syncingWithUsableVersion ? "syncing" : "synced"),
+      providerVoiceState: options.providerVoiceState,
       providerAgentId: "agent-1",
       providerLastUsableAt: options.syncingWithUsableVersion ? new Date("2026-08-10T15:00:00.000Z") : null,
     },
@@ -330,6 +351,56 @@ describe("@yuni/api public sessions", () => {
     expect(confirmed.status).toBe(200);
     expect(fixture.markStarted).toHaveBeenCalledOnce();
   });
+
+  it.each([
+    ["verified natural including voice fallback", verifiedNaturalVoiceState, "natural"],
+    ["verified standard", { ...verifiedNaturalVoiceState, profile: "standard" }, undefined],
+    ["unverified natural", { ...verifiedNaturalVoiceState, verifiedAt: null }, undefined],
+    ["malformed provider state", { profile: "natural" }, undefined],
+    ["legacy provider without state", undefined, undefined],
+  ] as const)("exposes the public runtime profile for %s", async (_case, providerVoiceState, expected) => {
+    const fixture = createFixture({
+      conversationProfile: expected === "natural" ? "standard" : "natural",
+      providerVoiceState,
+    });
+    const response = await fixture.app.request("/public/links/demo/sessions", {
+      method: "POST",
+      headers: { Authorization: "Bearer identity-token" },
+    });
+    const body = await response.json();
+
+    expect(response.status).toBe(201);
+    expect(body.voiceSession.conversationProfile).toBe(expected);
+    if (!expected) expect(body.voiceSession).not.toHaveProperty("conversationProfile");
+    expect(JSON.stringify(body)).not.toMatch(/providerVoiceState|effectiveModel|verifiedAt|fallbackReason/);
+    expect(fixture.dependencies.liveAvatarProvider.createLiteSessionToken).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    ["syncing", "requested"],
+    ["syncing", "verified"],
+    ["failed", "requested"],
+    ["failed", "verified"],
+  ] as const)(
+    "blocks a %s public %s natural profile despite an older usable version",
+    async (status, source) => {
+      const fixture = createFixture({
+        syncingWithUsableVersion: true,
+        providerSyncStatus: status,
+        conversationProfile: source === "requested" ? "natural" : "standard",
+        ...(source === "verified" ? { providerVoiceState: verifiedNaturalVoiceState } : {}),
+      });
+      const response = await fixture.app.request("/public/links/demo/sessions", {
+        method: "POST",
+        headers: { Authorization: "Bearer identity-token" },
+      });
+
+      expect(response.status).toBe(503);
+      expect(fixture.dependencies.policyService.reservePublic).not.toHaveBeenCalled();
+      expect(fixture.dependencies.liveAvatarProvider.createLiteSessionToken).not.toHaveBeenCalled();
+      expect(fixture.markPrepared).not.toHaveBeenCalled();
+    }
+  );
 
   it("keeps the participant rate-limit key stable after the email is linked to an account", async () => {
     const fixture = createFixture();

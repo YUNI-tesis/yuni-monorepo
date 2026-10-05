@@ -75,6 +75,7 @@ export type ApiPublicSessionStart = {
     realtimeSessionId: string;
     sessionToken: string;
     expiresAt: string;
+    conversationProfile?: "standard" | "natural";
   };
 };
 

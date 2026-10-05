@@ -26,6 +26,20 @@ export type ElevenLabsVoiceOption = {
 };
 
 export const ELEVENLABS_EXPRESSIVE_TTS_MODEL = "eleven_v3";
+export const ELEVENLABS_CONVERSATIONAL_TTS_MODEL = "eleven_v3_conversational";
+
+export function resolveElevenLabsAgentTtsModel(
+  configuredModel: string,
+  profile: "standard" | "natural"
+): string {
+  return profile === "natural" && configuredModel === ELEVENLABS_EXPRESSIVE_TTS_MODEL
+    ? ELEVENLABS_CONVERSATIONAL_TTS_MODEL
+    : configuredModel;
+}
+
+export function isExpressiveTtsModel(modelId: string): boolean {
+  return modelId === ELEVENLABS_EXPRESSIVE_TTS_MODEL || modelId === ELEVENLABS_CONVERSATIONAL_TTS_MODEL;
+}
 export const ELEVENLABS_EXPRESSIVE_TTS_FALLBACK_MODEL = "eleven_flash_v2_5";
 
 export const LIVEAVATAR_ELEVENLABS_CLIENT_EVENTS = [
@@ -107,6 +121,8 @@ export type AvatarAgentProviderSyncInput = {
   knowledgeBase?: ElevenLabsKnowledgeBaseReference[];
   includeInlineContext?: boolean;
   sessionMode?: "direct" | "group";
+  retryExpressive?: boolean;
+  verifyVoice?: boolean;
 };
 
 export type ElevenLabsKnowledgeBaseReference = {
@@ -123,10 +139,20 @@ export type ElevenLabsKnowledgeBaseDocument = {
   name: string;
 };
 
+export type ProviderVoiceState = {
+  requestedModel: string;
+  effectiveModel: string;
+  expressiveMode: boolean | null;
+  fallbackReason: string | null;
+  verifiedAt: string | null;
+  profile: "standard" | "natural";
+};
+
 export type AvatarAgentProviderSyncResult = {
   providerAgentId: string;
   providerSyncFingerprint: string;
   synced: boolean;
+  voiceState?: ProviderVoiceState;
 };
 
 export class ElevenLabsProviderError extends Error {
@@ -144,6 +170,18 @@ export class ElevenLabsProviderError extends Error {
       enumerable: false,
       configurable: true,
     });
+  }
+}
+
+export class ElevenLabsVoiceVerificationError extends ElevenLabsProviderError {
+  constructor(
+    message: string,
+    readonly voiceState: ProviderVoiceState,
+    readonly providerAgentId?: string,
+    cause?: unknown
+  ) {
+    super(message, cause, cause instanceof ElevenLabsProviderError ? cause.statusCode : undefined);
+    this.name = "ElevenLabsVoiceVerificationError";
   }
 }
 
@@ -184,7 +222,12 @@ export class ElevenLabsAgentProvider {
   }
 
   async syncAvatarAgent(input: AvatarAgentProviderSyncInput): Promise<AvatarAgentProviderSyncResult> {
-    const config = this.requireConfig();
+    const configured = this.requireConfig();
+    const profile = resolveConversationProfile(input);
+    const config = {
+      ...configured,
+      agentTtsModel: resolveElevenLabsAgentTtsModel(configured.agentTtsModel, profile),
+    };
     this.requireVoiceConfig(input, config);
     const effectiveVoiceId = resolveElevenLabsVoiceId(input, config);
     const effectiveFingerprintOptions = {
@@ -204,21 +247,37 @@ export class ElevenLabsAgentProvider {
         })
       : null;
 
+    const verifyVoice = profile === "natural" || input.verifyVoice === true;
+    const cachedFallback =
+      fallbackFingerprint !== null && input.providerSyncFingerprint === fallbackFingerprint;
+
     if (
       input.providerAgentId &&
-      (input.providerSyncFingerprint === requestedFingerprint ||
-        (fallbackFingerprint !== null && input.providerSyncFingerprint === fallbackFingerprint))
+      !input.retryExpressive &&
+      (input.providerSyncFingerprint === requestedFingerprint || cachedFallback)
     ) {
+      const voiceState = verifyVoice
+        ? await this.verifyAgentVoice(
+            input.providerAgentId,
+            config.agentTtsModel,
+            cachedFallback ? fallbackTtsModel! : config.agentTtsModel,
+            profile,
+            cachedFallback ? "cached_fallback" : null
+          )
+        : undefined;
       return {
         providerAgentId: input.providerAgentId,
-        providerSyncFingerprint: input.providerSyncFingerprint,
+        providerSyncFingerprint: input.providerSyncFingerprint!,
         synced: false,
+        ...(voiceState ? { voiceState } : {}),
       };
     }
 
     const payload = createElevenLabsAgentPayload(input, config);
     let providerAgentId: string;
     let providerSyncFingerprint = requestedFingerprint;
+    let effectiveModel = config.agentTtsModel;
+    let fallbackReason: string | null = null;
 
     try {
       providerAgentId = await this.syncProviderAgent(input.providerAgentId, payload);
@@ -233,13 +292,107 @@ export class ElevenLabsAgentProvider {
       });
       providerAgentId = await this.syncProviderAgent(input.providerAgentId, fallbackPayload);
       providerSyncFingerprint = fallbackFingerprint ?? requestedFingerprint;
+      effectiveModel = fallbackTtsModel;
+      fallbackReason = "expressive_tts_not_allowed";
     }
 
+    const voiceState = verifyVoice
+      ? await this.verifyAgentVoice(
+          providerAgentId,
+          config.agentTtsModel,
+          effectiveModel,
+          profile,
+          fallbackReason
+        )
+      : undefined;
     return {
       providerAgentId,
       providerSyncFingerprint,
       synced: true,
+      ...(voiceState ? { voiceState } : {}),
     };
+  }
+
+  async inspectAgentVoice(
+    agentId: string,
+    requestedModel: string,
+    profile: ProviderVoiceState["profile"] = "standard"
+  ): Promise<ProviderVoiceState> {
+    const body = await this.request(`/v1/convai/agents/${encodeURIComponent(agentId)}`, {
+      method: "GET",
+    });
+    const conversationConfig = isRecord(body) ? body.conversation_config : null;
+    const tts = isRecord(conversationConfig) ? conversationConfig.tts : null;
+    const modelId = isRecord(tts) ? readString(tts.model_id)?.trim() : null;
+    if (!modelId || !isRecord(tts)) {
+      throw new ElevenLabsVoiceVerificationError(
+        "ElevenLabs voice verification failed: the agent response has no TTS model_id",
+        createUnverifiedVoiceState(requestedModel, profile),
+        agentId
+      );
+    }
+    if (tts.expressive_mode != null && typeof tts.expressive_mode !== "boolean") {
+      throw new ElevenLabsVoiceVerificationError(
+        "ElevenLabs voice verification failed: expressive_mode must be a boolean or null",
+        { ...createUnverifiedVoiceState(requestedModel, profile), effectiveModel: modelId },
+        agentId
+      );
+    }
+    return {
+      requestedModel,
+      effectiveModel: modelId,
+      expressiveMode: typeof tts.expressive_mode === "boolean" ? tts.expressive_mode : null,
+      fallbackReason: modelId === requestedModel ? null : "provider_model_differs",
+      verifiedAt: new Date().toISOString(),
+      profile,
+    };
+  }
+
+  private async verifyAgentVoice(
+    agentId: string,
+    requestedModel: string,
+    expectedModel: string,
+    profile: ProviderVoiceState["profile"],
+    fallbackReason: string | null
+  ): Promise<ProviderVoiceState> {
+    let state: ProviderVoiceState;
+    try {
+      state = await this.inspectAgentVoice(agentId, requestedModel, profile);
+    } catch (error) {
+      if (error instanceof ElevenLabsVoiceVerificationError) throw error;
+      throw new ElevenLabsVoiceVerificationError(
+        "ElevenLabs voice verification failed: the agent settings could not be read. Retry synchronization to verify the existing agent.",
+        createUnverifiedVoiceState(requestedModel, profile),
+        agentId,
+        error
+      );
+    }
+    if (state.effectiveModel !== expectedModel) {
+      throw new ElevenLabsVoiceVerificationError(
+        `ElevenLabs voice verification failed: expected ${expectedModel}, received ${state.effectiveModel}. Check the agent's voice settings and synchronize again.`,
+        { ...state, fallbackReason: "provider_model_differs" },
+        agentId
+      );
+    }
+    if (isExpressiveTtsModel(expectedModel) && state.expressiveMode !== true) {
+      throw new ElevenLabsVoiceVerificationError(
+        "ElevenLabs voice verification failed: V3 Expressive Mode is not confirmed active. Check the agent's Expressive Mode setting and synchronize again.",
+        {
+          ...state,
+          fallbackReason:
+            state.expressiveMode === false ? "expressive_mode_disabled" : "expressive_mode_unverified",
+        },
+        agentId
+      );
+    }
+    if (!isExpressiveTtsModel(expectedModel) && state.expressiveMode === true) {
+      throw new ElevenLabsVoiceVerificationError(
+        "ElevenLabs voice verification failed: Expressive Mode is still enabled for a non-V3 model. Check the agent's voice settings and synchronize again.",
+        { ...state, fallbackReason: "expressive_mode_unexpected" },
+        agentId
+      );
+    }
+    return { ...state, fallbackReason };
   }
 
   async listVoices(): Promise<ElevenLabsVoiceOption[]> {
@@ -466,6 +619,7 @@ export type ElevenLabsAgentPayload = {
       prompt: {
         prompt: string;
         llm: string;
+        reasoning_effort?: "none";
         temperature: number;
         max_tokens: number;
         tool_ids: string[];
@@ -485,6 +639,7 @@ export type ElevenLabsAgentPayload = {
       voice_id: string;
       agent_output_audio_format: "pcm_24000";
       optimize_streaming_latency: 3;
+      expressive_mode?: boolean;
       speed?: number;
       stability?: number;
       similarity_boost?: number;
@@ -493,7 +648,7 @@ export type ElevenLabsAgentPayload = {
     turn: {
       turn_timeout: number;
       silence_end_call_timeout: -1;
-      turn_eagerness: "patient";
+      turn_eagerness: "patient" | "normal";
       interruption_ignore_terms: string[];
       soft_timeout_config: {
         timeout_seconds: number;
@@ -567,8 +722,15 @@ function createElevenLabsAgentPayloadWithRuntime(
   syncConfig: ElevenLabsConnectorSyncConfig,
   ragEmbeddingModel: "multilingual_e5_large_instruct"
 ): ElevenLabsAgentPayload {
+  const profile = resolveConversationProfile(input);
+  const naturalConversation = profile === "natural";
+  const agentLlmModel =
+    input.sessionMode === "group"
+      ? config.agentLlmModel
+      : (input.voiceConfig.conversationModel ?? config.agentLlmModel);
   const voiceId = resolveElevenLabsVoiceId(input, config);
-  const ttsConfig = createElevenLabsTtsConfig(config.agentTtsModel, voiceId, syncConfig);
+  const agentTtsModel = resolveElevenLabsAgentTtsModel(config.agentTtsModel, profile);
+  const ttsConfig = createElevenLabsTtsConfig(agentTtsModel, voiceId, syncConfig);
 
   return {
     name: `YUNI - ${input.name}`,
@@ -584,16 +746,21 @@ function createElevenLabsAgentPayloadWithRuntime(
         first_message:
           input.sessionMode === "group"
             ? GROUP_READY_FIRST_MESSAGE
-            : `Hola, soy ${input.name}. En que puedo ayudarte?`,
+            : naturalConversation
+              ? `Hola, soy ${input.name}.`
+              : `Hola, soy ${input.name}. En que puedo ayudarte?`,
         language: "es",
         disable_first_message_interruptions: false,
         prompt: {
           prompt: buildPrompt(input, {
-            expressiveTagsEnabled: config.agentTtsModel === ELEVENLABS_EXPRESSIVE_TTS_MODEL,
+            expressiveTagsEnabled: isExpressiveTtsModel(agentTtsModel),
           }),
-          llm: config.agentLlmModel,
+          llm: agentLlmModel,
+          ...(input.sessionMode !== "group" && agentLlmModel === "gpt-5.4"
+            ? { reasoning_effort: "none" as const }
+            : {}),
           temperature: 0.4,
-          max_tokens: 220,
+          max_tokens: naturalConversation ? 512 : 220,
           tool_ids: [],
           mcp_server_ids: [],
           native_mcp_server_ids: [],
@@ -610,11 +777,13 @@ function createElevenLabsAgentPayloadWithRuntime(
           ignore_default_personality: true,
         },
       },
-      tts: ttsConfig,
+      tts: naturalConversation
+        ? { ...ttsConfig, expressive_mode: isExpressiveTtsModel(agentTtsModel) }
+        : ttsConfig,
       turn: {
         turn_timeout: input.sessionMode === "group" ? 30 : syncConfig.turn.turnTimeout,
         silence_end_call_timeout: -1,
-        turn_eagerness: syncConfig.turn.turnEagerness,
+        turn_eagerness: naturalConversation ? "normal" : syncConfig.turn.turnEagerness,
         interruption_ignore_terms: [...syncConfig.turn.interruptionIgnoreTerms],
         ...(input.sessionMode === "group"
           ? {
@@ -642,6 +811,26 @@ function createElevenLabsAgentPayloadWithRuntime(
       vad: {},
     },
   };
+}
+
+function createUnverifiedVoiceState(
+  requestedModel: string,
+  profile: ProviderVoiceState["profile"]
+): ProviderVoiceState {
+  return {
+    requestedModel,
+    effectiveModel: "unknown",
+    expressiveMode: null,
+    fallbackReason: "voice_verification_failed",
+    verifiedAt: null,
+    profile,
+  };
+}
+
+function resolveConversationProfile(input: AvatarAgentProviderSyncInput): ProviderVoiceState["profile"] {
+  return input.sessionMode !== "group" && input.voiceConfig.conversationProfile === "natural"
+    ? "natural"
+    : "standard";
 }
 
 function resolveElevenLabsVoiceId(
@@ -695,7 +884,7 @@ function createElevenLabsTtsConfig(
     optimize_streaming_latency: 3,
   } satisfies ElevenLabsAgentPayload["conversation_config"]["tts"];
 
-  if (modelId === ELEVENLABS_EXPRESSIVE_TTS_MODEL) {
+  if (isExpressiveTtsModel(modelId)) {
     return baseConfig;
   }
 
@@ -720,6 +909,7 @@ function buildPrompt(
   input: AvatarAgentProviderSyncInput,
   options: { expressiveTagsEnabled: boolean }
 ): string {
+  const naturalConversation = resolveConversationProfile(input) === "natural";
   const description = input.description.trim() || "Sin descripcion adicional.";
   const context = input.context.trim() || "No hay contexto personalizado adicional cargado en YUNI.";
   const expressiveDeliveryRule =
@@ -753,10 +943,17 @@ function buildPrompt(
           "- No saludes, no uses muletillas u onomatopeyas y no intentes tomar turnos adicionales.",
         ]
       : []),
-    "- Responde de forma breve, natural y conversacional: 1 a 3 frases por defecto.",
+    ...(naturalConversation
+      ? [
+          "- Conversa desde tu personalidad y las instrucciones de tu creador. Reacciona a lo que el usuario comparte, con humor o calidez cuando encaje; no conviertas cada intercambio en una consulta de asistencia.",
+          "- Responde brevemente por defecto. Ajusta la longitud al momento: una reaccion corta puede bastar, y una explicacion puede extenderse cuando el usuario la necesita.",
+        ]
+      : ["- Responde de forma breve, natural y conversacional: 1 a 3 frases por defecto."]),
     "- Usa el idioma del usuario.",
     "- Si el contexto no alcanza, dilo con claridad y no inventes datos.",
-    "- Haz como maximo una pregunta de seguimiento cuando ayude a avanzar.",
+    naturalConversation
+      ? "- Pregunta cuando tengas curiosidad relevante o necesites una aclaracion. No cierres cada respuesta con una pregunta por costumbre."
+      : "- Haz como maximo una pregunta de seguimiento cuando ayude a avanzar.",
     ...(input.sessionMode === "group"
       ? []
       : [
@@ -766,15 +963,25 @@ function buildPrompt(
     expressiveDeliveryRule,
     ...(input.sessionMode === "group"
       ? []
-      : [
-          "- Si el usuario interrumpe, prioriza el nuevo pedido, retoma sin pedir disculpas largas y no repitas toda la respuesta anterior.",
-        ]),
+      : naturalConversation
+        ? [
+            "- Si el usuario interrumpe, escucha que quiso hacer: corregir, aclarar, cambiar de tema o pedirte que sigas. Continua de acuerdo con lo que dijo, sin asumir que siempre es un pedido nuevo.",
+          ]
+        : [
+            "- Si el usuario interrumpe, prioriza el nuevo pedido, retoma sin pedir disculpas largas y no repitas toda la respuesta anterior.",
+          ]),
     "- No menciones detalles internos de YUNI, ElevenLabs o LiveAvatar salvo que el usuario pregunte.",
   ].join("\n");
 }
 
 export function isTransientElevenLabsError(error: unknown): boolean {
   if (error instanceof ElevenLabsProviderTimeoutError) return true;
+  if (
+    error instanceof ElevenLabsVoiceVerificationError &&
+    error.cause instanceof ElevenLabsProviderTimeoutError
+  ) {
+    return true;
+  }
   if (!(error instanceof ElevenLabsProviderError)) return false;
   return (
     error.statusCode === 408 ||
@@ -784,7 +991,7 @@ export function isTransientElevenLabsError(error: unknown): boolean {
 }
 
 function getExpressiveTtsFallbackModel(ttsModelId: string): string | null {
-  return ttsModelId === ELEVENLABS_EXPRESSIVE_TTS_MODEL ? ELEVENLABS_EXPRESSIVE_TTS_FALLBACK_MODEL : null;
+  return isExpressiveTtsModel(ttsModelId) ? ELEVENLABS_EXPRESSIVE_TTS_FALLBACK_MODEL : null;
 }
 
 function isExpressiveTtsNotAllowedError(error: unknown): boolean {

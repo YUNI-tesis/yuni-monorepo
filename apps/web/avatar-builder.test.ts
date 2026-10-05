@@ -82,6 +82,8 @@ describe("avatar builder", () => {
       },
     });
     expect(payload).not.toHaveProperty("ownerId");
+    expect(payload.voiceConfig).not.toHaveProperty("conversationProfile");
+    expect(payload.voiceConfig).not.toHaveProperty("conversationModel");
   });
 
   it("creates voice config with catalog metadata", () => {
@@ -95,6 +97,22 @@ describe("avatar builder", () => {
       voiceId: "voice-1",
       displayName: "Agustin",
       description: "Relaxed, warm and approachable.",
+      speakingRate: 1,
+    });
+  });
+
+  it("lets the server choose conversation defaults when creating without catalog metadata", () => {
+    const payload = buildCreateAvatarRequest({
+      ...createInitialAvatarBuilderState(),
+      name: "YUNI Demo",
+      liveAvatarId: "demo-guide",
+      voiceId: "saved-voice-id",
+      instructions: "Responde claro.",
+    });
+
+    expect(payload.voiceConfig).toEqual({
+      provider: "elevenlabs",
+      voiceId: "saved-voice-id",
       speakingRate: 1,
     });
   });
@@ -141,6 +159,9 @@ describe("avatar builder", () => {
         credentials: "include",
       })
     );
+    const sentVoice = JSON.parse(fetchMock.mock.calls[0]![1].body).voiceConfig;
+    expect(sentVoice).not.toHaveProperty("conversationProfile");
+    expect(sentVoice).not.toHaveProperty("conversationModel");
   });
 
   it("fetches live avatar options with credentials included", async () => {

@@ -47,6 +47,8 @@ type VoiceConfigInput = {
   fallbackProvider?: ApiVoiceConfig["provider"];
   fallbackDisplayName?: string;
   fallbackDescription?: string;
+  conversationProfile?: "standard" | "natural";
+  conversationModel?: string;
 };
 
 export function createVoiceConfig({
@@ -55,6 +57,8 @@ export function createVoiceConfig({
   fallbackProvider = "elevenlabs",
   fallbackDisplayName = "",
   fallbackDescription = "",
+  conversationProfile,
+  conversationModel,
 }: VoiceConfigInput): ApiVoiceConfig {
   const isCurrentOption = selectedVoice?.displayName === currentVoiceOptionName;
   const displayName = isCurrentOption
@@ -67,6 +71,8 @@ export function createVoiceConfig({
     provider: selectedVoice?.provider ?? fallbackProvider,
     voiceId,
     speakingRate: 1,
+    ...(conversationProfile ? { conversationProfile } : {}),
+    ...(conversationModel ? { conversationModel } : {}),
   };
 
   if (displayName) {

@@ -10,9 +10,45 @@ export const VoiceConfigSchema = z.strictObject({
   displayName: z.string().trim().min(1).optional(),
   description: z.string().trim().min(1).optional(),
   speakingRate: z.number().positive().default(1),
+  conversationProfile: z.enum(["standard", "natural"]).optional(),
+  conversationModel: z.string().trim().min(1).optional(),
 });
 
 export type VoiceConfig = z.infer<typeof VoiceConfigSchema>;
+
+export type NewAvatarConversationDefaults = Required<
+  Pick<VoiceConfig, "conversationProfile" | "conversationModel">
+>;
+
+// Apply at creation boundaries only. Reading or editing legacy avatars must not
+// silently change their conversation model or profile.
+export function applyNewAvatarConversationDefaults(
+  voice: VoiceConfig,
+  defaults: NewAvatarConversationDefaults
+): VoiceConfig {
+  return {
+    ...voice,
+    conversationProfile: voice.conversationProfile ?? defaults.conversationProfile,
+    conversationModel: voice.conversationModel ?? defaults.conversationModel,
+  };
+}
+
+// Provider-confirmed state, kept separate from the editable voice configuration.
+export const ProviderVoiceStateSchema = z.strictObject({
+  requestedModel: z.string().min(1),
+  effectiveModel: z.string().min(1),
+  expressiveMode: z.boolean().nullable(),
+  fallbackReason: z.string().nullable(),
+  verifiedAt: z.iso.datetime().nullable(),
+  profile: z.enum(["standard", "natural"]),
+});
+
+export type ProviderVoiceState = z.infer<typeof ProviderVoiceStateSchema>;
+
+export function getVerifiedConversationProfile(state: unknown): "standard" | "natural" {
+  const parsed = ProviderVoiceStateSchema.safeParse(state);
+  return parsed.success && parsed.data.verifiedAt ? parsed.data.profile : "standard";
+}
 
 export const LiveAvatarConfigSchema = z.strictObject({
   provider: z.literal("liveavatar"),

@@ -4,6 +4,11 @@ export { appConfig, clientEnv, createClientEnv, type ClientEnv } from "./client"
 export { createServerEnv, serverConfig, serverEnv, type ServerEnv } from "./server";
 export { createDatabaseConfig, databaseConfig, type DatabaseConfig } from "./database";
 export {
+  createNewAvatarConversationConfig,
+  newAvatarConversationConfig,
+  type NewAvatarConversationConfig,
+} from "./new-avatar-conversation";
+export {
   createOpenAiConfig,
   hasOpenAiConfig,
   openAiConfig,

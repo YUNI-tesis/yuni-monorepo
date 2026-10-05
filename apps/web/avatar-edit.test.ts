@@ -2,7 +2,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AvatarStatusSelector } from "./components/avatar-edit/AvatarStatusSelector";
-import { updateAvatar, type ApiAvatar } from "./lib/api/avatar-api";
+import { updateAvatar, type ApiAvatar, type ApiVoiceConfig } from "./lib/api/avatar-api";
 import type { ApiLiveAvatarOption } from "./lib/api/live-avatar-api";
 import {
   buildUpdateAvatarRequest,
@@ -60,6 +60,60 @@ const liveAvatarOption: ApiLiveAvatarOption = {
 };
 
 describe("avatar edit", () => {
+  it("preserves the direct-call pilot when editing the avatar", () => {
+    const state = createAvatarEditStateFromAvatar({
+      ...avatar,
+      voiceConfig: { ...(avatar.voiceConfig as ApiVoiceConfig), conversationProfile: "natural" },
+    });
+    state.description = "Updated description";
+    const voiceConfig = buildUpdateAvatarRequest(state).voiceConfig;
+    expect(voiceConfig?.conversationProfile).toBe("natural");
+    expect(voiceConfig).not.toHaveProperty("conversationModel");
+  });
+
+  it.each([
+    ["natural", "gpt-5.4"],
+    ["standard", "gpt-4o-mini"],
+  ] as const)("preserves %s and %s when editing instructions or changing voices", (profile, model) => {
+    const state = createAvatarEditStateFromAvatar({
+      ...avatar,
+      voiceConfig: {
+        ...(avatar.voiceConfig as ApiVoiceConfig),
+        conversationProfile: profile,
+        conversationModel: model,
+      },
+    });
+    state.instructions = "Responde con más detalle.";
+    expect(buildUpdateAvatarRequest(state).voiceConfig).toMatchObject({
+      conversationProfile: profile,
+      conversationModel: model,
+    });
+
+    state.voiceId = "voice-2";
+    const selectedVoice = { ...voiceOption, id: "voice-2", displayName: "Otra voz" };
+    expect(buildUpdateAvatarRequest(state, liveAvatarOption, selectedVoice).voiceConfig).toMatchObject({
+      voiceId: "voice-2",
+      displayName: "Otra voz",
+      conversationProfile: profile,
+      conversationModel: model,
+    });
+  });
+
+  it("does not add conversation defaults to legacy avatars when editing or changing their voice", () => {
+    const state = createAvatarEditStateFromAvatar(avatar);
+    state.description = "Updated legacy avatar";
+    const updated = buildUpdateAvatarRequest(state);
+    expect(updated.voiceConfig).not.toHaveProperty("conversationProfile");
+    expect(updated.voiceConfig).not.toHaveProperty("conversationModel");
+
+    state.voiceId = "voice-2";
+    const selectedVoice = { ...voiceOption, id: "voice-2" };
+    const changedVoice = buildUpdateAvatarRequest(state, liveAvatarOption, selectedVoice).voiceConfig;
+    expect(changedVoice?.voiceId).toBe("voice-2");
+    expect(changedVoice).not.toHaveProperty("conversationProfile");
+    expect(changedVoice).not.toHaveProperty("conversationModel");
+  });
+
   afterEach(() => {
     vi.unstubAllGlobals();
   });

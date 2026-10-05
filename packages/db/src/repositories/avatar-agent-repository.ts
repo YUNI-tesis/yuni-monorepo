@@ -1,15 +1,20 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
+import { newAvatarConversationConfig, type NewAvatarConversationConfig } from "@yuni/config";
 import type {
   AgentProvider,
   CreateAvatarAgentInput,
   ProviderSyncStatus,
+  ProviderVoiceState,
   UpdateAvatarAgentInput,
 } from "@yuni/domain";
-import { OwnershipError } from "@yuni/domain";
+import { applyNewAvatarConversationDefaults, OwnershipError } from "@yuni/domain";
 
 type Db = PrismaClient | Prisma.TransactionClient;
 
-export function createAvatarAgentRepository(db: Db) {
+export function createAvatarAgentRepository(
+  db: Db,
+  conversationDefaults: NewAvatarConversationConfig = newAvatarConversationConfig
+) {
   return {
     create(ownerId: string, input: CreateAvatarAgentInput) {
       return db.avatarAgent.create({
@@ -19,7 +24,7 @@ export function createAvatarAgentRepository(db: Db) {
           description: input.description,
           instructions: input.instructions,
           context: input.context,
-          voiceConfig: input.voiceConfig,
+          voiceConfig: applyNewAvatarConversationDefaults(input.voiceConfig, conversationDefaults),
           liveAvatarConfig: input.liveAvatarConfig,
           status: input.status,
         },
@@ -77,6 +82,7 @@ export function createAvatarAgentRepository(db: Db) {
         providerSyncError?: string | null;
         providerSyncedAt?: Date | null;
         providerSyncFingerprint?: string | null;
+        providerVoiceState?: ProviderVoiceState;
         providerLastUsableAt?: Date | null;
       }
     ) {
@@ -94,6 +100,7 @@ export function createAvatarAgentRepository(db: Db) {
       if (input.providerSyncFingerprint !== undefined) {
         data.providerSyncFingerprint = input.providerSyncFingerprint;
       }
+      if (input.providerVoiceState !== undefined) data.providerVoiceState = input.providerVoiceState;
       if (input.providerLastUsableAt !== undefined) {
         data.providerLastUsableAt = input.providerLastUsableAt;
       }

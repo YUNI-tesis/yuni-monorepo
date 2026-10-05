@@ -52,6 +52,7 @@ model AvatarAgent {
   providerSyncError           String?
   providerSyncedAt            DateTime?
   providerSyncFingerprint     String?
+  providerVoiceState          Json?
   providerLastUsableAt        DateTime?
   providerContextDocumentId   String?
   providerContextSyncStatus   ContextSyncStatus  @default(pending)

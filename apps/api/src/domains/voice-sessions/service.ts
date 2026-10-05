@@ -1,5 +1,6 @@
 import {
   EndVoiceSessionInputSchema,
+  getVerifiedConversationProfile,
   LiveAvatarConfigSchema,
   NotFoundError,
   VoiceConfigSchema,
@@ -21,6 +22,7 @@ import {
   ElevenLabsProviderError,
   ElevenLabsProviderTimeoutError,
   ElevenLabsProviderUnavailableError,
+  ElevenLabsVoiceVerificationError,
   summarizeProviderError,
   type ElevenLabsAgentProvider,
 } from "@yuni/voice";
@@ -223,10 +225,15 @@ export function createVoiceSessionsService(dependencies: VoiceSessionsServiceDep
       const avatar = access.avatar;
       const liveAvatarConfig =
         access.type === "shared" ? parseSharedLiveAvatarConfig(avatar) : parseLiveAvatarConfig(avatar);
-      const providerAgentId =
+      const synchronousSync =
         access.type === "owner" && !dependencies.backgroundSyncEnabled
-          ? (await syncAvatarAgent(dependencies, userId, avatar, { force: false })).providerAgentId
-          : getUsableProviderAgentId(avatar, access.type);
+          ? await syncAvatarAgent(dependencies, userId, avatar, { force: false })
+          : null;
+      const providerAgentId =
+        synchronousSync?.providerAgentId ?? getUsableProviderAgentId(avatar, access.type);
+      const conversationProfile = getVerifiedConversationProfile(
+        synchronousSync?.voiceState ?? avatar.providerVoiceState
+      );
       const { conversation, realtimeSession, expiresAt } = await reserveVoiceSession(
         dependencies,
         userId,
@@ -271,6 +278,7 @@ export function createVoiceSessionsService(dependencies: VoiceSessionsServiceDep
           realtimeSessionId: preparedSession.id,
           sessionToken: liveAvatarSession.sessionToken,
           expiresAt: expiresAt?.toISOString() ?? null,
+          ...(conversationProfile === "natural" ? { conversationProfile } : {}),
         };
       } catch (error) {
         let providerTokenForRecovery: string | undefined;
@@ -751,6 +759,7 @@ async function syncAvatarAgent(
       providerAgentId: avatar.providerAgentId,
       providerSyncFingerprint:
         options.force || avatar.providerSyncStatus !== "synced" ? null : avatar.providerSyncFingerprint,
+      ...(avatar.providerVoiceState ? { verifyVoice: true } : {}),
     });
 
     await dependencies.avatarsRepository.updateProviderSync(ownerId, avatar.id, {
@@ -761,6 +770,7 @@ async function syncAvatarAgent(
       providerSyncedAt: sync.synced ? new Date() : avatar.providerSyncedAt,
       providerSyncFingerprint: sync.providerSyncFingerprint,
       providerLastUsableAt: new Date(),
+      ...(sync.voiceState ? { providerVoiceState: sync.voiceState } : {}),
     });
 
     return sync;
@@ -770,6 +780,13 @@ async function syncAvatarAgent(
       providerSyncStatus: "failed",
       providerSyncError: summarizeProviderError(error),
       providerSyncedAt: null,
+      ...(error instanceof ElevenLabsVoiceVerificationError
+        ? {
+            ...(error.providerAgentId ? { providerAgentId: error.providerAgentId } : {}),
+            providerVoiceState: error.voiceState,
+            providerLastUsableAt: null,
+          }
+        : {}),
     });
 
     if (error instanceof ElevenLabsProviderUnavailableError) {

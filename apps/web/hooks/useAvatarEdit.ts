@@ -18,6 +18,8 @@ export type AvatarEditState = {
   voiceId: string;
   voiceDisplayName: string;
   voiceDescription: string;
+  conversationProfile?: "standard" | "natural";
+  conversationModel?: string;
   instructions: string;
 };
 
@@ -47,6 +49,7 @@ export type AvatarEditLoadState =
 export function createAvatarEditStateFromAvatar(avatar: ApiAvatar): AvatarEditState {
   const liveAvatarConfig = readRecord(avatar.liveAvatarConfig);
   const voiceConfig = readRecord(avatar.voiceConfig);
+  const conversationModel = readString(voiceConfig.conversationModel, "");
 
   return {
     name: avatar.name,
@@ -59,6 +62,10 @@ export function createAvatarEditStateFromAvatar(avatar: ApiAvatar): AvatarEditSt
     voiceId: readString(voiceConfig.voiceId, ""),
     voiceDisplayName: readString(voiceConfig.displayName, ""),
     voiceDescription: readString(voiceConfig.description, ""),
+    ...(voiceConfig.conversationProfile === "natural" || voiceConfig.conversationProfile === "standard"
+      ? { conversationProfile: voiceConfig.conversationProfile }
+      : {}),
+    ...(conversationModel ? { conversationModel } : {}),
     instructions: avatar.instructions,
   };
 }
@@ -101,6 +108,8 @@ export function buildUpdateAvatarRequest(
       fallbackProvider: state.voiceProvider,
       fallbackDisplayName: state.voiceDisplayName,
       fallbackDescription: state.voiceDescription,
+      ...(state.conversationProfile ? { conversationProfile: state.conversationProfile } : {}),
+      ...(state.conversationModel ? { conversationModel: state.conversationModel } : {}),
     }),
     liveAvatarConfig: createLiveAvatarConfig({
       avatarId: state.liveAvatarId,
