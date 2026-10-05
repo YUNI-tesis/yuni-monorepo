@@ -21,7 +21,7 @@
     "db:studio": "tsx ../config/scripts/run-with-env.ts prisma studio --schema prisma/schema.prisma"
   },
   "dependencies": {
-    "@prisma/client": "^5.22.0",
+    "@prisma/client": "^7.10.0",
     "@yuni/config": "workspace:*",
     "@yuni/domain": "workspace:*",
     "prisma": "^5.22.0",
