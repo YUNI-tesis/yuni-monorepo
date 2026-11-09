@@ -1,0 +1,46 @@
+id,fase,actividad,responsable,inicio,fin,tipo,depende_de,evidencia,certeza
+F0,0,Investigación y definición (2025),Ambos,2025-04-01,2025-12-31,fase,,Plan de trabajo (2025) y confirmación del equipo,a_confirmar
+0.1,0,Investigación de ideas y tecnologías,Ambos,2025-04-01,2025-07-31,tarea,,Plan de trabajo (2025) y prototipos de landing 3D guardados el 11/06/2025,a_confirmar
+0.2,0,Plan de trabajo de grado,Ambos,2025-09-01,2025-09-01,hito,0.1,Plan de trabajo.pdf (archivo del 01/09/2025),a_confirmar
+0.3,0,Informe moral y ético,Ambos,2025-09-22,2025-09-22,hito,0.2,Informe Moral y Ética - YUNI.pdf (22/09/2025; versión del 01/12/2025),a_confirmar
+F1,1,Prototipo inicial,Ambos,2026-01-07,2026-02-02,fase,,Commits del monorepo y rama dev,registrada
+1.1,1,"Monorepo, modelo de datos y LLM",Lucas,2026-01-07,2026-01-14,tarea,,Commits 2579471 y siguientes,registrada
+1.2,1,Voz por etapas y ruta en tiempo real,Lucas,2026-01-07,2026-01-27,tarea,1.1,Commit 4ee814e (OpenAI Realtime),registrada
+1.3,1,Interfaz base y avatar 3D,Santiago,2026-01-18,2026-01-24,tarea,1.1,PR #1 y commit 91854b5,registrada
+1.4,1,Lip-sync e integración Ready Player Me,Santiago,2026-01-27,2026-01-29,tarea,1.3,PR #2 y commit eaa953f,registrada
+1.5,1,Contexto en S3 y RAG propio,Lucas,2026-01-29,2026-02-02,tarea,1.1,Rama dev (commits 29/01–02/02),registrada
+E1,1,Cierre de Ready Player Me (externo),—,2026-01-31,2026-01-31,externo,,Frame (2026),registrada
+H1,1,Presentación de la primera versión,Ambos,2026-02-15,2026-02-15,hito,1.2;1.4;1.5,Confirmación del equipo (mes); día a confirmar,a_confirmar
+F2,2,Replanificación,Ambos,2026-02-03,2026-05-05,fase,E1;H1,Checkpoint de la rama dev del 13/04/2026,a_confirmar
+2.1,2,Evaluación de alternativas visuales y de voz,Ambos,2026-02-03,2026-05-05,tarea,E1;H1,Checkpoint del 13/04/2026; detalle a confirmar,a_confirmar
+F3,3,Rearquitectura y MVP de llamada,Ambos,2026-05-06,2026-07-13,fase,,Commits de mayo a junio y PR #3,registrada
+3.1,3,LiveAvatar e interrupción de audio,Lucas,2026-05-06,2026-05-07,tarea,2.1,Commit 749009f,registrada
+3.2,3,"Planes por módulo, configuración y autenticación",Santiago,2026-05-15,2026-05-15,tarea,2.1,Commit c34aa3d (planes),registrada
+3.3,3,Sistema de diseño,Santiago,2026-05-18,2026-05-20,tarea,3.2,Commits del 18/05 y 20/05,registrada
+3.4,3,"Avatares: API, builder, perfil y voz",Santiago,2026-05-21,2026-06-03,tarea,3.3,Commits del 21/05 al 03/06,registrada
+3.5,3,ADR y estrategia ElevenLabs-first,Lucas,2026-06-04,2026-06-06,tarea,3.1,ADR 0001–0004 y commit 4b64c8a,registrada
+3.6,3,MVP de llamada ElevenLabs + LiveAvatar,Lucas,2026-06-06,2026-06-12,tarea,3.4;3.5,Commit 826246d; PR #3 integrado el 13/07,registrada
+3.7,3,Navegación privada y conversaciones,Lucas,2026-06-20,2026-06-21,tarea,3.6,Commits del 20/06 y 21/06,registrada
+H2,3,MVP de llamada privada,Ambos,2026-06-12,2026-06-12,hito,3.6,ADR 0004,registrada
+F4,4,Circuito completo del producto,Ambos,2026-08-10,2026-09-03,fase,,PR #4 a #31,registrada
+4.1,4,"Compartición, actividad y sesiones públicas",Santiago,2026-08-10,2026-08-12,tarea,3.7,Commits del 10/08 al 12/08; ADR 0010–0014,registrada
+4.2,4,Dashboard y controles de llamada,Lucas,2026-08-16,2026-08-17,tarea,4.1,PR #4 y #5,registrada
+4.3,4,Documentos y base de conocimiento,Lucas,2026-08-17,2026-08-23,tarea,3.6,PR #6 y #7; ADR 0007,registrada
+4.4,4,Llamadas grupales multiavatar,Lucas,2026-08-19,2026-08-23,tarea,3.6;4.3,PR #9; ADR 0018–0019,registrada
+4.5,4,Despliegue en Railway y CI/DevSecOps,Santiago,2026-08-24,2026-08-25,tarea,4.1;4.3,PR #10; ADR 0022–0023,registrada
+4.6,4,Dashboard accionable y metodología,Santiago,2026-08-28,2026-08-28,tarea,4.2,PR #18 y #24; ADR 0024,registrada
+4.7,4,"Interfaz responsive, edición y landing",Lucas,2026-08-19,2026-08-29,tarea,3.7,PR #8 y #13 a #17 y #26,registrada
+4.8,4,Compartir grupos y eliminación,Santiago,2026-09-02,2026-09-03,tarea,4.4,PR #29 y #31; ADR 0025,registrada
+H3,4,Producción en Railway,Ambos,2026-08-24,2026-08-24,hito,4.5,ADR 0022,registrada
+H4,4,Avance oral obligatorio,Ambos,2026-08-27,2026-08-27,hito,4.4,Cronograma de presentación del Avance Oral (jueves 27; mes a confirmar),a_confirmar
+F5,5,Estabilización y corte técnico,Lucas,2026-09-08,2026-10-05,fase,,Commits de septiembre y PR #33 y #34,registrada
+5.1,5,Protocolo y cierre de habla grupal,Lucas,2026-09-08,2026-09-09,tarea,4.4,Commits f53b44b y 7bcfa2a; evidencias del 08–09/09,registrada
+5.2,5,Interrupciones y conversación natural,Lucas,2026-09-12,2026-09-15,tarea,5.1,Commits del 13 al 15/09; ADR 0026,registrada
+H5,5,Corte técnico del informe (3d8cfd2),Ambos,2026-09-14,2026-09-14,hito,5.2,CI 34842170705 (1.133 casos),registrada
+H6,5,Versión desplegada (bb9f4b0),Ambos,2026-10-05,2026-10-05,hito,H5,PR #33 y #34; CI 37324049132,registrada
+F6,6,Informe de tesis,Ambos,2026-09-15,2026-12-15,fase,,Documentos de tesis,registrada
+6.1,6,"Definición, brief y escenarios",Ambos,2026-09-15,2026-09-28,tarea,H5,Brief 0.3 y escenarios,registrada
+6.2,6,Informe V1 y revisiones V1.1–V1.2,Ambos,2026-09-29,2026-09-30,tarea,6.1,Paquetes V1.1 y V1.2,registrada
+6.3,6,Revisión técnica y económica (V1.3),Ambos,2026-10-10,2026-10-26,tarea,6.2;H6,Google Doc V1.3,registrada
+6.4,6,"V1.4: evidencia, usuarios, estado del arte",Ambos,2026-10-29,2026-11-20,tarea,6.3,Carpeta v1-4; fin estimado,a_confirmar
+H7,6,Entrega final,Ambos,2026-12-15,2026-12-15,hito,6.4,Fecha a confirmar,a_confirmar

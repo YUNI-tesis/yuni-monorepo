@@ -1,0 +1,90 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>
+  html,body{margin:0;padding:0;background:#fff}
+  body{width:1200px;height:430px;font-family:Arial,Helvetica,sans-serif;color:#1f2a3a}
+  svg{display:block}
+  .h{font-size:27px;font-weight:700;fill:#1f2a3a}
+  .s{font-size:20px;fill:#5b6575}
+  .r{font-size:22px;fill:#1f2a3a}
+  .l{font-size:21px;fill:#1f2a3a}
+  .n{font-size:17px;font-weight:700;fill:#fff}
+</style></head>
+<body>
+<svg width="1200" height="430" viewBox="0 0 1200 430" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#34465e"/>
+    </marker>
+  </defs>
+
+  <!-- Columnas -->
+  <!-- Navegador -->
+  <rect x="4" y="4" width="290" height="420" rx="14" fill="#f5f8fc" stroke="#a9b8cc" stroke-width="2"/>
+  <rect x="4" y="4" width="290" height="84" rx="14" fill="#e6eef8" stroke="#a9b8cc" stroke-width="2"/>
+  <rect x="5" y="70" width="288" height="17" fill="#e6eef8"/>
+  <text class="h" x="149" y="44" text-anchor="middle">Navegador</text>
+  <text class="s" x="149" y="72" text-anchor="middle">del alumno</text>
+
+  <!-- LiveAvatar -->
+  <rect x="455" y="4" width="290" height="420" rx="14" fill="#f4f9f6" stroke="#9fc2ad" stroke-width="2"/>
+  <rect x="455" y="4" width="290" height="84" rx="14" fill="#e3f1e8" stroke="#9fc2ad" stroke-width="2"/>
+  <rect x="456" y="70" width="288" height="17" fill="#e3f1e8"/>
+  <text class="h" x="600" y="44" text-anchor="middle">LiveAvatar</text>
+  <text class="s" x="600" y="72" text-anchor="middle">sala LiveKit y conector</text>
+
+  <!-- ElevenLabs -->
+  <rect x="906" y="4" width="290" height="420" rx="14" fill="#fdf9ef" stroke="#d9c38f" stroke-width="2"/>
+  <rect x="906" y="4" width="290" height="84" rx="14" fill="#faf0d7" stroke="#d9c38f" stroke-width="2"/>
+  <rect x="907" y="70" width="288" height="17" fill="#faf0d7"/>
+  <text class="h" x="1051" y="44" text-anchor="middle">ElevenLabs Agents</text>
+  <text class="s" x="1051" y="72" text-anchor="middle">agente del avatar</text>
+
+  <!-- Fila de ida -->
+  <rect x="24" y="118" width="250" height="110" rx="10" fill="#fff" stroke="#c4cfdd" stroke-width="1.6"/>
+  <text class="r" x="149" y="164" text-anchor="middle">Capta la voz</text>
+  <text class="r" x="149" y="192" text-anchor="middle">del alumno</text>
+
+  <rect x="475" y="118" width="250" height="110" rx="10" fill="#fff" stroke="#bcd6c5" stroke-width="1.6"/>
+  <text class="r" x="600" y="164" text-anchor="middle">Pasa la voz</text>
+  <text class="r" x="600" y="192" text-anchor="middle">al agente</text>
+
+  <rect x="926" y="118" width="250" height="110" rx="10" fill="#fff" stroke="#e5d5ae" stroke-width="1.6"/>
+  <text class="r" x="1051" y="150" text-anchor="middle">Responde con sus</text>
+  <text class="r" x="1051" y="178" text-anchor="middle">instrucciones y</text>
+  <text class="r" x="1051" y="206" text-anchor="middle">los materiales</text>
+
+  <!-- Fila de vuelta -->
+  <rect x="24" y="290" width="250" height="110" rx="10" fill="#fff" stroke="#c4cfdd" stroke-width="1.6"/>
+  <text class="r" x="149" y="336" text-anchor="middle">Muestra el rostro</text>
+  <text class="r" x="149" y="364" text-anchor="middle">y reproduce la voz</text>
+
+  <rect x="475" y="290" width="250" height="110" rx="10" fill="#fff" stroke="#bcd6c5" stroke-width="1.6"/>
+  <text class="r" x="600" y="336" text-anchor="middle">Anima el rostro</text>
+  <text class="r" x="600" y="364" text-anchor="middle">con ese audio</text>
+
+  <rect x="926" y="290" width="250" height="110" rx="10" fill="#fff" stroke="#e5d5ae" stroke-width="1.6"/>
+  <text class="r" x="1051" y="336" text-anchor="middle">Genera el audio con</text>
+  <text class="r" x="1051" y="364" text-anchor="middle">la voz elegida</text>
+
+  <!-- Flechas de ida -->
+  <line x1="278" y1="196" x2="469" y2="196" stroke="#34465e" stroke-width="2.6" marker-end="url(#a)"/>
+  <text class="l" x="373" y="182" text-anchor="middle">Voz</text>
+  <line x1="729" y1="196" x2="920" y2="196" stroke="#34465e" stroke-width="2.6" marker-end="url(#a)"/>
+  <text class="l" x="824" y="182" text-anchor="middle">Voz</text>
+
+  <!-- Flecha interna del agente -->
+  <line x1="1051" y1="232" x2="1051" y2="284" stroke="#34465e" stroke-width="2.6" marker-end="url(#a)"/>
+
+  <!-- Flechas de vuelta -->
+  <line x1="920" y1="345" x2="731" y2="345" stroke="#34465e" stroke-width="2.6" stroke-dasharray="9 7" marker-end="url(#a)"/>
+  <text class="l" x="825" y="303" text-anchor="middle">Audio de</text>
+  <text class="l" x="825" y="329" text-anchor="middle">la respuesta</text>
+  <line x1="469" y1="345" x2="280" y2="345" stroke="#34465e" stroke-width="2.6" stroke-dasharray="9 7" marker-end="url(#a)"/>
+  <text class="l" x="374" y="303" text-anchor="middle">Video</text>
+  <text class="l" x="374" y="329" text-anchor="middle">y voz</text>
+
+  <!-- Flecha interna de LiveAvatar -->
+  <line x1="600" y1="232" x2="600" y2="284" stroke="#34465e" stroke-width="2.6" stroke-dasharray="9 7" stroke-opacity="0" />
+</svg>
+</body></html>

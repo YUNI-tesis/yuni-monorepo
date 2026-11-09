@@ -3,3 +3,10 @@ node_modules
 dist
 coverage
 pnpm-lock.yaml
+
+# Materiales del escenario de María: el informe (Anexo G) publica sus SHA-256,
+# así que tienen que quedar byte a byte como se fijaron.
+docs/thesis/v1-4/maria/
+
+# Fuentes HTML de figuras del informe: se renderizan tal cual a PNG.
+docs/thesis/v1-4/figuras/**/*.html

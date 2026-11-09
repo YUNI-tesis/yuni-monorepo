@@ -8,6 +8,10 @@ No reemplaza a [docs/plan-prompts/](../plan-prompts/). Los planes describen que 
 
 - [decision-records/](decision-records/): registros numerados de decisiones de arquitectura, UX, costos, seguridad, integracion e implementacion.
 - [Estudio de estabilidad de audio e interrupciones grupales](group-call-audio-stability-case-study.md): explicación narrativa de los síntomas, intentos fallidos, revisión del contrato del SDK y evidencia de la reconstrucción.
+- [evidence/](evidence/): trazas y registros que cita el informe; entre ellos, el resumen de la ejecución 34842170705 de CI sobre el commit evaluado `3d8cfd2` (Tabla 16).
+- [v1-4/maria/](v1-4/maria/): materiales del escenario de María (10.4 y Anexo G del informe), fijados antes de ejecutar los casos. `SHA256SUMS.txt` guarda los hashes de la Tabla G1; se comprueban con `shasum -a 256 -c SHA256SUMS.txt`.
+- [v1-4/figuras/](v1-4/figuras/) y [v1-4/arquitectura/](v1-4/arquitectura/): figuras del informe por capítulo, con los scripts que las generan. Las Figuras 6 a 12 salen de `arquitectura/generar_etapas.py`.
+- [`packages/db/prisma/seed-tesis-demo.ts`](../../packages/db/prisma/seed-tesis-demo.ts): datos de demostración del tutor de María para las capturas de los capítulos 3 y 9. Solo corre contra una base local.
 
 ## Arquitectura grupal vigente
 
