@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Badge, Button, Card, ErrorState, FormField, Input, LoadingState, PageShell } from "@yuni/ui";
 import { YuniLogo } from "../../../components/brand/YuniLogo";
 import { GroupInteractCall } from "../../../components/interact/GroupInteractCall";
+import { SHARED_CALL_RECORDING_PURPOSE } from "../../../components/interact/SharedCallPrivacyDialog";
 import type { ApiAvatarGroup } from "../../../lib/api/avatar-group-api";
 import {
   getPublicSharedGroup,
@@ -261,7 +262,8 @@ function PublicGroupIntroduction(props: {
               />
               <span>
                 La llamada y su transcripción se guardarán. El creador del grupo podrá consultar esta
-                información en Actividad. Si cambia algún integrante, te pediremos aceptar nuevamente.
+                información en Actividad {SHARED_CALL_RECORDING_PURPOSE}. Si cambia algún integrante, te
+                pediremos aceptar nuevamente.
               </span>
             </label>
             {props.formError ? (

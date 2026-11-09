@@ -4,6 +4,12 @@ import React, { forwardRef } from "react";
 import { Button, Dialog } from "@yuni/ui";
 import styles from "./Interact.module.css";
 
+/**
+ * Why a shared call is stored. Every consent notice repeats it so participants know what is saved,
+ * who can read it and what it is for before they accept.
+ */
+export const SHARED_CALL_RECORDING_PURPOSE = "para ver qué dudas aparecen y poder ayudarte";
+
 export type SharedCallPrivacyDialogProps = {
   sharedAvatarNames: string[];
   subjectKind?: "avatar" | "group";
@@ -29,7 +35,7 @@ export const SharedCallPrivacyDialog = forwardRef<HTMLDialogElement, SharedCallP
   ) {
     const disclosure =
       subjectKind === "group"
-        ? `El creador de ${sharedAvatarNames[0] ?? "este grupo"} podrá consultar esta información en la sección Actividad.`
+        ? `El creador de ${sharedAvatarNames[0] ?? "este grupo"} podrá consultar esta información en la sección Actividad ${SHARED_CALL_RECORDING_PURPOSE}.`
         : formatSharedAvatarDisclosure(sharedAvatarNames);
 
     return (
@@ -89,9 +95,9 @@ export function rememberPrivacyChoiceForAvatar(storageKey: string) {
 
 function formatSharedAvatarDisclosure(names: string[]) {
   if (names.length === 1) {
-    return `El creador de ${names[0] ?? "este avatar"} podrá consultar esta información en la sección Actividad.`;
+    return `El creador de ${names[0] ?? "este avatar"} podrá consultar esta información en la sección Actividad ${SHARED_CALL_RECORDING_PURPOSE}.`;
   }
-  return `Los creadores de ${formatNameList(names)} podrán consultar esta información en la sección Actividad.`;
+  return `Los creadores de ${formatNameList(names)} podrán consultar esta información en la sección Actividad ${SHARED_CALL_RECORDING_PURPOSE}.`;
 }
 
 function formatNameList(names: string[]) {

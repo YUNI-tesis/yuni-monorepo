@@ -942,7 +942,7 @@ async function ensureVoiceChatStarted(session: LiveAvatarSession) {
 
   if (!isVoiceChatActive(session)) {
     throw new VoiceChatStartError(
-      "El avatar esta conectado, pero el microfono no quedo activo. Revisa permisos del navegador y vuelve a iniciar la llamada."
+      "El avatar está conectado, pero el micrófono no quedó activo. Revisá el permiso de micrófono del navegador y volvé a iniciar la llamada."
     );
   }
 }
@@ -1110,11 +1110,11 @@ export function formatVoiceSessionStartError(error: unknown): string {
   }
 
   if (error instanceof DOMException && error.name === "NotAllowedError") {
-    return "El navegador bloqueo el microfono. Habilita permisos de microfono para localhost y vuelve a iniciar la llamada.";
+    return "El navegador bloqueó el micrófono. Habilitá el permiso de micrófono para este sitio y volvé a iniciar la llamada.";
   }
 
   if (error instanceof DOMException && error.name === "NotFoundError") {
-    return "No encontramos un microfono disponible. Conecta o selecciona un microfono y vuelve a iniciar la llamada.";
+    return "No encontramos un micrófono disponible. Conectá o elegí un micrófono y volvé a iniciar la llamada.";
   }
 
   if (error instanceof ApiClientError && error.reason === "AVATAR_NOT_READY") {

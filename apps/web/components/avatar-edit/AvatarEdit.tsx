@@ -31,7 +31,7 @@ export function AvatarEdit({ avatarId }: { avatarId: string }) {
   const saveToastId = useRef<string | null>(null);
 
   if (edit.loadState.status === "loading") {
-    return <LoadingState title="Cargando avatar" description="Estamos preparando la edicion." />;
+    return <LoadingState title="Cargando avatar" description="Estamos preparando la edición." />;
   }
 
   if (edit.loadState.status === "not-found") {

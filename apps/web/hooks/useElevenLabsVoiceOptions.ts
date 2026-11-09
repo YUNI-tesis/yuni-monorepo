@@ -81,7 +81,7 @@ export function useElevenLabsVoiceOptions(
         setState({
           status: "error",
           options: [],
-          error: "No pudimos cargar las voces disponibles. Intenta nuevamente en unos minutos.",
+          error: "No pudimos cargar las voces disponibles. Intentá nuevamente en unos minutos.",
         });
       });
 
