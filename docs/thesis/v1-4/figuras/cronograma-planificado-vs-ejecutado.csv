@@ -1,0 +1,10 @@
+actividad_plan,plan_inicio,plan_fin,real_inicio,real_fin,real_2_inicio,real_2_fin,resultado
+Investigación,2025-04-01,2025-07-31,2025-04-01,2025-12-31,,,Se extendió durante 2025 (a confirmar)
+UI con avatar 3D genérico,2025-08-01,2025-09-15,2026-01-18,2026-01-29,2026-05-06,2026-05-07,Avatar 3D reemplazado por LiveAvatar
+Modelo de IA (STT y TTS),2025-08-01,2025-09-15,2026-01-07,2026-01-27,2026-06-04,2026-06-12,Se integró un proveedor en lugar de entrenar un modelo
+Integración UI e IA,2025-09-15,2025-09-30,2026-06-06,2026-06-12,,,MVP de llamada privada
+Contexto en UI y aplicación,2025-10-01,2025-10-20,2026-01-29,2026-02-02,2026-08-17,2026-08-23,RAG propio reemplazado por la base del proveedor
+Personalización del avatar,2025-10-21,2025-11-30,2026-05-21,2026-06-03,,,Avatar de catálogo y voz; cara y voz propias como trabajo futuro
+"Compartición, actividad y dashboard (no previsto)",,,2026-08-10,2026-08-28,,,Agregado por el seguimiento docente
+Grupos multiagente (no previsto),,,2026-08-19,2026-09-15,,,Agregado
+Despliegue y CI/CD (no previsto),,,2026-08-24,2026-08-25,,,Agregado

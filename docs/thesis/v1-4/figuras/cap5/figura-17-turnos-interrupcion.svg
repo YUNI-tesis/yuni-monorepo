@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="274" viewBox="0 0 1000 274">
+<defs><marker id="c" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#334155"/></marker><marker id="cs" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M10 0L0 5L10 10z" fill="#334155"/></marker><marker id="m" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#0D9488"/></marker><marker id="ms" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M10 0L0 5L10 10z" fill="#0D9488"/></marker><marker id="d" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#7C3AED"/></marker><marker id="ds" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M10 0L0 5L10 10z" fill="#7C3AED"/></marker></defs>
+<rect x="0.0" y="0.0" width="1000.0" height="274.0" rx="0" fill="#FFFFFF" stroke="none" stroke-width="0"/>
+<rect x="8.0" y="15.0" width="984.0" height="118.0" rx="8" fill="#FAF8FF" stroke="#DDD6FE" stroke-width="1.2"/>
+<text x="18.0" y="72.0" font-family="Arial, Helvetica, sans-serif" font-size="15" font-weight="bold" fill="#7C3AED" text-anchor="start">Ronda</text>
+<text x="18.0" y="89.0" font-family="Arial, Helvetica, sans-serif" font-size="12" font-weight="normal" fill="#475569" text-anchor="start">un turno por vez</text>
+<rect x="8.0" y="139.0" width="984.0" height="118.0" rx="8" fill="#F5F9FF" stroke="#BFDBFE" stroke-width="1.2"/>
+<text x="18.0" y="196.0" font-family="Arial, Helvetica, sans-serif" font-size="15" font-weight="bold" fill="#2563EB" text-anchor="start">Interrupción</text>
+<text x="18.0" y="213.0" font-family="Arial, Helvetica, sans-serif" font-size="12" font-weight="normal" fill="#475569" text-anchor="start">durante una</text>
+<text x="18.0" y="229.0" font-family="Arial, Helvetica, sans-serif" font-size="12" font-weight="normal" fill="#475569" text-anchor="start">respuesta</text>
+<rect x="122.0" y="51.0" width="100.8" height="46.0" rx="7" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.3"/>
+<text x="172.4" y="71.0" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="normal" fill="#0F172A" text-anchor="middle">Intervención</text>
+<text x="172.4" y="87.0" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="normal" fill="#0F172A" text-anchor="middle">confirmada</text>
+<rect x="230.8" y="43.0" width="100.8" height="62.0" rx="7" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.3"/>
+<text x="281.1" y="63.0" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="normal" fill="#0F172A" text-anchor="middle">El director</text>
+<text x="281.1" y="79.0" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="normal" fill="#0F172A" text-anchor="middle">elige quién y</text>
+<text x="281.1" y="95.0" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="normal" fill="#0F172A" text-anchor="middle">en qué orden</text>
+<rect x="339.5" y="43.0" width="100.8" height="62.0" rx="7" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.3"/>
+<text x="389.9" y="63.0" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="normal" fill="#0F172A" text-anchor="middle">Se guardan</text>
+<text x="389.9" y="79.0" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="normal" fill="#0F172A" text-anchor="middle">la ronda y</text>
+<text x="389.9" y="95.0" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="normal" fill="#0F172A" text-anchor="middle">los turnos</text>
+<rect x="448.2" y="43.0" width="100.8" height="62.0" rx="7" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.3"/>
+<text x="498.6" y="63.0" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="normal" fill="#0F172A" text-anchor="middle">El avatar</text>
+<text x="498.6" y="79.0" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="normal" fill="#0F172A" text-anchor="middle">recibe contexto</text>
+<text x="498.6" y="95.0" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="normal" fill="#0F172A" text-anchor="middle">e instrucción</text>
+<rect x="557.0" y="51.0" width="100.8" height="46.0" rx="7" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.3"/>
+<text x="607.4" y="71.0" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="normal" fill="#0F172A" text-anchor="middle">Responde y</text>
+<text x="607.4" y="87.0" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="normal" fill="#0F172A" text-anchor="middle">solo él se oye</text>
+<rect x="665.8" y="43.0" width="100.8" height="62.0" rx="7" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.3"/>
+<text x="716.1" y="63.0" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="normal" fill="#0F172A" text-anchor="middle">Termina de</text>
+<text x="716.1" y="79.0" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="normal" fill="#0F172A" text-anchor="middle">hablar y se</text>
+<text x="716.1" y="95.0" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="normal" fill="#0F172A" text-anchor="middle">registra</text>
+<polygon points="824.875,37.0 872.875,74.0 824.875,111.0 776.875,74.0" fill="#FFFFFF" stroke="#94A3B8" stroke-width="1.3"/>
+<text x="824.9" y="71.0" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="bold" fill="#0F172A" text-anchor="middle">¿Quedan</text>
+<text x="824.9" y="87.0" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="bold" fill="#0F172A" text-anchor="middle">turnos?</text>
+<rect x="883.2" y="51.0" width="100.8" height="46.0" rx="7" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.3"/>
+<text x="933.6" y="71.0" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="normal" fill="#0F172A" text-anchor="middle">Espera otra</text>
+<text x="933.6" y="87.0" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="normal" fill="#0F172A" text-anchor="middle">intervención</text>
+<rect x="557.0" y="175.0" width="100.8" height="46.0" rx="7" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.3"/>
+<text x="607.4" y="195.0" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="normal" fill="#0F172A" text-anchor="middle">La persona</text>
+<text x="607.4" y="211.0" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="normal" fill="#0F172A" text-anchor="middle">habla</text>
+<polygon points="498.625,156.0 548.625,198.0 498.625,240.0 448.625,198.0" fill="#FFFFFF" stroke="#94A3B8" stroke-width="1.3"/>
+<text x="498.6" y="187.0" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="bold" fill="#0F172A" text-anchor="middle">¿Asenti-</text>
+<text x="498.6" y="203.0" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="bold" fill="#0F172A" text-anchor="middle">miento</text>
+<text x="498.6" y="219.0" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="bold" fill="#0F172A" text-anchor="middle">o eco?</text>
+<rect x="339.5" y="167.0" width="100.8" height="62.0" rx="7" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.3"/>
+<text x="389.9" y="187.0" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="normal" fill="#0F172A" text-anchor="middle">Silencia y</text>
+<text x="389.9" y="203.0" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="normal" fill="#0F172A" text-anchor="middle">cancela la</text>
+<text x="389.9" y="219.0" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="normal" fill="#0F172A" text-anchor="middle">ronda</text>
+<rect x="230.8" y="167.0" width="100.8" height="62.0" rx="7" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.3"/>
+<text x="281.1" y="187.0" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="normal" fill="#0F172A" text-anchor="middle">La nueva</text>
+<text x="281.1" y="203.0" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="normal" fill="#0F172A" text-anchor="middle">frase va al</text>
+<text x="281.1" y="219.0" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="normal" fill="#0F172A" text-anchor="middle">director</text>
+<path d="M 222.8 74.0 L 230.8 74.0" fill="none" stroke="#334155" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#c)"/>
+<path d="M 331.5 74.0 L 339.5 74.0" fill="none" stroke="#334155" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#c)"/>
+<path d="M 440.2 74.0 L 448.2 74.0" fill="none" stroke="#334155" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#c)"/>
+<path d="M 549.0 74.0 L 557.0 74.0" fill="none" stroke="#334155" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#c)"/>
+<path d="M 657.8 74.0 L 665.8 74.0" fill="none" stroke="#334155" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#c)"/>
+<path d="M 766.5 74.0 L 776.9 74.0" fill="none" stroke="#334155" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#c)"/>
+<path d="M 557.0 198.0 L 548.6 198.0" fill="none" stroke="#334155" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#c)"/>
+<path d="M 448.6 198.0 L 440.2 198.0" fill="none" stroke="#334155" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#c)"/>
+<path d="M 339.5 198.0 L 331.5 198.0" fill="none" stroke="#334155" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#c)"/>
+<path d="M 872.9 74.0 L 883.2 74.0" fill="none" stroke="#334155" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#c)"/>
+<text x="873.9" y="66.0" font-family="Arial, Helvetica, sans-serif" font-size="12.5" font-weight="bold" fill="#475569" text-anchor="start">No</text>
+<path d="M 824.9 37.0 L 824.9 21.0 L 498.6 21.0 L 498.6 43.0" fill="none" stroke="#334155" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#c)"/>
+<rect x="576.5" y="13.5" width="170.5" height="17.5" rx="3" fill="#FFFFFF" stroke="none" stroke-width="0"/>
+<text x="661.8" y="26.0" font-family="Arial, Helvetica, sans-serif" font-size="12.5" font-weight="normal" fill="#475569" text-anchor="middle" font-style="italic">Sí: sigue el próximo turno</text>
+<path d="M 607.4 97.0 L 607.4 175.0" fill="none" stroke="#334155" stroke-width="1.8" stroke-linejoin="round" stroke-dasharray="3 3" marker-end="url(#c)"/>
+<text x="460.6" y="184.0" font-family="Arial, Helvetica, sans-serif" font-size="12.5" font-weight="bold" fill="#475569" text-anchor="end">No</text>
+<path d="M 498.6 240.0 L 498.6 252.0" fill="none" stroke="#334155" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#c)"/>
+<text x="506.6" y="252.0" font-family="Arial, Helvetica, sans-serif" font-size="12.5" font-weight="normal" fill="#475569" text-anchor="start">Sí: se ignora</text>
+<path d="M 281.1 167.0 L 281.1 105.0" fill="none" stroke="#334155" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#c)"/>
+<rect x="242.8" y="128.5" width="76.8" height="17.5" rx="3" fill="#FFFFFF" stroke="none" stroke-width="0"/>
+<text x="281.1" y="141.0" font-family="Arial, Helvetica, sans-serif" font-size="12.5" font-weight="normal" fill="#475569" text-anchor="middle" font-style="italic">nueva ronda</text>
+</svg>
