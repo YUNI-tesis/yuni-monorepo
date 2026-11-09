@@ -116,7 +116,12 @@ describe("Interact contextual UI", () => {
     );
 
     const noop = () => undefined;
-    const dialogProps = { rememberChoice: false, onRememberChoiceChange: noop, onConfirm: noop, onCancel: noop };
+    const dialogProps = {
+      rememberChoice: false,
+      onRememberChoiceChange: noop,
+      onConfirm: noop,
+      onCancel: noop,
+    };
     const single = renderToStaticMarkup(
       createElement(SharedCallPrivacyDialog, { ...dialogProps, sharedAvatarNames: ["Tutor de Historia"] })
     );
