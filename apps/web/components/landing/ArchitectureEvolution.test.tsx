@@ -64,9 +64,9 @@ describe("ArchitectureEvolution", () => {
   it("lets visitors walk the seven stages with the timeline and the arrows", () => {
     render(<ArchitectureEvolution reducedMotion />);
 
-    const milestones = screen.getAllByRole("button", { pressed: false }).concat(
-      screen.getAllByRole("button", { pressed: true })
-    );
+    const milestones = screen
+      .getAllByRole("button", { pressed: false })
+      .concat(screen.getAllByRole("button", { pressed: true }));
     expect(milestones).toHaveLength(REPORT_STAGES.length);
     expect(screen.getByRole("heading", { level: 4 }).textContent).toBe(REPORT_STAGES[0]);
     expect(screen.getByText("/ 07")).toBeTruthy();
@@ -90,6 +90,8 @@ describe("ArchitectureEvolution", () => {
   it("closes with the criterion the report draws from the seven stages", () => {
     render(<ArchitectureEvolution reducedMotion />);
     expect(screen.getByText(/Pasó por siete etapas/)).toBeTruthy();
-    expect(screen.getByText(/YUNI delega en proveedores especializados lo que ocurre en tiempo real/)).toBeTruthy();
+    expect(
+      screen.getByText(/YUNI delega en proveedores especializados lo que ocurre en tiempo real/)
+    ).toBeTruthy();
   });
 });

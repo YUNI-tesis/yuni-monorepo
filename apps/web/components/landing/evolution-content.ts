@@ -81,8 +81,20 @@ export const evolutionStages: EvolutionStage[] = [
     diagramLabel: "Cuatro pasos en cadena",
     diagramCaption: "Las rutas /api coordinan cada paso: voz a texto, respuesta y texto a voz.",
     nodes: [
-      { id: "app", title: "Aplicación web", detail: "Graba la pregunta y reproduce la respuesta", zone: "browser", row: 1 },
-      { id: "routes", title: "Rutas /api", detail: "Coordinan cada paso y guardan en archivos JSON", zone: "yuni", row: 1 },
+      {
+        id: "app",
+        title: "Aplicación web",
+        detail: "Graba la pregunta y reproduce la respuesta",
+        zone: "browser",
+        row: 1,
+      },
+      {
+        id: "routes",
+        title: "Rutas /api",
+        detail: "Coordinan cada paso y guardan en archivos JSON",
+        zone: "yuni",
+        row: 1,
+      },
       { id: "whisper", title: "Whisper", detail: "Voz a texto", zone: "providers", row: 0 },
       { id: "gpt", title: "GPT-4o mini", detail: "Genera la respuesta", zone: "providers", row: 1 },
       { id: "tts", title: "OpenAI TTS", detail: "Texto a voz", zone: "providers", row: 2 },
@@ -105,9 +117,16 @@ export const evolutionStages: EvolutionStage[] = [
     learning: "La conversación ganó continuidad, pero todo el audio seguía pasando por un servidor propio.",
     shift: "De pasos separados a un servicio en tiempo real",
     diagramLabel: "La conversación se integra",
-    diagramCaption: "El servidor WebSocket retransmite el audio; la síntesis de voz es de OpenAI o ElevenLabs.",
+    diagramCaption:
+      "El servidor WebSocket retransmite el audio; la síntesis de voz es de OpenAI o ElevenLabs.",
     nodes: [
-      { id: "app", title: "Aplicación web", detail: "Micrófono y audio en forma continua", zone: "browser", row: 1 },
+      {
+        id: "app",
+        title: "Aplicación web",
+        detail: "Micrófono y audio en forma continua",
+        zone: "browser",
+        row: 1,
+      },
       {
         id: "websocket",
         title: "Servidor WebSocket",
@@ -145,7 +164,13 @@ export const evolutionStages: EvolutionStage[] = [
     diagramLabel: "Una búsqueda propia",
     diagramCaption: "Los originales van al almacenamiento de objetos y los fragmentos, a PostgreSQL.",
     nodes: [
-      { id: "app", title: "Aplicación web", detail: "Sube documentos y conversa por texto", zone: "browser", row: 1 },
+      {
+        id: "app",
+        title: "Aplicación web",
+        detail: "Sube documentos y conversa por texto",
+        zone: "browser",
+        row: 1,
+      },
       {
         id: "search",
         title: "Búsqueda propia",
@@ -154,7 +179,14 @@ export const evolutionStages: EvolutionStage[] = [
         row: 1,
         isNew: true,
       },
-      { id: "postgres", title: "PostgreSQL", detail: "Fragmentos de 1.200 caracteres", zone: "yuni", row: 2, isNew: true },
+      {
+        id: "postgres",
+        title: "PostgreSQL",
+        detail: "Fragmentos de 1.200 caracteres",
+        zone: "yuni",
+        row: 2,
+        isNew: true,
+      },
       {
         id: "storage",
         title: "Almacenamiento de objetos",
@@ -163,7 +195,13 @@ export const evolutionStages: EvolutionStage[] = [
         row: 0,
         isNew: true,
       },
-      { id: "gpt", title: "GPT-4o mini", detail: "Responde con los fragmentos hallados", zone: "providers", row: 1 },
+      {
+        id: "gpt",
+        title: "GPT-4o mini",
+        detail: "Responde con los fragmentos hallados",
+        zone: "providers",
+        row: 1,
+      },
     ],
     edges: [
       { from: "app", to: "search", kind: "request", label: "HTTP", bidirectional: true },
@@ -186,7 +224,13 @@ export const evolutionStages: EvolutionStage[] = [
     diagramLabel: "Aparece el rostro",
     diagramCaption: "El navegador dibuja el avatar y mueve sus labios con el audio que reproduce.",
     nodes: [
-      { id: "app", title: "Aplicación web", detail: "Micrófono y audio continuos", zone: "browser", row: 0.5 },
+      {
+        id: "app",
+        title: "Aplicación web",
+        detail: "Micrófono y audio continuos",
+        zone: "browser",
+        row: 0.5,
+      },
       {
         id: "avatar3d",
         title: "Avatar 3D",
@@ -195,8 +239,20 @@ export const evolutionStages: EvolutionStage[] = [
         row: 1.5,
         isNew: true,
       },
-      { id: "websocket", title: "Servidor WebSocket", detail: "Retransmite el audio", zone: "yuni", row: 0.5 },
-      { id: "realtime", title: "OpenAI Realtime", detail: "Escucha, turnos y texto", zone: "providers", row: 0.5 },
+      {
+        id: "websocket",
+        title: "Servidor WebSocket",
+        detail: "Retransmite el audio",
+        zone: "yuni",
+        row: 0.5,
+      },
+      {
+        id: "realtime",
+        title: "OpenAI Realtime",
+        detail: "Escucha, turnos y texto",
+        zone: "providers",
+        row: 0.5,
+      },
       { id: "speech", title: "Síntesis de voz", detail: "OpenAI o ElevenLabs", zone: "providers", row: 1.5 },
     ],
     edges: [
@@ -217,9 +273,16 @@ export const evolutionStages: EvolutionStage[] = [
       "Desde entonces la conversación y el rostro son piezas separadas, y cambiar una ya no obliga a rehacer la otra.",
     shift: "De dibujar el rostro a recibirlo en vivo",
     diagramLabel: "Conversación y rostro, por separado",
-    diagramCaption: "El servidor pide la sesión del avatar; el navegador le envía el audio y recibe el video.",
+    diagramCaption:
+      "El servidor pide la sesión del avatar; el navegador le envía el audio y recibe el video.",
     nodes: [
-      { id: "app", title: "Aplicación web", detail: "Micrófono y audio continuos", zone: "browser", row: 0.5 },
+      {
+        id: "app",
+        title: "Aplicación web",
+        detail: "Micrófono y audio continuos",
+        zone: "browser",
+        row: 0.5,
+      },
       {
         id: "sdk",
         title: "SDK de LiveAvatar",
@@ -235,7 +298,13 @@ export const evolutionStages: EvolutionStage[] = [
         zone: "yuni",
         row: 0.5,
       },
-      { id: "realtime", title: "OpenAI Realtime", detail: "Ahora también responde en audio", zone: "providers", row: 0.5 },
+      {
+        id: "realtime",
+        title: "OpenAI Realtime",
+        detail: "Ahora también responde en audio",
+        zone: "providers",
+        row: 0.5,
+      },
       {
         id: "liveavatar",
         title: "LiveAvatar",
@@ -265,14 +334,35 @@ export const evolutionStages: EvolutionStage[] = [
       "El audio dejó de pasar por los servidores de YUNI. Retiramos el servidor WebSocket y la búsqueda propia; un RAG propio más completo quedó como etapa posterior.",
     shift: "De integrar cada pieza a delegar lo que ocurre en tiempo real",
     diagramLabel: "YUNI configura, el proveedor conversa",
-    diagramCaption: "La API autoriza la llamada y guarda el historial; el worker sincroniza el agente y sus materiales.",
+    diagramCaption:
+      "La API autoriza la llamada y guarda el historial; el worker sincroniza el agente y sus materiales.",
     retired: ["Servidor WebSocket", "Búsqueda propia (RAG)"],
     nodes: [
       { id: "sdk", title: "SDK de LiveAvatar", detail: "Micrófono, video y audio", zone: "browser", row: 0 },
       { id: "app", title: "Aplicación", detail: "Configura agentes y materiales", zone: "browser", row: 1 },
-      { id: "api", title: "API", detail: "Autoriza la llamada y guarda el historial", zone: "yuni", row: 1, isNew: true },
-      { id: "worker", title: "Worker", detail: "Sincroniza agentes y materiales", zone: "yuni", row: 2, isNew: true },
-      { id: "liveavatar", title: "LiveAvatar", detail: "Sesión con conector a ElevenLabs", zone: "providers", row: 0 },
+      {
+        id: "api",
+        title: "API",
+        detail: "Autoriza la llamada y guarda el historial",
+        zone: "yuni",
+        row: 1,
+        isNew: true,
+      },
+      {
+        id: "worker",
+        title: "Worker",
+        detail: "Sincroniza agentes y materiales",
+        zone: "yuni",
+        row: 2,
+        isNew: true,
+      },
+      {
+        id: "liveavatar",
+        title: "LiveAvatar",
+        detail: "Sesión con conector a ElevenLabs",
+        zone: "providers",
+        row: 0,
+      },
       {
         id: "elevenlabs",
         title: "ElevenLabs Agent",
@@ -304,7 +394,14 @@ export const evolutionStages: EvolutionStage[] = [
     diagramLabel: "Varias identidades, una conversación",
     diagramCaption: "El director planifica cada ronda; cada agente responde con su voz y su avatar.",
     nodes: [
-      { id: "scribe", title: "Cliente de Scribe", detail: "Pasa la voz humana a texto", zone: "browser", row: 0, isNew: true },
+      {
+        id: "scribe",
+        title: "Cliente de Scribe",
+        detail: "Pasa la voz humana a texto",
+        zone: "browser",
+        row: 0,
+        isNew: true,
+      },
       {
         id: "app",
         title: "Aplicación",
@@ -320,7 +417,14 @@ export const evolutionStages: EvolutionStage[] = [
         row: 2,
         isNew: true,
       },
-      { id: "api", title: "API", detail: "Director (LangGraph) y control de turnos", zone: "yuni", row: 1, isNew: true },
+      {
+        id: "api",
+        title: "API",
+        detail: "Director (LangGraph) y control de turnos",
+        zone: "yuni",
+        row: 1,
+        isNew: true,
+      },
       {
         id: "elevenlabs",
         title: "ElevenLabs",
@@ -329,7 +433,13 @@ export const evolutionStages: EvolutionStage[] = [
         row: 0,
       },
       { id: "openai", title: "OpenAI", detail: "Plan de cada ronda", zone: "providers", row: 1, isNew: true },
-      { id: "liveavatar", title: "LiveAvatar", detail: "Una sesión por avatar (A, B y C)", zone: "providers", row: 2 },
+      {
+        id: "liveavatar",
+        title: "LiveAvatar",
+        detail: "Una sesión por avatar (A, B y C)",
+        zone: "providers",
+        row: 2,
+      },
     ],
     edges: [
       { from: "scribe", to: "elevenlabs", kind: "media", label: "WebSocket de Scribe", bidirectional: true },
@@ -338,7 +448,14 @@ export const evolutionStages: EvolutionStage[] = [
       { from: "app", to: "sdk", kind: "request", label: "instrucción" },
       { from: "api", to: "openai", kind: "request", label: "plan" },
       { from: "sdk", to: "liveavatar", kind: "media", label: "contexto, audio y video", bidirectional: true },
-      { from: "liveavatar", to: "elevenlabs", kind: "media", label: "conector", bidirectional: true, route: "outside" },
+      {
+        from: "liveavatar",
+        to: "elevenlabs",
+        kind: "media",
+        label: "conector",
+        bidirectional: true,
+        route: "outside",
+      },
     ],
   },
 ];
