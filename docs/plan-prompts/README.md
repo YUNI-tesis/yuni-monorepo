@@ -33,6 +33,7 @@ Decisiones de producto vigentes:
 
 ## Estado
 
+- Evolución de la arquitectura en la landing: las siete etapas de la sección 5.1 del informe, con los esquemas de sus Figuras 6 a 12, ligadas al scroll, con selección manual sincronizada y alternativa para movimiento reducido; contenido en [ADR 0027](../thesis/decision-records/0027-landing-architecture-evolution.md) e interacción en [ADR 0028](../thesis/decision-records/0028-landing-evolution-scroll.md).
 - `00-monorepo-base.md`: implementado; `apps/realtime` fue retirado al quedar superseded por la integración directa con providers.
 - `01-config-env.md`: implementado.
 - `02-domain-db.md`: implementado; evolucionado con grants/email identity en `15`.

@@ -15,6 +15,7 @@ import React, {
 } from "react";
 import { YuniLogo } from "../brand/YuniLogo";
 import { ArchitectureSystem } from "./ArchitectureSystem";
+import { ArchitectureEvolution } from "./ArchitectureEvolution";
 import { architectureLayers, capabilities, presenceStages, productMoments } from "./content";
 import { CapabilityIcon } from "./CapabilityIcon";
 import styles from "./Landing.module.css";
@@ -105,6 +106,7 @@ function ThemeIcon({ theme }: { theme: LandingTheme }) {
 }
 
 function useSmoothScroll(disabled: boolean) {
+  const lenisRef = useRef<Lenis | null>(null);
   useEffect(() => {
     const coarsePointer = window.matchMedia("(pointer: coarse)");
     if (disabled || coarsePointer.matches) return;
@@ -115,6 +117,7 @@ function useSmoothScroll(disabled: boolean) {
       syncTouch: false,
       wheelMultiplier: 0.92,
     });
+    lenisRef.current = lenis;
     let frameId = 0;
     const frame = (time: number) => {
       lenis.raf(time);
@@ -124,9 +127,18 @@ function useSmoothScroll(disabled: boolean) {
 
     return () => {
       cancelAnimationFrame(frameId);
+      lenisRef.current = null;
       lenis.destroy();
     };
   }, [disabled]);
+
+  return (top: number) => {
+    if (lenisRef.current) {
+      lenisRef.current.scrollTo(top, { duration: 0.8 });
+    } else {
+      window.scrollTo({ top, behavior: disabled ? "auto" : "smooth" });
+    }
+  };
 }
 
 function ProductScene({ type }: { type: (typeof productMoments)[number]["scene"] }) {
@@ -432,7 +444,7 @@ export function LandingExperience() {
   });
   const smoothProgress = useSpring(pageProgress, { stiffness: 120, damping: 24, mass: 0.18 });
 
-  useSmoothScroll(reducedMotion);
+  const scrollToPosition = useSmoothScroll(reducedMotion);
 
   useLayoutEffect(() => {
     try {
@@ -699,6 +711,7 @@ export function LandingExperience() {
               </Reveal>
             ))}
           </div>
+          <ArchitectureEvolution reducedMotion={reducedMotion} scrollToPosition={scrollToPosition} />
         </section>
 
         <ArchitectureSystem reducedMotion={reducedMotion} />

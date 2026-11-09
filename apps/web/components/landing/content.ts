@@ -126,7 +126,7 @@ export const capabilities = [
     number: "04",
     icon: "context",
     title: "Contexto documental",
-    description: "Texto y documentos procesados como conocimiento propio.",
+    description: "Texto y documentos sincronizados con la base de conocimiento del agente.",
   },
   {
     number: "05",
