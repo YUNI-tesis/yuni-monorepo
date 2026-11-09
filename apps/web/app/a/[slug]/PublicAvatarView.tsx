@@ -15,6 +15,7 @@ import {
 import Link from "next/link";
 import { YuniLogo } from "../../../components/brand/YuniLogo";
 import { InteractCallControls } from "../../../components/interact/InteractCall";
+import { SHARED_CALL_RECORDING_PURPOSE } from "../../../components/interact/SharedCallPrivacyDialog";
 import { useLiveAvatarSession } from "../../../hooks/useLiveAvatarSession";
 import {
   confirmPublicSessionStarted,
@@ -315,7 +316,7 @@ function PublicIntroduction(props: {
               />
               <span>
                 La llamada y su transcripción se guardarán. El creador del avatar podrá consultar esta
-                información en Actividad.
+                información en Actividad {SHARED_CALL_RECORDING_PURPOSE}.
               </span>
             </label>
             {props.formError ? (

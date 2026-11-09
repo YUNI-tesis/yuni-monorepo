@@ -26,6 +26,7 @@ import {
   formatConversationTitle,
 } from "./CallExperience";
 import {
+  SHARED_CALL_RECORDING_PURPOSE,
   SharedCallPrivacyDialog,
   getSharedCallConsentStorageKey,
   readRememberedPrivacyChoice,
@@ -498,7 +499,7 @@ export function formatInteractionCountdown(totalSeconds: number) {
 }
 
 export function formatSharedCallPrivacyDescription(limits: ApiInteractionContext["access"]["limits"]) {
-  const privacy = "La llamada y su transcripción se guardarán. El creador podrá consultarlas en Actividad.";
+  const privacy = `La llamada y su transcripción se guardarán. El creador podrá consultarlas en Actividad ${SHARED_CALL_RECORDING_PURPOSE}.`;
   return hasConfiguredInteractionLimits(limits)
     ? `${privacy} Límites: ${formatInteractionLimitsSummary(limits)}.`
     : privacy;
@@ -512,11 +513,11 @@ export function formatContextStatusTone(status: ApiInteractionContext["contextSt
 
 function getContextStatusDescription(status: ApiInteractionContext["contextStatus"]) {
   if (status === "failed") {
-    return "El contexto no se pudo actualizar. Si hay una version anterior valida, podes intentar iniciar la llamada.";
+    return "El contexto no se pudo actualizar. Si hay una versión anterior válida, podés intentar iniciar la llamada.";
   }
 
   if (status === "processing") {
-    return "El contexto se esta preparando. La llamada solo se inicia si el avatar ya tiene una version valida.";
+    return "El contexto se está preparando. La llamada solo se inicia si el avatar ya tiene una versión válida.";
   }
 
   return null;

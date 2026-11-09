@@ -290,7 +290,7 @@ export function InteractConversationHistoryPanel({
           </div>
         ) : null}
         {summariesStatus === "ready" && summaries.length === 0 ? (
-          <p className={styles.panelState}>Todavia no hay chats. Finaliza una llamada para guardarla aca.</p>
+          <p className={styles.panelState}>Todavía no hay chats. Finalizá una llamada para guardarla acá.</p>
         ) : null}
         {summaries.length > 0 ? (
           <div className={styles.historyList} role="list">
@@ -319,7 +319,7 @@ export function InteractConversationHistoryPanel({
       <div className={styles.historyDetailPane}>
         {detailStatus === "idle" ? (
           <div className={styles.detailEmpty}>
-            <p className="yuni-eyebrow">Transcripcion literal</p>
+            <p className="yuni-eyebrow">Transcripción literal</p>
             <h3>Elegí un chat</h3>
             <span>Al abrirlo vas a ver los mensajes exactos de esa llamada.</span>
           </div>
@@ -354,7 +354,7 @@ function ConversationDetail({
   return (
     <div className={styles.conversationDetail}>
       <div className={styles.detailHeader}>
-        <p className="yuni-eyebrow">Transcripcion literal</p>
+        <p className="yuni-eyebrow">Transcripción literal</p>
         <h3>{formatConversationTitle(conversation.title, avatarName)}</h3>
         <span>{formatConversationTimestamp(timestamp)}</span>
       </div>

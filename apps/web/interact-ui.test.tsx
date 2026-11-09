@@ -14,6 +14,10 @@ import {
 } from "./components/interact/InteractCall";
 import { CallExperienceShell, CallParticipantStage } from "./components/interact/CallExperience";
 import {
+  SHARED_CALL_RECORDING_PURPOSE,
+  SharedCallPrivacyDialog,
+} from "./components/interact/SharedCallPrivacyDialog";
+import {
   confirmLiveAvatarSessionStartedWithRetry,
   dismissLiveAvatarSessionError,
   formatVoiceSessionEndError,
@@ -104,6 +108,53 @@ describe("Interact contextual UI", () => {
         maxSessionsPer24Hours: null,
       })
     ).toContain("Límites: 30 s por llamada.");
+  });
+
+  it("tells participants what is stored, who reads it and what for", () => {
+    expect(formatSharedCallPrivacyDescription(null)).toBe(
+      `La llamada y su transcripción se guardarán. El creador podrá consultarlas en Actividad ${SHARED_CALL_RECORDING_PURPOSE}.`
+    );
+
+    const noop = () => undefined;
+    const dialogProps = {
+      rememberChoice: false,
+      onRememberChoiceChange: noop,
+      onConfirm: noop,
+      onCancel: noop,
+    };
+    const single = renderToStaticMarkup(
+      createElement(SharedCallPrivacyDialog, { ...dialogProps, sharedAvatarNames: ["Tutor de Historia"] })
+    );
+    const several = renderToStaticMarkup(
+      createElement(SharedCallPrivacyDialog, { ...dialogProps, sharedAvatarNames: ["Ada", "Alan", "Grace"] })
+    );
+    const group = renderToStaticMarkup(
+      createElement(SharedCallPrivacyDialog, {
+        ...dialogProps,
+        sharedAvatarNames: ["Mesa de Historia"],
+        subjectKind: "group",
+      })
+    );
+
+    expect(single).toContain(
+      "El creador de Tutor de Historia podrá consultar esta información en la sección Actividad para ver qué dudas aparecen y poder ayudarte."
+    );
+    expect(several).toContain("Los creadores de Ada, Alan y Grace podrán consultar");
+    for (const html of [single, several, group]) {
+      expect(html).toContain("La llamada y su transcripción se guardarán.");
+      expect(html).toContain(SHARED_CALL_RECORDING_PURPOSE);
+    }
+  });
+
+  it("explains how to recover from a blocked or missing microphone without naming localhost", () => {
+    const blocked = formatVoiceSessionStartError(new DOMException("Permission denied", "NotAllowedError"));
+    expect(blocked).toBe(
+      "El navegador bloqueó el micrófono. Habilitá el permiso de micrófono para este sitio y volvé a iniciar la llamada."
+    );
+    expect(blocked).not.toContain("localhost");
+    expect(formatVoiceSessionStartError(new DOMException("No device", "NotFoundError"))).toBe(
+      "No encontramos un micrófono disponible. Conectá o elegí un micrófono y volvé a iniciar la llamada."
+    );
   });
 
   it("scopes remembered privacy choices by user and avatar", () => {
@@ -445,7 +496,7 @@ describe("Interact contextual UI", () => {
 
     expect(html).toContain("Chats guardados");
     expect(html).toContain("Practica de derivadas");
-    expect(html).toContain("Transcripcion literal");
+    expect(html).toContain("Transcripción literal");
     expect(html).toContain("Hola, quiero practicar derivadas.");
     expect(html).toContain("Perfecto, empecemos con una regla simple.");
   });
@@ -497,7 +548,7 @@ describe("Interact contextual UI", () => {
       })
     );
 
-    expect(html).toContain("Todavia no hay chats");
+    expect(html).toContain("Todavía no hay chats");
     expect(html).toContain("Elegí un chat");
   });
 
