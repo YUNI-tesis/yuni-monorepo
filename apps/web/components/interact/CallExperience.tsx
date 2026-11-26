@@ -1,12 +1,14 @@
 "use client";
 
-import React, { type ReactNode } from "react";
+import React, { useState, type ReactNode } from "react";
 import { Button, YuniIcon } from "@yuni/ui";
 import styles from "./Interact.module.css";
 
 export type CallParticipantView = {
   id: string;
   name: string;
+  /** Photo shown before the video starts, so the avatar you picked is the one that comes alive. */
+  thumbnailUrl?: string | null;
   status: "ready" | "connecting" | "active" | "errored";
   statusLabel?: string;
   mediaMuted?: boolean;
@@ -117,49 +119,92 @@ export function CallParticipantStage({
   badges?: ReactNode;
   dock: ReactNode;
 }) {
+  const isSolo = participants.length === 1;
+
   return (
     <section className={styles.stage} aria-label={label}>
       <div className={styles.participantGrid} data-count={participants.length}>
-        {participants.map((participant, index) => (
-          <article
-            key={participant.id}
-            className={styles.participantTile}
-            data-speaking={participant.isSpeaking ? "true" : "false"}
-            data-turn-owner={participant.ownsTurn ? "true" : "false"}
-            data-status={participant.status}
-          >
-            <video ref={participant.attachMediaElement} autoPlay playsInline muted={participant.mediaMuted} />
-            <div className={styles.videoShade} aria-hidden="true" />
-            {index === 0 && badges ? <div className={styles.videoStatus}>{badges}</div> : null}
+        {participants.map((participant, index) => {
+          const showsPlaceholder = participant.status !== "active";
+          // A solo call already names the avatar in the header, and before the
+          // video starts the placeholder already states what is going on.
+          const showIdentity = !(isSolo && showsPlaceholder);
+          const showStatusLabel = !showsPlaceholder && Boolean(participant.statusLabel);
+          // In a group, a ready panel says enough with its photo and name; the
+          // placeholder only speaks up while connecting or when something fails.
+          const showPlaceholderText = isSolo || participant.status !== "ready";
 
-            <div className={styles.participantIdentity}>
-              <strong>{participant.name}</strong>
-              {participant.statusLabel ? <span>{participant.statusLabel}</span> : null}
-            </div>
+          return (
+            <article
+              key={participant.id}
+              className={styles.participantTile}
+              data-speaking={participant.isSpeaking ? "true" : "false"}
+              data-turn-owner={participant.ownsTurn ? "true" : "false"}
+              data-status={participant.status}
+            >
+              <video
+                ref={participant.attachMediaElement}
+                autoPlay
+                playsInline
+                muted={participant.mediaMuted}
+              />
+              <div className={styles.videoShade} aria-hidden="true" />
+              {index === 0 && badges ? <div className={styles.videoStatus}>{badges}</div> : null}
 
-            {participant.status !== "active" ? (
-              <div className={styles.videoPlaceholder}>
-                <div className={styles.avatarHalo} aria-hidden="true">
-                  <span>{participant.name.slice(0, 1).toLocaleUpperCase()}</span>
+              {showIdentity ? (
+                <div className={styles.participantIdentity}>
+                  <strong>{participant.name}</strong>
+                  {showStatusLabel ? <span>{participant.statusLabel}</span> : null}
                 </div>
-                <strong>{participant.placeholderTitle ?? "Listo para llamar"}</strong>
-                {participant.error ? <span role="alert">{participant.error}</span> : null}
-                {!participant.error && participant.placeholderDescription ? (
-                  <span>{participant.placeholderDescription}</span>
-                ) : null}
-                {participant.status === "errored" && participant.onRetry ? (
-                  <Button variant="secondary" onClick={participant.onRetry}>
-                    Reintentar
-                  </Button>
-                ) : null}
-              </div>
-            ) : null}
-          </article>
-        ))}
+              ) : null}
+
+              {showsPlaceholder ? (
+                <div className={styles.videoPlaceholder}>
+                  <div className={styles.avatarHalo} aria-hidden="true">
+                    <ParticipantPortrait
+                      name={participant.name}
+                      thumbnailUrl={participant.thumbnailUrl ?? null}
+                    />
+                  </div>
+                  {showPlaceholderText ? (
+                    <strong>{participant.placeholderTitle ?? "Listo para llamar"}</strong>
+                  ) : null}
+                  {participant.error ? <span role="alert">{participant.error}</span> : null}
+                  {showPlaceholderText && !participant.error && participant.placeholderDescription ? (
+                    <span>{participant.placeholderDescription}</span>
+                  ) : null}
+                  {participant.status === "errored" && participant.onRetry ? (
+                    <Button variant="secondary" onClick={participant.onRetry}>
+                      Reintentar
+                    </Button>
+                  ) : null}
+                </div>
+              ) : null}
+            </article>
+          );
+        })}
       </div>
       <div className={styles.floatingDock}>{dock}</div>
     </section>
   );
+}
+
+function ParticipantPortrait({ name, thumbnailUrl }: { name: string; thumbnailUrl: string | null }) {
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
+
+  if (thumbnailUrl && failedUrl !== thumbnailUrl) {
+    return (
+      <img
+        className={styles.avatarHaloImage}
+        src={thumbnailUrl}
+        alt=""
+        decoding="async"
+        onError={() => setFailedUrl(thumbnailUrl)}
+      />
+    );
+  }
+
+  return <span>{name.slice(0, 1).toLocaleUpperCase()}</span>;
 }
 
 export function InteractCallControls({
@@ -188,6 +233,8 @@ export function InteractCallControls({
   const isActive = activeOverride ?? (status === "active" || status === "degraded");
   const isEnding = status === "ending";
   const showEndControl = isActive || isEnding;
+  // Show the common path first: before the call there is nothing to interrupt.
+  const showInterruptControl = isActive;
   const microphoneIsMuted = isActive && isMuted;
   const muteLabel = microphoneIsMuted ? "Activar micrófono" : "Silenciar micrófono";
   const callLabel = showEndControl
@@ -214,20 +261,26 @@ export function InteractCallControls({
           <YuniIcon name={microphoneIsMuted ? "micOff" : "mic"} size={24} />
         </span>
       </button>
+      {showInterruptControl ? (
+        <button
+          className={styles.controlButton}
+          type="button"
+          aria-label="Interrumpir avatar"
+          title="Interrumpir avatar"
+          onClick={onInterrupt}
+          disabled={canInterrupt === undefined ? !isActive : !canInterrupt}
+        >
+          <span className={styles.controlIcon} aria-hidden="true">
+            <YuniIcon name="pause" size={24} />
+          </span>
+        </button>
+      ) : null}
       <button
-        className={styles.controlButton}
-        type="button"
-        aria-label="Interrumpir avatar"
-        title="Interrumpir avatar"
-        onClick={onInterrupt}
-        disabled={canInterrupt === undefined ? !isActive : !canInterrupt}
-      >
-        <span className={styles.controlIcon} aria-hidden="true">
-          <YuniIcon name="pause" size={24} />
-        </span>
-      </button>
-      <button
-        className={`${styles.controlButton} ${showEndControl ? styles.controlButtonDanger : styles.controlButtonPrimary}`}
+        className={`${styles.controlButton} ${
+          showEndControl
+            ? styles.controlButtonDanger
+            : `${styles.controlButtonPrimary} ${styles.controlButtonWithText}`
+        }`}
         type="button"
         aria-label={callLabel}
         title={callLabel}
@@ -237,6 +290,7 @@ export function InteractCallControls({
         <span className={styles.controlIcon} aria-hidden="true">
           <YuniIcon name={showEndControl ? "callEnd" : "call"} size={24} />
         </span>
+        {showEndControl ? null : <span className={styles.startText}>{callLabel}</span>}
       </button>
     </div>
   );

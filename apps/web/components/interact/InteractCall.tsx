@@ -406,6 +406,7 @@ export function InteractCall({ avatarId }: { avatarId: string }) {
           {
             id: avatar.id,
             name: avatar.name,
+            thumbnailUrl: avatar.thumbnailUrl ?? null,
             status: call.status === "active" ? "active" : call.status === "starting" ? "connecting" : "ready",
             isSpeaking: call.isAvatarSpeaking,
             ownsTurn: call.conversationState === "thinking" || call.conversationState === "speaking",

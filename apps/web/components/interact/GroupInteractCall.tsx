@@ -2750,6 +2750,7 @@ export function GroupInteractCall({
           return {
             id: participant.avatar.id,
             name: participant.avatar.name,
+            thumbnailUrl: participant.avatar.thumbnailUrl,
             status: visibleStatus,
             statusLabel:
               visibleStatus === "ready"
@@ -2783,42 +2784,48 @@ export function GroupInteractCall({
           };
         })}
         badges={
-          <>
-            <Badge tone={isLive ? "success" : callStatus === "error" ? "danger" : "neutral"}>
-              {formatGroupCallStatus(callStatus)}
-            </Badge>
-            <Badge
-              tone={turnPhase === "speaking" ? "success" : turnPhase === "listening" ? "warning" : "neutral"}
-            >
-              {interruptionStatus
-                ? `Te escuchamos · interrumpiendo a ${humanInterruptionRef.current?.avatarName ?? "el avatar"}…`
-                : turnPhase === "speaking" && !isMuted
-                  ? `${displayedParticipants.find((item) => item.avatar.id === activeSpeakerId)?.avatar.name ?? "El avatar"} está hablando · hablá para interrumpir`
-                  : formatTurnPhase(turnPhase)}
-            </Badge>
-            <Badge tone="neutral">{displayedParticipants.length} participantes</Badge>
-            {remainingSeconds !== null ? (
-              <Badge tone={remainingSeconds <= 60 ? "warning" : "neutral"}>
-                Tiempo · {formatRemainingTime(remainingSeconds)}
+          // Before the call starts the header already says who is ready; turn
+          // badges ("Tu turno") only make sense once there is a conversation.
+          callStatus === "idle" ? null : (
+            <>
+              <Badge tone={isLive ? "success" : callStatus === "error" ? "danger" : "neutral"}>
+                {formatGroupCallStatus(callStatus)}
               </Badge>
-            ) : null}
-            {interruptionStatus === "failed" ? (
-              <Button onClick={() => void resumeHumanInterruption(true)}>Reintentar interrupción</Button>
-            ) : null}
-            {humanTurnFailed ? (
-              <Button
-                onClick={() => {
-                  const input = failedHumanTurnRef.current;
-                  if (!input) return;
-                  failedHumanTurnRef.current = null;
-                  setHumanTurnFailed(false);
-                  routeHumanTurn(input);
-                }}
+              <Badge
+                tone={
+                  turnPhase === "speaking" ? "success" : turnPhase === "listening" ? "warning" : "neutral"
+                }
               >
-                Reintentar envío
-              </Button>
-            ) : null}
-          </>
+                {interruptionStatus
+                  ? `Te escuchamos · interrumpiendo a ${humanInterruptionRef.current?.avatarName ?? "el avatar"}…`
+                  : turnPhase === "speaking" && !isMuted
+                    ? `${displayedParticipants.find((item) => item.avatar.id === activeSpeakerId)?.avatar.name ?? "El avatar"} está hablando · hablá para interrumpir`
+                    : formatTurnPhase(turnPhase)}
+              </Badge>
+              <Badge tone="neutral">{displayedParticipants.length} participantes</Badge>
+              {remainingSeconds !== null ? (
+                <Badge tone={remainingSeconds <= 60 ? "warning" : "neutral"}>
+                  Tiempo · {formatRemainingTime(remainingSeconds)}
+                </Badge>
+              ) : null}
+              {interruptionStatus === "failed" ? (
+                <Button onClick={() => void resumeHumanInterruption(true)}>Reintentar interrupción</Button>
+              ) : null}
+              {humanTurnFailed ? (
+                <Button
+                  onClick={() => {
+                    const input = failedHumanTurnRef.current;
+                    if (!input) return;
+                    failedHumanTurnRef.current = null;
+                    setHumanTurnFailed(false);
+                    routeHumanTurn(input);
+                  }}
+                >
+                  Reintentar envío
+                </Button>
+              ) : null}
+            </>
+          )
         }
         dock={
           <InteractCallControls

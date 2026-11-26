@@ -174,7 +174,6 @@ export function GroupsHub() {
     <div className={catalogStyles.layout}>
       <div className={styles.mobileHeader}>
         <PageHeader
-          eyebrow="Mis grupos"
           title="Mis grupos"
           description="Administrá grupos de dos o tres avatares y conversá con todos en una misma llamada."
           actions={

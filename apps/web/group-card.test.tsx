@@ -60,7 +60,7 @@ describe("GroupCard", () => {
     );
 
     expect(html).toContain('href="/groups/group-1"');
-    expect(html).toContain("Listo para interactuar");
+    expect(html).toContain("Disponible");
     expect(html).toContain("Interactuar");
     expect(html).toContain("2 participantes");
     expect(html).toContain("Solo se pueden compartir grupos formados por avatares propios");

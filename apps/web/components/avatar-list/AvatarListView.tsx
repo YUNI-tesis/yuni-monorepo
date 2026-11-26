@@ -73,7 +73,6 @@ export function AvatarListView() {
     <div className={catalogStyles.layout}>
       <div className={styles.mobileHeader}>
         <PageHeader
-          eyebrow="Mis avatares"
           title="Mis avatares"
           description="Administra tus avatares propios y encontrá acá los que otros usuarios te compartan."
           actions={

@@ -7,8 +7,8 @@ import { Button, ErrorState, LoadingState, useToast } from "@yuni/ui";
 import { YuniLogo } from "../brand/YuniLogo";
 import { getMe, logout, type ApiUser } from "../../lib/api/auth-api";
 import { isSessionExpirationError, replaceBrowserLocation } from "../../lib/api/http-client";
-import { PrivateNavigation } from "./PrivateNavigation";
-import type { PrivatePageLayoutVariant } from "./navigation";
+import { PrivateNavigation, PrivateTabBar } from "./PrivateNavigation";
+import { isFocusedTaskPath, type PrivatePageLayoutVariant } from "./navigation";
 import styles from "./PrivateAreaLayout.module.css";
 
 export type PrivateAreaLayoutProps = {
@@ -50,6 +50,7 @@ export function PrivateAreaLayout({
   variant = "standard",
 }: PrivateAreaLayoutProps) {
   const pathname = usePathname();
+  const showTabBar = variant === "standard" && !isFocusedTaskPath(pathname ?? "");
   const toast = useToast();
   const contentStyle = {
     "--yuni-private-page-width": maxWidth ?? "1280px",
@@ -168,7 +169,11 @@ export function PrivateAreaLayout({
     );
 
   return (
-    <div className={`${styles.layout} ${variant === "focus" ? styles.layoutFocus : ""}`}>
+    <div
+      className={`${styles.layout} ${variant === "focus" ? styles.layoutFocus : ""} ${
+        showTabBar ? styles.layoutWithTabBar : ""
+      }`}
+    >
       <a className={styles.skipLink} href="#private-page-content">
         Saltar al contenido
       </a>
@@ -247,6 +252,8 @@ export function PrivateAreaLayout({
       >
         {privateContent}
       </main>
+
+      {showTabBar ? <PrivateTabBar pathname={pathname ?? ""} /> : null}
     </div>
   );
 }

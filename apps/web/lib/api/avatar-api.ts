@@ -67,6 +67,7 @@ export type ApiInteractionContext = {
     name: string;
     description: string;
     status: ApiAvatarStatus;
+    thumbnailUrl?: string | null;
   };
   access: {
     type: "owner" | "shared";

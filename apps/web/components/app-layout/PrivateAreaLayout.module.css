@@ -29,7 +29,7 @@
   padding: 11px 16px;
   background: var(--yuni-color-surface);
   color: var(--yuni-color-text);
-  font-weight: 850;
+  font-weight: 600;
   text-decoration: none;
   opacity: 0;
   pointer-events: none;
@@ -106,12 +106,19 @@
   transition: color 240ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.brandLink:hover .logo {
-  transform: translateY(-1px) scale(1.035);
+@media (hover: hover) and (pointer: fine) {
+  .brandLink:hover .logo {
+    transform: translateY(-1px) scale(1.035);
+  }
+
+  .brandLink:hover .brandText {
+    color: var(--yuni-color-primary);
+  }
 }
 
-.brandLink:hover .brandText {
-  color: var(--yuni-color-primary);
+.brandLink:active .logo {
+  transform: scale(0.94);
+  transition-duration: 80ms;
 }
 
 .nav {
@@ -142,7 +149,7 @@
   padding: 0 14px;
   color: var(--yuni-color-text-muted);
   font-size: var(--yuni-font-sm);
-  font-weight: 850;
+  font-weight: 600;
   text-align: center;
   text-decoration: none;
   white-space: nowrap;
@@ -153,13 +160,20 @@
     color 160ms ease;
 }
 
-.navLink:hover {
-  border-color: rgba(255, 255, 255, 0.14);
-  background: rgba(255, 255, 255, 0.065);
+@media (hover: hover) and (pointer: fine) {
+  .navLink:hover {
+    border-color: rgba(255, 255, 255, 0.14);
+    background: rgba(255, 255, 255, 0.065);
+    color: var(--yuni-color-text);
+    box-shadow:
+      inset 0 0 0 1px rgba(255, 255, 255, 0.055),
+      0 0 0 1px rgba(100, 195, 215, 0.08);
+  }
+}
+
+.navLink:active {
+  background: rgba(255, 255, 255, 0.1);
   color: var(--yuni-color-text);
-  box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.055),
-    0 0 0 1px rgba(100, 195, 215, 0.08);
 }
 
 .navLinkActive {
@@ -198,11 +212,23 @@
     box-shadow 160ms ease;
 }
 
-.profileTrigger:hover,
+.profileTrigger:active,
 .profileTrigger[aria-expanded="true"] {
   border-color: rgba(255, 255, 255, 0.14);
   background: rgba(255, 255, 255, 0.065);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.035);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .profileTrigger:hover {
+    border-color: rgba(255, 255, 255, 0.14);
+    background: rgba(255, 255, 255, 0.065);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.035);
+  }
+
+  .profileTrigger:hover .chevron {
+    stroke: var(--yuni-color-text);
+  }
 }
 
 .avatar {
@@ -217,7 +243,7 @@
   background: linear-gradient(135deg, var(--yuni-color-accent), var(--yuni-color-primary-deep));
   color: #fff;
   font-size: 0.875rem;
-  font-weight: 900;
+  font-weight: 700;
   letter-spacing: 0.035em;
   box-shadow: 0 6px 18px rgba(100, 195, 215, 0.16);
 }
@@ -234,7 +260,7 @@
   overflow: hidden;
   color: var(--yuni-color-text);
   font-size: var(--yuni-font-sm);
-  font-weight: 850;
+  font-weight: 600;
   line-height: 1.2;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -271,7 +297,6 @@
     transform 160ms ease;
 }
 
-.profileTrigger:hover .chevron,
 .profileTrigger[aria-expanded="true"] .chevron {
   stroke: var(--yuni-color-text);
 }
@@ -310,7 +335,7 @@
   color: var(--yuni-color-danger);
   font: inherit;
   font-size: var(--yuni-font-sm);
-  font-weight: 850;
+  font-weight: 600;
   cursor: pointer;
   transition:
     border-color 160ms ease,
@@ -320,10 +345,16 @@
     opacity 160ms ease;
 }
 
-.logout:hover:not(:disabled) {
-  border-color: rgba(255, 114, 114, 0.2);
+.logout:active:not(:disabled) {
   background: var(--yuni-color-danger-soft);
-  box-shadow: inset 0 0 0 1px rgba(255, 114, 114, 0.04);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .logout:hover:not(:disabled) {
+    border-color: rgba(255, 114, 114, 0.2);
+    background: var(--yuni-color-danger-soft);
+    box-shadow: inset 0 0 0 1px rgba(255, 114, 114, 0.04);
+  }
 }
 
 .logout:disabled {
@@ -352,6 +383,10 @@
     opacity: 1;
     transform: translateY(0) scale(1);
   }
+}
+
+.tabBar {
+  display: none;
 }
 
 .content {
@@ -395,14 +430,69 @@
 }
 
 @media (max-width: 760px) {
+  /* One compact row: logo and profile. Sections move to the tab bar. */
   .headerInner {
     gap: var(--yuni-space-3);
-    min-height: 66px;
+    min-height: 54px;
+    padding: 6px 0;
   }
 
-  .navLink {
-    min-height: 44px;
-    padding: 0 12px;
+  .nav {
+    display: none;
+  }
+
+  .layoutWithTabBar .content {
+    padding-bottom: calc(96px + env(safe-area-inset-bottom));
+  }
+
+  .tabBar {
+    position: fixed;
+    z-index: var(--yuni-z-dropdown);
+    right: 0;
+    bottom: 0;
+    left: 0;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    border-top: 1px solid rgba(255, 255, 255, 0.09);
+    padding: 6px max(10px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom))
+      max(10px, env(safe-area-inset-left));
+    background: rgba(14, 9, 24, 0.72);
+    -webkit-backdrop-filter: blur(22px) saturate(1.7);
+    backdrop-filter: blur(22px) saturate(1.7);
+  }
+
+  .tabLink {
+    display: grid;
+    min-height: 48px;
+    justify-items: center;
+    align-content: center;
+    gap: 3px;
+    border-radius: var(--yuni-radius-md);
+    color: rgba(247, 242, 255, 0.56);
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    text-decoration: none;
+    -webkit-tap-highlight-color: transparent;
+    transition: color 160ms ease;
+  }
+
+  .tabLink svg {
+    transition: transform 160ms ease;
+  }
+
+  .tabLink:active svg {
+    transform: scale(0.88);
+    transition-duration: 80ms;
+  }
+
+  .tabLink:focus-visible {
+    outline: none;
+    box-shadow: var(--yuni-focus-ring);
+  }
+
+  .tabLinkActive {
+    color: var(--yuni-color-accent);
   }
 
   .brandText,
@@ -411,8 +501,8 @@
   }
 
   .logo {
-    width: 36px;
-    height: 31px;
+    width: 32px;
+    height: 28px;
   }
 
   .profileTrigger {
@@ -431,14 +521,27 @@
   }
 }
 
-@media (max-width: 480px) {
-  .nav {
-    gap: 4px;
+/* Translucent chrome turns solid when the system asks for it. */
+@media (prefers-reduced-transparency: reduce) {
+  .header,
+  .tabBar {
+    background: #0e0918;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+@media (prefers-contrast: more) {
+  .header,
+  .tabBar {
+    border-color: var(--yuni-color-text-muted);
+    background: #0e0918;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
   }
 
-  .navLink {
-    padding: 0 9px;
-    font-size: 0.8125rem;
+  .tabLink {
+    color: var(--yuni-color-text);
   }
 }
 
@@ -449,11 +552,15 @@
   .navLink,
   .profileTrigger,
   .chevron,
-  .logout {
+  .logout,
+  .tabLink,
+  .tabLink svg {
     transition: none;
   }
 
-  .brandLink:hover .logo {
+  .brandLink:hover .logo,
+  .brandLink:active .logo,
+  .tabLink:active svg {
     transform: none;
   }
 

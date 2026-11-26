@@ -14,8 +14,9 @@
   color: var(--yuni-color-text-muted);
   font: inherit;
   font-size: var(--yuni-font-sm);
-  font-weight: 850;
+  font-weight: 600;
   cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
   transition:
     border-color 160ms ease,
     background-color 160ms ease,
@@ -23,10 +24,17 @@
     color 160ms ease;
 }
 
-.filterButton:hover {
-  border-color: rgba(255, 255, 255, 0.18);
-  background: rgba(255, 255, 255, 0.075);
+.filterButton:active {
+  background: rgba(255, 255, 255, 0.11);
   color: var(--yuni-color-text);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .filterButton:hover {
+    border-color: rgba(255, 255, 255, 0.18);
+    background: rgba(255, 255, 255, 0.075);
+    color: var(--yuni-color-text);
+  }
 }
 
 .filterButton:focus-visible {

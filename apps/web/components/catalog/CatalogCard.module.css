@@ -11,7 +11,8 @@
   isolation: isolate;
   transition:
     border-color 180ms ease,
-    box-shadow 180ms ease;
+    box-shadow 180ms ease,
+    transform 160ms ease;
 }
 
 .card::before {
@@ -45,12 +46,30 @@
   outline-offset: -3px;
 }
 
-.card:hover,
 .card:focus-within {
   border-color: var(--yuni-color-accent);
   box-shadow:
     0 20px 52px rgba(0, 0, 0, 0.38),
     0 0 0 1px color-mix(in srgb, var(--yuni-color-accent) 24%, transparent);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .card:hover {
+    border-color: var(--yuni-color-accent);
+    box-shadow:
+      0 20px 52px rgba(0, 0, 0, 0.38),
+      0 0 0 1px color-mix(in srgb, var(--yuni-color-accent) 24%, transparent);
+  }
+
+  .card:hover .image {
+    filter: saturate(1.08) contrast(1.03);
+  }
+}
+
+/* Pressing the card (not its buttons) gives immediate feedback. */
+.card:has(> .profileLink:active) {
+  transform: scale(0.985);
+  transition-duration: 80ms;
 }
 
 .media {
@@ -141,7 +160,6 @@
   transition: filter 180ms ease;
 }
 
-.card:hover .image,
 .card:focus-within .image {
   filter: saturate(1.08) contrast(1.03);
 }
@@ -177,7 +195,7 @@
   background: color-mix(in srgb, var(--yuni-color-bg) 88%, transparent);
   color: var(--yuni-color-text);
   font-size: var(--yuni-font-xs);
-  font-weight: 800;
+  font-weight: 600;
   line-height: 1.2;
   pointer-events: none;
 }
@@ -240,6 +258,8 @@
   overflow: hidden;
   color: var(--yuni-color-text);
   font-size: clamp(var(--yuni-font-lg), 2.2vw, var(--yuni-font-xl));
+  font-weight: 700;
+  letter-spacing: -0.012em;
   line-height: 1.12;
   overflow-wrap: anywhere;
   text-wrap: balance;
@@ -268,7 +288,7 @@
   padding: 0;
   color: var(--yuni-color-text);
   font-size: var(--yuni-font-xs);
-  font-weight: 750;
+  font-weight: 500;
   list-style: none;
   opacity: 0.78;
 }
@@ -292,17 +312,33 @@
   pointer-events: none;
 }
 
+/* A neutral launcher: the page's own "Crear" stays the only primary action. */
 .primaryAction {
   width: 100%;
   min-height: 48px;
+  border-color: rgba(255, 255, 255, 0.14);
   border-radius: 12px;
+  background: rgba(255, 255, 255, 0.07);
   box-shadow: none;
+  color: var(--yuni-color-text);
   letter-spacing: 0.01em;
   pointer-events: auto;
 }
 
-.primaryAction:hover:not(:disabled) {
-  transform: none;
+.primaryAction svg {
+  color: var(--yuni-color-accent);
+}
+
+.primaryAction:active:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .primaryAction:hover:not(:disabled) {
+    border-color: rgba(255, 255, 255, 0.22);
+    background: rgba(255, 255, 255, 0.1);
+    transform: none;
+  }
 }
 
 .notice {
@@ -353,10 +389,12 @@
   }
 
   .compactOnMobile:hover,
-  .compactOnMobile:focus-within {
+  .compactOnMobile:focus-within,
+  .compactOnMobile:has(> .profileLink:active) {
     border-color: var(--yuni-color-border);
     background: var(--yuni-color-surface-soft);
     box-shadow: none;
+    transform: none;
   }
 
   .compactOnMobile:focus-within {
@@ -406,14 +444,16 @@
     align-self: center;
   }
 
+  /* Long names wrap to a second line instead of being cut to "Rev…". */
   .compactOnMobile .title {
-    display: block;
+    display: -webkit-box;
     overflow: hidden;
     font-size: var(--yuni-font-md);
     line-height: 1.25;
-    text-overflow: ellipsis;
-    text-wrap: nowrap;
-    white-space: nowrap;
+    text-wrap: pretty;
+    white-space: normal;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
   }
 
   .compactOnMobile .description {
@@ -445,7 +485,7 @@
     background: transparent;
     color: var(--yuni-color-text-muted);
     font-size: 0.7rem;
-    font-weight: 750;
+    font-weight: 600;
     line-height: 1.25;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -518,7 +558,8 @@
     transition: none;
   }
 
-  .card :global(.yuni-button:hover:not(:disabled)) {
+  .card :global(.yuni-button:hover:not(:disabled)),
+  .card:has(> .profileLink:active) {
     transform: none;
   }
 }

@@ -117,9 +117,9 @@ export function createAvatarsService(dependencies: AvatarsServiceDependencies) {
           : access.avatar.providerSyncStatus === "failed"
             ? "failed"
             : "processing";
+      const parsedLiveAvatarConfig = LiveAvatarConfigSchema.safeParse(access.avatar.liveAvatarConfig);
       const hasValidConfiguration =
-        VoiceConfigSchema.safeParse(access.avatar.voiceConfig).success &&
-        LiveAvatarConfigSchema.safeParse(access.avatar.liveAvatarConfig).success;
+        VoiceConfigSchema.safeParse(access.avatar.voiceConfig).success && parsedLiveAvatarConfig.success;
       const voiceAvailability = getVoiceAvailability(access.avatar, hasValidConfiguration);
 
       return {
@@ -128,6 +128,9 @@ export function createAvatarsService(dependencies: AvatarsServiceDependencies) {
           name: access.avatar.name,
           description: access.avatar.description,
           status: access.avatar.status,
+          thumbnailUrl: parsedLiveAvatarConfig.success
+            ? readSafeHttpUrl(parsedLiveAvatarConfig.data.thumbnailUrl)
+            : null,
         },
         access: {
           type: access.type,

@@ -39,6 +39,7 @@ vi.mock("./hooks/useElevenLabsVoiceOptions", () => ({
 }));
 
 vi.mock("./hooks/useAvatarBuilder", () => ({
+  avatarBuilderSteps: ["Identidad", "Avatar", "Voz", "Persona", "Contexto", "Review"],
   buildCreateAvatarRequest: () => ({}),
   useAvatarBuilder: () => ({
     state: { files: avatarState.builderFiles },

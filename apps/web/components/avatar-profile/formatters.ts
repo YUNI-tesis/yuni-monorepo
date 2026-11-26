@@ -80,7 +80,7 @@ export function getAvatarHeaderState(avatar: ApiAvatar): AvatarHeaderState {
   }
 
   return {
-    label: "Listo para usar",
+    label: "Disponible",
     tone: "success",
   };
 }

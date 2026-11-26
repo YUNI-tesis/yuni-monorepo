@@ -69,7 +69,8 @@
   margin: 0;
   color: var(--yuni-color-text);
   font-size: clamp(var(--yuni-font-2xl), 4vw, var(--yuni-font-3xl));
-  font-weight: 900;
+  font-weight: 700;
+  letter-spacing: -0.028em;
   line-height: 1.04;
   overflow-wrap: anywhere;
   text-wrap: balance;

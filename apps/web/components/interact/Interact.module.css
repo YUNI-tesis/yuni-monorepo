@@ -201,7 +201,7 @@
   padding: 5px 9px;
   background: rgba(7, 10, 18, 0.72);
   font-size: var(--yuni-font-xs);
-  font-weight: 800;
+  font-weight: 600;
   backdrop-filter: blur(14px);
 }
 
@@ -241,6 +241,7 @@
   display: grid;
   width: clamp(112px, 16vw, 184px);
   aspect-ratio: 1;
+  overflow: hidden;
   place-items: center;
   border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 999px;
@@ -255,12 +256,22 @@
 .avatarHalo span {
   color: white;
   font-size: clamp(2.8rem, 7vw, 5.75rem);
-  font-weight: 900;
+  font-weight: 800;
   line-height: 1;
+}
+
+.avatarHaloImage {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
 }
 
 .videoPlaceholder strong {
   font-size: clamp(1.6rem, 4vw, 3.4rem);
+  font-weight: 700;
+  letter-spacing: -0.022em;
   line-height: 1.05;
 }
 
@@ -276,7 +287,7 @@
 }
 
 .participantGrid:not([data-count="1"]) .avatarHalo {
-  width: clamp(72px, 9vw, 112px);
+  width: clamp(108px, 13.5vw, 168px);
 }
 
 .participantGrid:not([data-count="1"]) .avatarHalo span {
@@ -285,6 +296,7 @@
 
 .participantGrid:not([data-count="1"]) .videoPlaceholder > strong {
   font-size: clamp(1rem, 2.4vw, 1.75rem);
+  letter-spacing: -0.012em;
 }
 
 .participantGrid:not([data-count="1"]) .videoPlaceholder > span {
@@ -332,8 +344,9 @@
   cursor: pointer;
   font: inherit;
   font-size: var(--yuni-font-sm);
-  font-weight: 850;
+  font-weight: 600;
   touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
   transition:
     background 180ms ease,
     border-color 180ms ease,
@@ -341,14 +354,17 @@
     transform 180ms ease;
 }
 
-.controlButton:hover:not(:disabled) {
-  transform: translateY(-1px);
-  border-color: rgba(255, 255, 255, 0.24);
-  background: rgba(255, 255, 255, 0.16);
+@media (hover: hover) and (pointer: fine) {
+  .controlButton:hover:not(:disabled) {
+    transform: translateY(-1px);
+    border-color: rgba(255, 255, 255, 0.24);
+    background: rgba(255, 255, 255, 0.16);
+  }
 }
 
 .controlButton:active:not(:disabled) {
   transform: scale(0.96);
+  transition-duration: 80ms;
 }
 
 .controlButton:focus-visible {
@@ -368,6 +384,20 @@
   color: #041015;
 }
 
+/* Before the call, the main action says what it does. */
+.controlButton.controlButtonWithText {
+  width: auto;
+  flex: 0 0 auto;
+  gap: 10px;
+  padding: 0 24px 0 20px;
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.startText {
+  white-space: nowrap;
+}
+
 .controlButtonDanger {
   border-color: rgba(255, 114, 114, 0.46);
   background: rgba(255, 72, 94, 0.92);
@@ -379,9 +409,11 @@
   box-shadow: 0 8px 22px rgba(255, 72, 94, 0.2);
 }
 
-.controlButtonMuted:hover:not(:disabled) {
-  border-color: rgba(255, 170, 170, 0.68);
-  background: rgba(255, 72, 94, 0.94);
+@media (hover: hover) and (pointer: fine) {
+  .controlButtonMuted:hover:not(:disabled) {
+    border-color: rgba(255, 170, 170, 0.68);
+    background: rgba(255, 72, 94, 0.94);
+  }
 }
 
 .controlIcon {
@@ -529,10 +561,16 @@
     transform 180ms ease;
 }
 
-.historyItem:hover {
-  transform: translateY(-1px);
-  border-color: rgba(50, 250, 245, 0.28);
-  background: rgba(50, 250, 245, 0.08);
+@media (hover: hover) and (pointer: fine) {
+  .historyItem:hover {
+    transform: translateY(-1px);
+    border-color: rgba(50, 250, 245, 0.28);
+    background: rgba(50, 250, 245, 0.08);
+  }
+}
+
+.historyItem:active {
+  background: rgba(50, 250, 245, 0.12);
 }
 
 .historyItem:focus-visible {
@@ -860,6 +898,12 @@
     flex-basis: 48px;
   }
 
+  .stage .controlButton.controlButtonWithText {
+    width: auto;
+    flex-basis: auto;
+    padding: 0 20px 0 16px;
+  }
+
   .focusTitle h1 {
     font-size: var(--yuni-font-lg);
   }
@@ -933,7 +977,26 @@
   }
 
   .controlButton:hover:not(:disabled),
+  .controlButton:active:not(:disabled),
   .historyItem:hover {
     transform: none;
+  }
+}
+
+/* Floating call chrome turns solid when the system asks for it. */
+@media (prefers-reduced-transparency: reduce) {
+  .callControls,
+  .participantIdentity span {
+    background: #090c14;
+    backdrop-filter: none;
+  }
+}
+
+@media (prefers-contrast: more) {
+  .callControls,
+  .participantIdentity span {
+    border-color: rgba(255, 255, 255, 0.6);
+    background: #090c14;
+    backdrop-filter: none;
   }
 }
