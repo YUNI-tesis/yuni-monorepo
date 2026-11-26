@@ -107,7 +107,7 @@ export function GroupCard({
 function getInteractionPresentation(group: ApiAvatarGroup) {
   if (group.interactionAvailability.status === "ready") {
     return group.access.canInteract
-      ? { label: "Listo para interactuar", tone: "success" as const }
+      ? { label: "Disponible", tone: "success" as const }
       : { label: "Acceso no disponible", tone: "neutral" as const };
   }
   const labels = {

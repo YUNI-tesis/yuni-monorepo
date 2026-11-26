@@ -117,6 +117,7 @@
 .sectionTitle {
   margin: var(--yuni-space-1) 0 0;
   font-size: var(--yuni-font-xl);
+  letter-spacing: -0.015em;
   line-height: 1.2;
 }
 
@@ -250,17 +251,19 @@
   margin: 0;
 }
 
+/* Chart full width, metrics in a row below: no card stretches over empty space. */
 .analysisGrid {
   display: grid;
-  grid-template-columns: minmax(0, 1.65fr) minmax(280px, 0.75fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--yuni-space-4);
-  align-items: stretch;
+  align-items: start;
 }
 
 .trendCard,
 .qualityCard {
   display: grid;
   min-width: 0;
+  align-content: start;
   gap: var(--yuni-space-5);
 }
 
@@ -363,9 +366,14 @@
   padding: var(--yuni-space-2) var(--yuni-space-3);
   font-size: var(--yuni-font-xs);
   line-height: 1.4;
+  /* Hidden tooltips must not widen the page: invisible ones near the right edge
+     made phones zoom out the whole dashboard. */
+  display: none;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 120ms ease;
+  transition:
+    opacity 120ms ease,
+    display 120ms allow-discrete;
 }
 
 .chartHotspot:nth-of-type(-n + 2) span {
@@ -381,7 +389,15 @@
 
 .chartHotspot:hover span,
 .chartHotspot:focus-visible span {
+  display: block;
   opacity: 1;
+}
+
+@starting-style {
+  .chartHotspot:hover span,
+  .chartHotspot:focus-visible span {
+    opacity: 0;
+  }
 }
 
 .chartDates {
@@ -426,11 +442,13 @@
 
 .qualityMetrics {
   display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: var(--yuni-space-3);
 }
 
 .qualityMetrics > div {
   display: grid;
+  align-content: start;
   gap: var(--yuni-space-2);
   border: 1px solid var(--yuni-color-border);
   border-radius: var(--yuni-radius-md);
@@ -455,7 +473,7 @@
   background: transparent;
   color: var(--yuni-color-accent);
   font: inherit;
-  font-weight: 800;
+  font-weight: 600;
   text-align: left;
   cursor: pointer;
 }
@@ -580,10 +598,6 @@
 @media (max-width: 1040px) {
   .metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .analysisGrid {
-    grid-template-columns: minmax(0, 1fr);
   }
 
   .qualityMetrics {

@@ -5,11 +5,12 @@ import { useRef, useState } from "react";
 import { Button, Card, PageHeader, useToast } from "@yuni/ui";
 import { createAvatar, type ApiAvatar, updateAvatar, uploadAvatarDocument } from "../../lib/api/avatar-api";
 import { ApiClientError } from "../../lib/api/http-client";
-import { buildCreateAvatarRequest, useAvatarBuilder } from "../../hooks/useAvatarBuilder";
+import { avatarBuilderSteps, buildCreateAvatarRequest, useAvatarBuilder } from "../../hooks/useAvatarBuilder";
 import { useElevenLabsVoiceOptions } from "../../hooks/useElevenLabsVoiceOptions";
 import { invalidateAvatarListCache } from "../../hooks/useAvatarList";
 import { useLiveAvatarOptions } from "../../hooks/useLiveAvatarOptions";
 import { BuilderSteps } from "./BuilderSteps";
+import { BuilderStepPosition } from "./StepHeading";
 import { ContextStep } from "./steps/ContextStep";
 import { IdentityStep } from "./steps/IdentityStep";
 import { LiveAvatarStep } from "./steps/LiveAvatarStep";
@@ -105,25 +106,32 @@ export function AvatarBuilder() {
       <Card padding="lg" className={styles.root}>
         <BuilderSteps currentStepIndex={builder.currentStepIndex} />
 
-        <div className={styles.content}>
-          {builder.currentStep === "Identidad" ? <IdentityStep builder={builder} /> : null}
-          {builder.currentStep === "Avatar" ? (
-            <LiveAvatarStep builder={builder} liveAvatarOptions={liveAvatarOptions} />
-          ) : null}
-          {builder.currentStep === "Voz" ? <VoiceStep builder={builder} voiceOptions={voiceOptions} /> : null}
-          {builder.currentStep === "Persona" ? <PersonaStep builder={builder} /> : null}
-          {builder.currentStep === "Contexto" ? <ContextStep builder={builder} /> : null}
-          {builder.currentStep === "Review" ? <ReviewStep builder={builder} /> : null}
-        </div>
+        <BuilderStepPosition.Provider
+          value={{ index: builder.currentStepIndex, total: avatarBuilderSteps.length }}
+        >
+          <div className={styles.content}>
+            {builder.currentStep === "Identidad" ? <IdentityStep builder={builder} /> : null}
+            {builder.currentStep === "Avatar" ? (
+              <LiveAvatarStep builder={builder} liveAvatarOptions={liveAvatarOptions} />
+            ) : null}
+            {builder.currentStep === "Voz" ? (
+              <VoiceStep builder={builder} voiceOptions={voiceOptions} />
+            ) : null}
+            {builder.currentStep === "Persona" ? <PersonaStep builder={builder} /> : null}
+            {builder.currentStep === "Contexto" ? <ContextStep builder={builder} /> : null}
+            {builder.currentStep === "Review" ? <ReviewStep builder={builder} /> : null}
+          </div>
+        </BuilderStepPosition.Provider>
 
         <div className={styles.actions}>
+          {/* The first step has nothing to go back to: say what the button does. */}
           <Button
             type="button"
             variant="secondary"
-            onClick={builder.goBack}
-            disabled={!builder.canGoBack || isSubmitting}
+            onClick={builder.canGoBack ? builder.goBack : () => router.push("/avatars")}
+            disabled={isSubmitting}
           >
-            Volver
+            {builder.canGoBack ? "Volver" : "Cancelar"}
           </Button>
           {builder.isLastStep ? (
             <Button type="button" onClick={saveAvatar} loading={isSubmitting}>

@@ -108,6 +108,7 @@ export function CatalogCard({
       <div className={`${styles.footer} ${primaryAction ? "" : styles.footerNotice}`}>
         {primaryAction ? (
           <Button
+            variant="secondary"
             className={styles.primaryAction}
             icon={<YuniIcon name={primaryAction.icon} />}
             onClick={primaryAction.onSelect}

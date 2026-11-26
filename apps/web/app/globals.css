@@ -19,11 +19,17 @@ body {
 
 a {
   color: var(--yuni-color-accent);
-  font-weight: 800;
+  font-weight: 600;
   text-decoration: none;
 }
 
-a:hover {
+@media (hover: hover) and (pointer: fine) {
+  a:hover {
+    color: var(--yuni-color-accent-hover);
+  }
+}
+
+a:active {
   color: var(--yuni-color-accent-hover);
 }
 

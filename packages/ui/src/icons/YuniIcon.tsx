@@ -34,6 +34,7 @@ import {
   SparklesIcon,
   Upload03Icon,
   UserCircleIcon,
+  UserGroupIcon,
   ViewIcon,
   ViewOffSlashIcon,
 } from "@hugeicons/core-free-icons";
@@ -76,6 +77,7 @@ export const yuniIcons = {
   sparkles: SparklesIcon,
   upload: Upload03Icon,
   user: UserCircleIcon,
+  users: UserGroupIcon,
   view: ViewIcon,
   viewOff: ViewOffSlashIcon,
 } satisfies Record<string, IconSvgElement>;

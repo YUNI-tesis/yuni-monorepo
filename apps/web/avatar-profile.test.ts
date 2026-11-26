@@ -100,7 +100,7 @@ describe("avatar profile", () => {
     [{ status: "draft", providerStatus: "needs_attention" }, "Borrador", "warning"],
     [{ status: "active", providerStatus: "needs_attention" }, "Revisar configuración", "danger"],
     [{ status: "active", providerStatus: "preparing" }, "Preparando cambios", "warning"],
-    [{ status: "active", providerStatus: "ready" }, "Listo para usar", "success"],
+    [{ status: "active", providerStatus: "ready" }, "Disponible", "success"],
   ] as const)("maps status %o to the human header state", (overrides, label, tone) => {
     expect(getAvatarHeaderState({ ...avatar, ...overrides })).toEqual({ label, tone });
   });

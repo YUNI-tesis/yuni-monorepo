@@ -19,7 +19,7 @@ const availabilityContent: Record<
   AvatarInteractionAvailability,
   { label: string; tone: CatalogCardStatusTone }
 > = {
-  ready: { label: "Listo para interactuar", tone: "success" },
+  ready: { label: "Disponible", tone: "success" },
   needs_attention: { label: "Revisar configuración", tone: "danger" },
   preparing: { label: "Preparándose", tone: "warning" },
   unavailable: { label: "No disponible", tone: "neutral" },

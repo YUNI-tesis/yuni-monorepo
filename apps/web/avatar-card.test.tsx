@@ -40,7 +40,7 @@ describe("AvatarCard", () => {
     const html = renderCard(createAvatar({ contextIssueCount: 3 }), "catalog");
     expect(html).toContain("Contexto con errores");
     expect(html).toContain("Interactuar");
-    expect(html).not.toContain("Listo para interactuar");
+    expect(html).not.toContain("Disponible");
   });
 
   it("does not show the owner's processing problems to shared users", () => {
@@ -51,7 +51,7 @@ describe("AvatarCard", () => {
       })
     );
     expect(html).not.toContain("Contexto con errores");
-    expect(html).toContain("Listo para interactuar");
+    expect(html).toContain("Disponible");
   });
 
   it("renders the visual launcher without catalog metadata on Dashboard", () => {
@@ -60,7 +60,7 @@ describe("AvatarCard", () => {
     expect(html).toContain("Ada Ciencias");
     expect(html).toContain('href="/avatars/avatar-1"');
     expect(html).toContain('aria-label="Ver perfil de Ada Ciencias"');
-    expect(html).toContain("Listo para interactuar");
+    expect(html).toContain("Disponible");
     expect(html).toContain("Interactuar");
     expect(html).toContain('loading="lazy"');
     expect(html).toContain('aria-label="Más acciones para Ada Ciencias"');
@@ -95,7 +95,7 @@ describe("AvatarCard", () => {
   });
 
   it.each([
-    ["ready", "Listo para interactuar", "Interactuar"],
+    ["ready", "Disponible", "Interactuar"],
     ["needs_attention", "Revisar configuración", "Revisar configuración"],
   ] as const)("renders the owner %s state with its primary action", (state, badge, action) => {
     const html = renderCard(createAvatar({ interactionAvailability: state }));

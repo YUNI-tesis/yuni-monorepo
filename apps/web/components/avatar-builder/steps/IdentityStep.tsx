@@ -16,7 +16,7 @@ export function IdentityStep({ builder }: { builder: AvatarBuilderController }) 
             id="avatar-name"
             value={builder.state.name}
             invalid={Boolean(builder.errors.name)}
-            placeholder="YUNI Demo"
+            placeholder="Ej.: Tutor de Historia"
             onChange={(event) => builder.updateField("name", event.currentTarget.value)}
           />
         </FormField>

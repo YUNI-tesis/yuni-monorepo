@@ -991,7 +991,7 @@ describe("@yuni/api voice sessions", () => {
 
     expect(contextResponse.status).toBe(200);
     expect(contextBody.interactionContext).toMatchObject({
-      avatar: { id: "avatar-1", name: "Tutor Demo", status: "active" },
+      avatar: { id: "avatar-1", name: "Tutor Demo", status: "active", thumbnailUrl: null },
       access: {
         type: "shared",
         canInteract: true,

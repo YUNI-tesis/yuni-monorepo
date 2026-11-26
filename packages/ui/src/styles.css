@@ -34,8 +34,7 @@
   --yuni-space-8: 32px;
   --yuni-space-10: 40px;
   --yuni-space-12: 48px;
-  --yuni-font-family:
-    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --yuni-font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --yuni-font-xs: 0.75rem;
   --yuni-font-sm: 0.875rem;
   --yuni-font-md: 1rem;
@@ -102,7 +101,7 @@
   margin: 0;
   color: var(--yuni-color-accent);
   font-size: var(--yuni-font-xs);
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -110,8 +109,8 @@
 .yuni-page-header__title {
   margin: 0;
   font-size: clamp(2rem, 5vw, var(--yuni-font-3xl));
-  line-height: 1.02;
-  letter-spacing: 0;
+  line-height: 1.05;
+  letter-spacing: -0.025em;
 }
 
 .yuni-page-header__description,
@@ -164,10 +163,11 @@
   border: 1px solid transparent;
   border-radius: var(--yuni-radius-md);
   font: inherit;
-  font-weight: 800;
+  font-weight: 600;
   text-decoration: none;
   white-space: nowrap;
   cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
   transition:
     border-color 160ms ease,
     background-color 160ms ease,
@@ -192,9 +192,17 @@
   box-shadow: var(--yuni-focus-ring);
 }
 
-.yuni-button:hover:not(:disabled),
-.yuni-icon-button:hover:not(:disabled) {
-  transform: translateY(-1px);
+@media (hover: hover) and (pointer: fine) {
+  .yuni-button:hover:not(:disabled),
+  .yuni-icon-button:hover:not(:disabled) {
+    transform: translateY(-1px);
+  }
+}
+
+.yuni-button:active:not(:disabled),
+.yuni-icon-button:active:not(:disabled) {
+  transform: scale(0.97);
+  transition-duration: 80ms;
 }
 
 .yuni-button:disabled,
@@ -216,9 +224,19 @@
   color: #ffffff;
 }
 
-.yuni-button--primary:hover:not(:disabled) {
-  background: linear-gradient(135deg, var(--yuni-color-primary-hover), var(--yuni-color-accent-hover));
-  box-shadow: 0 12px 32px rgba(129, 95, 208, 0.24);
+@media (hover: hover) and (pointer: fine) {
+  .yuni-button--primary:hover:not(:disabled) {
+    background: linear-gradient(135deg, var(--yuni-color-primary-hover), var(--yuni-color-accent-hover));
+    box-shadow: 0 12px 32px rgba(129, 95, 208, 0.24);
+  }
+}
+
+/* A disabled primary action must not read as available. */
+.yuni-button--primary:disabled {
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: none;
+  color: rgba(247, 242, 255, 0.42);
+  opacity: 1;
 }
 
 .yuni-button--secondary {
@@ -280,7 +298,7 @@
   border: 1px solid var(--yuni-color-border);
   padding: 4px 9px;
   font-size: var(--yuni-font-xs);
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .yuni-badge--neutral {
@@ -314,7 +332,7 @@
 .yuni-form-field__label {
   color: var(--yuni-color-text);
   font-size: var(--yuni-font-sm);
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .yuni-form-field__hint {
@@ -375,9 +393,16 @@
   transform: translateY(-50%);
 }
 
-.yuni-password-input__toggle:hover {
+.yuni-password-input__toggle:active {
   background: rgba(255, 255, 255, 0.06);
   color: var(--yuni-color-text);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .yuni-password-input__toggle:hover {
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--yuni-color-text);
+  }
 }
 
 .yuni-password-input__toggle:focus-visible {
@@ -459,9 +484,15 @@
   cursor: pointer;
 }
 
-.yuni-select__option:hover,
-.yuni-select__option[aria-selected="true"] {
+.yuni-select__option[aria-selected="true"],
+.yuni-select__option:active:not(:disabled) {
   background: var(--yuni-color-surface-muted);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .yuni-select__option:hover {
+    background: var(--yuni-color-surface-muted);
+  }
 }
 
 .yuni-select__option:disabled {
@@ -477,7 +508,7 @@
 
 .yuni-input::placeholder,
 .yuni-textarea::placeholder {
-  color: rgba(247, 242, 255, 0.44);
+  color: rgba(247, 242, 255, 0.34);
 }
 
 .yuni-input--invalid,
@@ -494,7 +525,7 @@
   gap: var(--yuni-space-2);
   color: var(--yuni-color-text);
   font-size: var(--yuni-font-sm);
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .yuni-checkbox {
@@ -526,9 +557,18 @@
   background: var(--yuni-color-surface-soft);
   color: var(--yuni-color-text-muted);
   font: inherit;
-  font-weight: 800;
+  font-weight: 600;
   padding: 9px 13px;
   cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease;
+}
+
+.yuni-tabs__trigger:active {
+  background: rgba(255, 255, 255, 0.1);
 }
 
 .yuni-tabs__trigger[aria-selected="true"] {
@@ -553,6 +593,44 @@
 
 .yuni-dialog::backdrop {
   background: rgba(0, 0, 0, 0.62);
+}
+
+/*
+ * Dialogs and drawers leave along the same path they arrive on. Transitions
+ * (not keyframes) let a close that starts mid-opening reverse from where it is.
+ * Browsers without @starting-style keep today's instant open and close.
+ */
+.yuni-dialog,
+.yuni-drawer,
+.yuni-dialog::backdrop,
+.yuni-drawer::backdrop {
+  transition:
+    opacity 200ms ease,
+    transform 240ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    overlay 240ms allow-discrete,
+    display 240ms allow-discrete;
+}
+
+.yuni-dialog:not([open]) {
+  opacity: 0;
+  transform: scale(0.96);
+}
+
+.yuni-dialog:not([open])::backdrop,
+.yuni-drawer:not([open])::backdrop {
+  opacity: 0;
+}
+
+@starting-style {
+  .yuni-dialog[open] {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+
+  .yuni-dialog[open]::backdrop,
+  .yuni-drawer[open]::backdrop {
+    opacity: 0;
+  }
 }
 
 .yuni-dialog__body {
@@ -609,10 +687,18 @@
   cursor: pointer;
 }
 
-.yuni-dialog__close:hover {
+.yuni-dialog__close:active {
   border-color: var(--yuni-color-border-strong);
   background: var(--yuni-color-surface-muted);
   color: var(--yuni-color-text);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .yuni-dialog__close:hover {
+    border-color: var(--yuni-color-border-strong);
+    background: var(--yuni-color-surface-muted);
+    color: var(--yuni-color-text);
+  }
 }
 
 .yuni-dialog__close:focus-visible {
@@ -638,8 +724,16 @@
   background: rgba(0, 0, 0, 0.62);
 }
 
-.yuni-drawer[open] {
-  animation: yuni-drawer-enter 180ms ease-out;
+.yuni-drawer:not([open]) {
+  opacity: 0;
+  transform: translateX(28px);
+}
+
+@starting-style {
+  .yuni-drawer[open] {
+    opacity: 0;
+    transform: translateX(28px);
+  }
 }
 
 .yuni-drawer__panel {
@@ -705,10 +799,18 @@
   cursor: pointer;
 }
 
-.yuni-drawer__close:hover {
+.yuni-drawer__close:active {
   border-color: var(--yuni-color-border-strong);
   background: var(--yuni-color-surface-muted);
   color: var(--yuni-color-text);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .yuni-drawer__close:hover {
+    border-color: var(--yuni-color-border-strong);
+    background: var(--yuni-color-surface-muted);
+    color: var(--yuni-color-text);
+  }
 }
 
 .yuni-drawer__close:focus-visible {
@@ -716,21 +818,20 @@
   box-shadow: var(--yuni-focus-ring);
 }
 
-@keyframes yuni-drawer-enter {
-  from {
-    opacity: 0;
-    transform: translateX(28px);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .yuni-drawer[open] {
-    animation: none;
+  /* Keep the cross-fade, drop the movement. */
+  .yuni-dialog,
+  .yuni-drawer,
+  .yuni-dialog:not([open]),
+  .yuni-drawer:not([open]) {
+    transform: none;
+  }
+
+  @starting-style {
+    .yuni-dialog[open],
+    .yuni-drawer[open] {
+      transform: none;
+    }
   }
 }
 
@@ -795,8 +896,14 @@
   cursor: pointer;
 }
 
-.yuni-dropdown__item:hover {
+.yuni-dropdown__item:active:not(:disabled) {
   background: var(--yuni-color-surface-muted);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .yuni-dropdown__item:hover {
+    background: var(--yuni-color-surface-muted);
+  }
 }
 
 .yuni-dropdown__item:disabled {
@@ -808,8 +915,14 @@
   color: #ffdada;
 }
 
-.yuni-dropdown__item--danger:hover:not(:disabled) {
+.yuni-dropdown__item--danger:active:not(:disabled) {
   background: var(--yuni-color-danger-soft);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .yuni-dropdown__item--danger:hover:not(:disabled) {
+    background: var(--yuni-color-danger-soft);
+  }
 }
 
 .yuni-dropdown__item-icon {
@@ -971,9 +1084,16 @@
   cursor: pointer;
 }
 
-.yuni-toast__dismiss:hover {
+.yuni-toast__dismiss:active {
   background: rgba(255, 255, 255, 0.08);
   color: var(--yuni-color-text);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .yuni-toast__dismiss:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--yuni-color-text);
+  }
 }
 
 .yuni-toast__dismiss:focus-visible {
@@ -996,6 +1116,21 @@
 @media (prefers-reduced-motion: reduce) {
   .yuni-toast {
     animation: none;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .yuni-toast {
+    background: var(--yuni-color-surface);
+    backdrop-filter: none;
+  }
+}
+
+@media (prefers-contrast: more) {
+  .yuni-toast {
+    border-color: var(--yuni-color-text-muted);
+    background: var(--yuni-color-surface);
+    backdrop-filter: none;
   }
 }
 
@@ -1091,12 +1226,21 @@
     transform 160ms ease;
 }
 
-.yuni-file-drop:hover,
 .yuni-file-drop--dragging {
   border-color: rgba(100, 195, 215, 0.72);
   background:
     linear-gradient(180deg, rgba(100, 195, 215, 0.09), rgba(190, 106, 220, 0.045)), rgba(255, 255, 255, 0.03);
   box-shadow: inset 0 0 0 1px rgba(100, 195, 215, 0.16);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .yuni-file-drop:hover {
+    border-color: rgba(100, 195, 215, 0.72);
+    background:
+      linear-gradient(180deg, rgba(100, 195, 215, 0.09), rgba(190, 106, 220, 0.045)),
+      rgba(255, 255, 255, 0.03);
+    box-shadow: inset 0 0 0 1px rgba(100, 195, 215, 0.16);
+  }
 }
 
 .yuni-file-drop__target {
@@ -1126,7 +1270,7 @@
 .yuni-file-drop__title {
   color: var(--yuni-color-text);
   font-size: var(--yuni-font-lg);
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .yuni-file-drop__description {
@@ -1144,7 +1288,7 @@
   padding: 8px 14px;
   background: rgba(100, 195, 215, 0.11);
   color: var(--yuni-color-text);
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .yuni-file-drop__files {
@@ -1241,7 +1385,7 @@
 .yuni-metric-card__value {
   margin: 0;
   font-size: var(--yuni-font-2xl);
-  font-weight: 900;
+  font-weight: 800;
 }
 
 .yuni-metric-card__label,
@@ -1296,5 +1440,24 @@
 
   .yuni-card--padding-lg {
     padding: var(--yuni-space-5);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .yuni-button,
+  .yuni-icon-button {
+    transition-property: border-color, background-color, box-shadow, color, opacity;
+  }
+
+  .yuni-button:active:not(:disabled),
+  .yuni-icon-button:active:not(:disabled),
+  .yuni-button:hover:not(:disabled),
+  .yuni-icon-button:hover:not(:disabled) {
+    transform: none;
+  }
+
+  .yuni-button:active:not(:disabled),
+  .yuni-icon-button:active:not(:disabled) {
+    opacity: 0.82;
   }
 }
